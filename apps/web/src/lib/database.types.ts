@@ -455,6 +455,18 @@ export type Database = {
           { foreignKeyName: 'project_versions_created_by_fkey'; columns: ['created_by']; isOneToOne: false; referencedRelation: 'profiles'; referencedColumns: ['id'] },
         ];
       };
+      price_lists: {
+        Row: { org_id: string; rates: Json; updated_at: string; updated_by: string | null };
+        Insert: { org_id: string; rates: Json; updated_at?: string; updated_by?: string | null };
+        Update: { org_id?: string; rates?: Json; updated_at?: string; updated_by?: string | null };
+        Relationships: [];
+      };
+      quotes: {
+        Row: { id: string; org_id: string; project_id: string; quote_no: string; version_no: number; status: string; client_name: string; lines: Json; totals: Json; rates: Json; notes: string; created_at: string; created_by: string | null };
+        Insert: { id?: string; org_id: string; project_id: string; quote_no: string; version_no?: number; status?: string; client_name?: string; lines: Json; totals: Json; rates: Json; notes?: string; created_at?: string; created_by?: string | null };
+        Update: { status?: string; notes?: string; client_name?: string };
+        Relationships: [];
+      };
       projects: {
         Row: {
           archived_at: string | null;

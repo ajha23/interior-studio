@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'rea
 import { migrateScene, mm, normDeg, SCENE_MIGRATIONS, SCHEMA_VERSION, type Command, type Project } from '@studio/core';
 import { useStudio, type ViewMode } from './store';
 import { DocsView } from './DocsView';
+import { QuoteView } from './QuoteView';
 import { useRooms, useValidation } from './hooks';
 import { PlanView } from './PlanView';
 import { Properties } from './Properties';
@@ -80,6 +81,7 @@ function TopBar({ chrome }: { chrome: EditorChrome }) {
     { v: 'split', label: 'Split' },
     { v: '3d', label: '3D' },
     { v: 'docs', label: 'Drawings' },
+    { v: 'quote', label: 'Quote' },
   ];
   const exportJson = () => {
     const url = URL.createObjectURL(new Blob([JSON.stringify(project, null, 2)], { type: 'application/json' }));
@@ -231,7 +233,7 @@ function ToolRail() {
           title={`${r.label} (${r.key})`}
           onClick={() => {
             const next = tool === r.t && r.t !== 'select' ? 'select' : r.t;
-            if (r.draws && next !== 'select' && (view === '3d' || view === 'docs')) setView('split');
+            if (r.draws && next !== 'select' && (view === '3d' || view === 'docs' || view === 'quote')) setView('split');
             setTool(next);
           }}
         >
@@ -413,7 +415,8 @@ export function EditorShell({ chrome }: { chrome: EditorChrome }) {
           {view === 'plan' && <PlanView />}
           {view === '3d' && three}
           {view === 'docs' && <DocsView />}
-          {view !== 'docs' && <CommandBar />}
+          {view === 'quote' && <QuoteView />}
+          {view !== 'docs' && view !== 'quote' && <CommandBar />}
           {chrome.drawer}
         </main>
         <aside className="right">

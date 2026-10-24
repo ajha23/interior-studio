@@ -22,6 +22,8 @@ export class MockBackend {
   aiCommandCalls: unknown[] = [];
   /** Optional canned reply for the `ai-command` edge function. */
   aiCommandReply: ((body: unknown) => unknown) | null = null;
+  priceList: unknown = null;
+  quotes: Record<string, unknown>[] = [];
 
   constructor(initial: Project) {
     this.versions.push({ versionNo: 1, kind: 'manual', message: 'Seed', scene: initial });
@@ -114,6 +116,23 @@ export class MockBackend {
         return json(route, { error: 'not_configured', message: 'AI commands are not set up in tests.' }, 503);
       }
       if (path.startsWith('/rest/v1/rpc/ai_credit_balance')) return json(route, 100);
+      if (path === '/rest/v1/price_lists') {
+        if (req.method() === 'POST') {
+          const body = req.postDataJSON() as { rates: unknown };
+          this.priceList = body.rates;
+          return json(route, null, 201);
+        }
+        const row = this.priceList ? { rates: this.priceList, updated_at: new Date().toISOString() } : null;
+        return json(route, single ? row : row ? [row] : []);
+      }
+      if (path === '/rest/v1/quotes') {
+        if (req.method() === 'POST') {
+          const body = req.postDataJSON() as Record<string, unknown>;
+          this.quotes.push({ ...body, id: `q-${this.quotes.length + 1}`, status: 'draft', created_at: new Date().toISOString() });
+          return json(route, null, 201);
+        }
+        return json(route, [...this.quotes].reverse());
+      }
       // Lists the editor reads but these tests don't exercise (comments, renders, models…).
       return json(route, single ? null : []);
     });

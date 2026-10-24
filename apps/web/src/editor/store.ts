@@ -28,7 +28,7 @@ export interface CommentPin {
   y: number;
   resolved: boolean;
 }
-export type ViewMode = 'split' | 'plan' | '3d' | 'docs';
+export type ViewMode = 'split' | 'plan' | '3d' | 'docs' | 'quote';
 export type SaveState = 'saved' | 'dirty' | 'saving' | 'error';
 
 interface HistoryEntry {

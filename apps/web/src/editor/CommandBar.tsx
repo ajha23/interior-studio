@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { envelope, FINISHES, parseCommand, TOOL_SPECS, WORKTOP_FINISHES, type Project, type ToolCall } from '@studio/core';
+import { buildQuote, envelope, FINISHES, formatInr, parseCommand, TOOL_SPECS, WORKTOP_FINISHES, type Project, type ToolCall } from '@studio/core';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../auth/AuthProvider';
 import { useStudio } from './store';
 import { runSceneTools } from './tools';
+import { usePriceList } from '../data/quotes';
 import { Icon } from './icons';
 
 type Entry =
@@ -13,6 +14,8 @@ type Entry =
   | { id: number; text: string; status: 'reply'; reply: string };
 
 const toMmNum = (um: number) => Math.round(um / 100) / 10;
+const COST_QUESTION = /\b(how much|cost|costs|price|priced|estimate|budget|quote|total)\b/i;
+const EDIT_VERB = /^(set|change|make|add|fill|delete|remove|move|rotate|rename|use|switch|paint)\b/i;
 
 /** Compact, model-friendly view of the scene: what can be targeted and with which values. */
 export function sceneContext(project: Project, selectionId: string | null, selectedWallId: string | null = null) {
@@ -68,6 +71,7 @@ export function CommandBar() {
   const selection = useStudio((s) => s.selection);
   const undo = useStudio((s) => s.undo);
   const { activeOrg } = useAuth();
+  const priceList = usePriceList();
   const [text, setText] = useState('');
   const [log, setLog] = useState<Entry[]>([]);
   const [open, setOpen] = useState(true);
@@ -102,6 +106,25 @@ export function CommandBar() {
     if (!t) return;
     const id = ++seq.current;
     setText('');
+    // Cost questions are answered from the live quote (read-only; nothing in the scene changes).
+    if (COST_QUESTION.test(t) && !EDIT_VERB.test(t)) {
+      const rates = priceList.data?.rates;
+      if (!rates) {
+        push({ id, text: t, status: 'reply', reply: 'Rates are still loading — try again in a moment.' });
+        return;
+      }
+      const q = buildQuote(useStudio.getState().project, rates);
+      const sel = useStudio.getState().selection;
+      const line = sel?.kind === 'furniture' ? q.lines.find((l) => l.itemId === sel.id) : undefined;
+      const parts = [
+        line ? `${line.name}: ${line.amount ? `${formatInr(line.amount)} before GST (${formatInr(Math.round(line.amount * (1 + rates.gstPct / 100)))} with GST)` : 'price on request'}.` : '',
+        `Whole design: ${formatInr(q.total)} including ${rates.gstPct}% GST (${formatInr(q.subtotal)} + ${formatInr(q.gst)}), ${q.lines.length} piece${q.lines.length === 1 ? '' : 's'}.`,
+        q.unpriced.length ? `Not priced: ${q.unpriced.slice(0, 3).join(', ')}${q.unpriced.length > 3 ? '…' : ''}.` : '',
+        priceList.data?.saved ? '' : 'Using sample rates — set your studio rates in the Quote view.',
+      ];
+      push({ id, text: t, status: 'reply', reply: parts.filter(Boolean).join(' ') });
+      return;
+    }
     const local = parseCommand(t);
     if (local) {
       const r = runSceneTools(local, `AI: ${t.slice(0, 60)}`);

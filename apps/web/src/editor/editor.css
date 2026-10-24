@@ -500,3 +500,39 @@ table.sched td.r, table.sched th.r { text-align: right; }
 .editor-root .cmd-undo { margin-left: 8px; border: 0; background: none; color: var(--accent); font-weight: 600; cursor: pointer; padding: 0; text-decoration: underline; }
 /* The command bar owns the bottom of the viewport; plan hints move under the view label. */
 .editor-root .zoom-ind { top: 30px; left: 12px; bottom: auto; right: auto; max-width: calc(100% - 24px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Quote & BOM */
+.editor-root .quote-view { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 16px; align-content: start; }
+.editor-root .quote-view > .docs-head, .editor-root .quote-view > p { grid-column: 1 / -1; }
+.editor-root .seg-light { background: var(--paper); }
+.editor-root .quote-sheet h1 { margin: 2px 0 0; font-size: 22px; letter-spacing: .01em; }
+.editor-root .quote-top { display: flex; justify-content: space-between; gap: 24px; align-items: flex-start; margin-bottom: 18px; }
+.editor-root .quote-studio { font-size: 12px; text-transform: uppercase; letter-spacing: .1em; color: var(--accent); font-weight: 600; }
+.editor-root .quote-meta { display: grid; grid-template-columns: auto auto; gap: 3px 14px; margin: 0; font-size: 12px; }
+.editor-root .quote-meta dt { color: var(--ink-3); }
+.editor-root .quote-meta dd { margin: 0; font-weight: 500; }
+.editor-root .quote-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.editor-root .quote-table th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); font-weight: 600; border-bottom: 1.5px solid var(--ink); padding: 6px 8px; }
+.editor-root .quote-table td { padding: 7px 8px; border-bottom: 1px solid var(--line-2); vertical-align: top; }
+.editor-root .quote-table .r { text-align: right; }
+.editor-root .quote-table .room-row td { background: var(--paper); font-weight: 600; font-size: 12px; padding-top: 9px; }
+.editor-root .quote-table tfoot td { border-bottom: 0; padding: 5px 8px; }
+.editor-root .quote-table tfoot .grand td { border-top: 1.5px solid var(--ink); font-weight: 700; font-size: 14px; padding-top: 8px; }
+.editor-root .quote-notes { width: 100%; margin-top: 14px; padding: 8px; border: 1px solid var(--line); border-radius: var(--radius); font-size: 12px; resize: vertical; }
+.editor-root .quote-notes-print { display: none; font-size: 11px; color: var(--ink-2); margin-top: 14px; }
+.editor-root .quote-side { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; align-self: start; position: sticky; top: 0; }
+.editor-root .quote-side h3 { margin: 4px 0 8px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-3); }
+.editor-root .quote-internal { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; margin: 0 0 8px; font-size: 12px; }
+.editor-root .quote-internal dd { margin: 0; text-align: right; }
+.editor-root .rates-dialog { width: min(720px, calc(100vw - 32px)); max-height: calc(100vh - 64px); overflow-y: auto; }
+.editor-root .rates-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 18px; }
+.editor-root .rates-grid h3 { grid-column: 1 / -1; margin: 12px 0 2px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-3); }
+.editor-root .rate-cell { display: grid; grid-template-columns: 1fr 120px; align-items: center; gap: 8px; font-size: 12px; }
+.editor-root .rate-inp { display: flex; align-items: center; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); padding: 0 6px; height: 28px; }
+.editor-root .rate-inp input { border: 0; outline: none; width: 100%; text-align: right; background: transparent; font-family: var(--mono); }
+.editor-root .rate-inp .unit { font-size: 11px; color: var(--ink-3); margin-left: 4px; }
+@media print {
+  .editor-root .quote-view { display: block; }
+  .editor-root .quote-notes-print { display: block; }
+  .editor-root .quote-side { display: none; }
+}
