@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type * as THREEtypes from 'three';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../auth/AuthProvider';
+import type { ConvertReport, UnitChoice } from '../convert/convert';
 
 export interface StudioModel {
   id: string;
@@ -110,18 +111,40 @@ async function renderThumb(THREE: typeof THREEtypes, scene: THREEtypes.Object3D,
   }
 }
 
+export interface UploadInput {
+  /** One model file, or a model with its .mtl and textures, or a .zip of them. */
+  files: File[];
+  name: string;
+  category: string;
+  unit: UnitChoice;
+}
+
 export function useUploadModel() {
   const { activeOrg } = useAuth();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ file, name, category }: { file: File; name: string; category: string }) => {
+    mutationFn: async ({ files, name, category, unit }: UploadInput): Promise<{ id: string; report: ConvertReport | null }> => {
       if (!activeOrg) throw new Error('No studio selected.');
-      if (!/\.glb$/i.test(file.name)) throw new Error('Upload a .glb file (binary glTF). SketchUp/FBX conversion comes later.');
-      if (file.size > MAX_MODEL_BYTES) throw new Error('Files up to 50 MB.');
-      const info = await inspectGlb(file);
+      if (!files.length) throw new Error('Choose a file.');
+      // GLB files are stored as-is (they may use compression extensions a re-export would drop);
+      // everything else is converted in the browser first.
+      const direct = files.length === 1 && /\.glb$/i.test(files[0].name) && unit === 'auto';
+      let glb: File;
+      let report: ConvertReport | null = null;
+      let baseNameGuess = files[0].name.replace(/\.[^.]+$/, '');
+      if (direct) glb = files[0];
+      else {
+        const { convertToGlb } = await import('../convert/convert');
+        const res = await convertToGlb(files, { unit });
+        report = res.report;
+        baseNameGuess = res.name;
+        glb = new File([res.glb], `${res.name || 'model'}.glb`, { type: 'model/gltf-binary' });
+      }
+      if (glb.size > MAX_MODEL_BYTES) throw new Error(`The model is ${Math.round(glb.size / 1048576)} MB after conversion; the limit is 50 MB. Reduce texture sizes or polygon count.`);
+      const info = await inspectGlb(glb);
       const id = crypto.randomUUID();
       const base = `${activeOrg.orgId}/${id}`;
-      const up = await supabase.storage.from(BUCKET).upload(`${base}.glb`, file, { contentType: 'model/gltf-binary', upsert: false });
+      const up = await supabase.storage.from(BUCKET).upload(`${base}.glb`, glb, { contentType: 'model/gltf-binary', upsert: false });
       if (up.error) throw up.error;
       let thumbPath: string | null = null;
       if (info.thumb) {
@@ -131,20 +154,21 @@ export function useUploadModel() {
       const { error } = await supabase.from('catalog_models').insert({
         id,
         org_id: activeOrg.orgId,
-        name: name.trim().slice(0, 120) || file.name.replace(/\.glb$/i, ''),
+        name: name.trim().slice(0, 120) || baseNameGuess.slice(0, 120) || 'Model',
         category,
         storage_path: `${base}.glb`,
         thumb_path: thumbPath,
         width_um: info.widthUm,
         depth_um: info.depthUm,
         height_um: info.heightUm,
-        bytes: file.size,
+        bytes: glb.size,
+        source_format: report?.source ?? 'glb',
       });
       if (error) {
         await supabase.storage.from(BUCKET).remove([`${base}.glb`, ...(thumbPath ? [thumbPath] : [])]);
         throw error;
       }
-      return id;
+      return { id, report };
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['models'] }),
   });

@@ -327,3 +327,15 @@ table.sched td.r, table.sched th.r { text-align: right; }
 .share-root .share-tabs button { height: 32px; padding: 0 14px; border: 0; border-radius: 7px; background: none; font: inherit; font-size: 13px; font-weight: 500; color: var(--ink-2); cursor: pointer; }
 .share-root .share-tabs button.on { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.1); }
 .share-root .share-tabs button:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 1px; }
+.editor-root .drop { display: flex; align-items: center; gap: 10px; padding: 10px; margin-bottom: 8px; border: 1.5px dashed var(--line); border-radius: var(--radius); font-size: 12px; color: var(--ink-3); }
+.editor-root .drop.over { border-color: var(--accent); background: var(--accent-tint); color: var(--accent); }
+.editor-root .convert-report { display: grid; gap: 3px; padding: 8px 10px; margin-bottom: 8px; border-radius: var(--radius); background: var(--accent-tint); font-size: 11.5px; }
+.editor-root .convert-report .num { color: var(--ink-2); font-size: 11px; }
+.editor-root .convert-report .warn { color: var(--warn); }
+.editor-root .tpl-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.editor-root .tpl-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 10px; }
+.editor-root .tpl-card { display: grid; gap: 6px; padding: 8px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.editor-root .tpl-preview { width: 100%; height: 110px; background: var(--paper); border-radius: 4px; }
+.editor-root .tpl-meta { display: grid; gap: 1px; font-size: 11.5px; color: var(--ink-2); }
+.editor-root .tpl-meta strong { font-size: 12.5px; color: var(--ink); }
+.editor-root .tpl-meta .num { font-size: 10.5px; color: var(--ink-3); }

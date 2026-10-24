@@ -13,3 +13,4 @@ export * from './persistence/sceneMigrations';
 export * from './materials/library';
 export * from './catalog/library';
 export * from './catalog/items';
+export * from './templates/roomTemplate';

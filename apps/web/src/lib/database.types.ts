@@ -24,6 +24,42 @@ export type Database = {
   __InternalSupabase: { PostgrestVersion: '14.18' };
   public: {
     Tables: {
+      room_templates: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          name: string
+          org_id: string
+          piece_count: number
+          room_type: string
+          style: string
+          template: Json
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          name: string
+          org_id: string
+          piece_count?: number
+          room_type?: string
+          style?: string
+          template: Json
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          name?: string
+          org_id?: string
+          piece_count?: number
+          room_type?: string
+          style?: string
+          template?: Json
+        }
+        Relationships: []
+      }
       renders: {
         Row: {
           created_at: string
@@ -163,6 +199,7 @@ export type Database = {
           category: string
           created_at: string
           created_by: string
+          source_format: string
           depth_um: number
           height_um: number
           id: string
@@ -177,6 +214,7 @@ export type Database = {
           category?: string
           created_at?: string
           created_by?: string
+          source_format?: string
           depth_um: number
           height_um: number
           id?: string
@@ -191,6 +229,7 @@ export type Database = {
           category?: string
           created_at?: string
           created_by?: string
+          source_format?: string
           depth_um?: number
           height_um?: number
           id?: string

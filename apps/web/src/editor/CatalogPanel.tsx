@@ -15,9 +15,15 @@ import {
 } from '@studio/core';
 import { useStudio } from './store';
 import { usePlaceFurniture } from './place';
+import { TemplatesList } from './TemplatesPanel';
 import { patternUrl } from '../materials/patterns';
 import { MAX_MODEL_BYTES, useDeleteModel, useModels, useUploadModel, type StudioModel } from '../data/models';
 import { canAdmin as roleCanAdmin, canEdit as roleCanEdit, useAuth } from '../auth/AuthProvider';
+import type { ConvertReport, UnitChoice } from '../convert/convert';
+
+// Files the picker accepts: models plus the textures and material libraries that travel with them.
+const ACCEPT_MODELS = '.glb,.gltf,.bin,.fbx,.obj,.mtl,.dae,.3ds,.stl,.ply,.3mf,.zip,.png,.jpg,.jpeg,.tga,.bmp,.webp';
+const UNIT_NAME = { mm: 'millimetres', cm: 'centimetres', m: 'metres', in: 'inches' } as const;
 
 /** Isometric line drawing of a catalogue piece at its default size, front-right view. */
 function IsoThumb({ def }: { def: CatalogDef }) {
@@ -67,10 +73,10 @@ function IsoThumb({ def }: { def: CatalogDef }) {
 
 function FurnitureTab() {
   const [q, setQ] = useState('');
-  const [cat, setCat] = useState<CatalogCategory | 'all' | 'studio'>('all');
+  const [cat, setCat] = useState<CatalogCategory | 'all' | 'studio' | 'templates'>('all');
   const { place, targetRoom } = usePlaceFurniture();
   const readOnly = useStudio((s) => s.readOnly);
-  const results = cat === 'studio' ? [] : searchCatalog(q, cat);
+  const results = cat === 'studio' || cat === 'templates' ? [] : searchCatalog(q, cat);
   // Ceiling pieces hang from the ceiling of the room they go into.
   const addable = (d: CatalogDef) => {
     const item = newLibraryItem(d, 0, 0);
@@ -87,10 +93,13 @@ function FurnitureTab() {
             <button key={c.id} className={`chip ${cat === c.id ? 'on' : ''}`} onClick={() => setCat(c.id)}>{c.label}</button>
           ))}
           <button className={`chip ${cat === 'studio' ? 'on' : ''}`} onClick={() => setCat('studio')}>Studio models</button>
+          <button className={`chip ${cat === 'templates' ? 'on' : ''}`} onClick={() => setCat('templates')}>Room templates</button>
         </div>
         {targetRoom && <div className="field-hint">Adds to {targetRoom.info.name}. Select a room first to add elsewhere.</div>}
       </div>
-      {cat === 'studio' ? (
+      {cat === 'templates' ? (
+        <TemplatesList query={q} />
+      ) : cat === 'studio' ? (
         <StudioModels query={q} />
       ) : (
         <div className="section">
@@ -122,6 +131,16 @@ function StudioModels({ query }: { query: string }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState('');
   const [category, setCategory] = useState<CatalogCategory>('decor');
+  const [unit, setUnit] = useState<UnitChoice>('auto');
+  const [dragOver, setDragOver] = useState(false);
+  const [lastReport, setLastReport] = useState<ConvertReport | null>(null);
+  const start = (files: File[]) => {
+    setLastReport(null);
+    upload.mutate({ files, name, category, unit }, { onSuccess: (r) => {
+      setName('');
+      setLastReport(r.report);
+    } });
+  };
   const list = (models.data ?? []).filter((m) => m.name.toLowerCase().includes(query.toLowerCase()));
   const add = (m: StudioModel) => place(newModelItem(m, 0, 0));
   return (
@@ -135,22 +154,60 @@ function StudioModels({ query }: { query: string }) {
               <option key={c.id} value={c.id}>{c.label}</option>
             ))}
           </select>
+          <select className="input" value={unit} onChange={(e) => setUnit(e.target.value as UnitChoice)} aria-label="File units">
+            <option value="auto">Units: detect automatically</option>
+            <option value="mm">Units: millimetres</option>
+            <option value="cm">Units: centimetres</option>
+            <option value="m">Units: metres</option>
+            <option value="in">Units: inches</option>
+          </select>
           <input
             ref={fileRef}
             type="file"
-            accept=".glb,model/gltf-binary"
+            accept={ACCEPT_MODELS}
+            multiple
             hidden
             onChange={(e) => {
-              const file = e.target.files?.[0];
+              const files = Array.from(e.target.files ?? []);
               e.target.value = '';
-              if (file) upload.mutate({ file, name, category }, { onSuccess: () => setName('') });
+              if (files.length) start(files);
             }}
           />
-          <button className="btn primary" disabled={upload.isPending} onClick={() => fileRef.current?.click()}>
-            {upload.isPending ? 'Uploading…' : 'Choose .glb file'}
-          </button>
+          <div
+            className={`drop ${dragOver ? 'over' : ''}`}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragOver(true);
+            }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragOver(false);
+              const files = Array.from(e.dataTransfer.files);
+              if (files.length) start(files);
+            }}
+          >
+            <button className="btn primary" disabled={upload.isPending} onClick={() => fileRef.current?.click()}>
+              {upload.isPending ? 'Converting & uploading…' : 'Choose files'}
+            </button>
+            <span>or drop them here</span>
+          </div>
           {upload.error && <div className="field-hint" style={{ color: 'var(--error)' }}>{(upload.error as Error).message}</div>}
-          <div className="field-hint">Binary glTF up to {MAX_MODEL_BYTES / 1024 / 1024} MB, in metres. Visible only to your studio. Export from SketchUp, Blender or 3ds Max as .glb.</div>
+          {lastReport && (
+            <div className="convert-report">
+              <strong>Converted from {lastReport.source.toUpperCase()}</strong>
+              <span className="num">
+                {lastReport.triangles.toLocaleString()} triangles · {lastReport.meshes} meshes · {lastReport.textures} textures · {UNIT_NAME[lastReport.unit]}
+                {lastReport.unitGuessed ? ' (detected)' : ''}
+              </span>
+              {lastReport.warnings.map((w) => (
+                <span key={w} className="warn">{w}</span>
+              ))}
+            </div>
+          )}
+          <div className="field-hint">
+            GLB, glTF, FBX, OBJ (+MTL), DAE, 3DS, STL, PLY or 3MF — or a .zip with the model and its textures. Converted in your browser to GLB (max {MAX_MODEL_BYTES / 1024 / 1024} MB) and visible only to your studio. SketchUp: export as COLLADA (.dae).
+          </div>
         </div>
       )}
       <div className="section">

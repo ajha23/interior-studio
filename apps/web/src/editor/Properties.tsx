@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { FINISHES, isDecor, materialById, materialsIn, type MaterialCategory } from '@studio/core';
 import { patternUrl } from '../materials/patterns';
 import { catalogName } from './CatalogPanel';
+import { SaveTemplateForm } from './TemplatesPanel';
 import type { Command } from '@studio/core';
 import { uid } from '@studio/core';
 import { useStudio } from './store';
@@ -75,6 +76,7 @@ function RoomProps({ room }: { room: DetectedRoom }) {
   const dispatch = useStudio((s) => s.dispatch);
   const plan = useStudio((s) => s.project.plan);
   const info = room.info;
+  const readOnlyRoom = useStudio((s) => s.readOnly);
   // Editing an automatic room stores its properties for the first time.
   const set = (patch: Partial<typeof info>, label = 'Edit room') => dispatch({ type: 'room.upsert', info: { ...info, ...patch, id: room.auto ? uid('room') : info.id } }, label);
   const areaM2 = room.areaUm2 / 1e12;
@@ -107,6 +109,7 @@ function RoomProps({ room }: { room: DetectedRoom }) {
         <h3>Checks</h3>
         <Issues ids={[room.id]} />
       </div>
+      {!readOnlyRoom && <SaveTemplateForm room={room} />}
       <PlanSettings />
     </>
   );
