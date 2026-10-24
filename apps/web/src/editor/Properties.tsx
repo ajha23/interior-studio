@@ -10,8 +10,10 @@ import { useStudio } from './store';
 import { isParametric, type DetectedRoom, type FurnitureItem, type Opening, type Plan, type Provenance, type TvModuleType, type Wall, type WardrobeModuleType } from '@studio/core';
 import { fmtMm, mm } from '@studio/core';
 import { envelope, resolveParametric } from '@studio/core';
-import { endpointsAt, nearestWall, normDeg, sideOf, wallGaps, wallGeom, wallIndexLabel, wallLength, wallPoint } from '@studio/core';
+import { endpointsAt, nearestWall, normDeg, sideOf, wallGeom, wallIndexLabel, wallLength, wallPoint } from '@studio/core';
 import { DegField, IntField, MmField, SelectField, TextField } from './fields';
+import { runSceneTools } from './tools';
+import { anchoredMove, BASE_CABINET_LIMITS, counterHeightUm, WORKTOP_FINISHES, type ToolCall } from '@studio/core';
 import { useRooms, useValidation } from './hooks';
 
 function Issues({ ids }: { ids: string[] }) {
@@ -293,31 +295,16 @@ function FurnitureProps({ f }: { f: FurnitureItem }) {
   const env = envelope(f);
   const update = (patch: Record<string, unknown>, label?: string) => dispatch({ type: 'furniture.update', id: f.id, patch }, label);
 
-  /** Change params; if depth changes on an axis-aligned piece, keep its back edge where it is. */
+  /** Change params; axis-aligned pieces keep their back and any wall-touching end in place. */
   const setParams = (params: Record<string, unknown>, label = 'Change dimensions') => {
-    const cmds: Command[] = [{ type: 'furniture.params', id: f.id, params }];
-    const newW = params.widthUm as number | undefined;
-    if (newW !== undefined && Math.round(f.rotDeg) % 90 === 0) {
-      // Keep whichever end is against a wall fixed; otherwise grow about the centre.
-      const g = wallGaps(f, project.plan);
-      const a = (f.rotDeg * Math.PI) / 180;
-      const ax = { x: Math.round(Math.cos(a)), y: Math.round(Math.sin(a)) }; // local +x (width) direction in plan
-      const delta = (newW - f.params.widthUm) / 2;
-      const startGap = ax.x === 1 ? g.west : ax.x === -1 ? g.east : ax.y === 1 ? g.north : g.south;
-      const endGap = ax.x === 1 ? g.east : ax.x === -1 ? g.west : ax.y === 1 ? g.south : g.north;
-      const sign = startGap <= mm(1) ? 1 : endGap <= mm(1) ? -1 : 0;
-      if (sign !== 0) cmds.push({ type: 'furniture.update', id: f.id, patch: { xUm: Math.round(f.xUm + ax.x * delta * sign), yUm: Math.round(f.yUm + ax.y * delta * sign) } });
-    }
-    const newD = params.depthUm as number | undefined;
-    if (newD !== undefined && Math.round(f.rotDeg) % 90 === 0) {
-      const delta = (newD - f.params.depthUm) / 2;
-      const a = (f.rotDeg * Math.PI) / 180;
-      // front direction in plan = (−sin a, cos a)
-      const last = cmds.at(-1);
-      const base = last && last.type === 'furniture.update' ? (last.patch as { xUm: number; yUm: number }) : { xUm: f.xUm, yUm: f.yUm };
-      cmds.push({ type: 'furniture.update', id: f.id, patch: { xUm: Math.round(base.xUm - Math.sin(a) * delta), yUm: Math.round(base.yUm + Math.cos(a) * delta) } });
-    }
-    dispatch(cmds.length === 1 ? cmds[0] : { type: 'batch', label, commands: cmds }, label);
+    const move = anchoredMove(f, { ...f, params: { ...f.params, ...params } } as FurnitureItem, project.plan);
+    const cmd: Command = { type: 'furniture.params', id: f.id, params };
+    dispatch(move ? { type: 'batch', label, commands: [cmd, move] } : cmd, label);
+  };
+  /** Base cabinets edit through the same validated tools as AI commands; errors show on the field. */
+  const tool = (call: ToolCall, label: string): string | null => {
+    const r = runSceneTools([{ ...call, args: { ...call.args, target: f.id } }], label);
+    return r.ok ? null : r.error;
   };
 
   const resolved = isParametric(f) ? resolveParametric(f, project.rulePack) : null;
@@ -354,6 +341,19 @@ function FurnitureProps({ f }: { f: FurnitureItem }) {
         </div>
       </div>
 
+      {f.kind === 'basecabinet' ? (
+        <div className="section">
+          <h3>Dimensions</h3>
+          <MmField label="Width" value={f.params.widthUm} min={150} max={1200} onCommit={(v) => tool({ tool: 'set_dimension', args: { dimension: 'width', valueMm: v / 1000 } }, 'Change width')} testId="furn-width" />
+          <MmField label="Height" value={f.params.heightUm} min={600} max={1000} onCommit={(v) => tool({ tool: 'set_dimension', args: { dimension: 'height', valueMm: v / 1000 } }, 'Change height')} hint="Floor to carcass top, incl. plinth." />
+          <MmField label="Depth" value={f.params.depthUm} min={300} max={700} onCommit={(v) => tool({ tool: 'set_dimension', args: { dimension: 'depth', valueMm: v / 1000 } }, 'Change depth')} hint="Wall to door face." />
+          <MmField label="Plinth" value={f.params.plinthUm} min={0} max={200} onCommit={(v) => tool({ tool: 'set_dimension', args: { dimension: 'plinth', valueMm: v / 1000 } }, 'Change plinth')} />
+          <MmField label="Worktop" value={f.params.worktopUm} min={0} max={60} onCommit={(v) => tool({ tool: 'set_dimension', args: { dimension: 'worktop', valueMm: v / 1000 } }, 'Change worktop')} hint="Thickness; 0 = none." />
+          <div className="field-hint num">
+            Counter height {fmtMm(counterHeightUm(f.params))} mm · envelope {fmtMm(env.widthUm)} × {fmtMm(env.depthUm)} × {fmtMm(env.heightUm)} mm
+          </div>
+        </div>
+      ) : (
       <div className="section">
         <h3>Dimensions</h3>
         <MmField label="Width" value={f.params.widthUm} min={f.kind === 'library' || f.kind === 'model' ? 10 : 200} max={6000} onCommit={(v) => setParams({ widthUm: v })} testId="furn-width" />
@@ -382,6 +382,22 @@ function FurnitureProps({ f }: { f: FurnitureItem }) {
           Envelope {fmtMm(env.widthUm)} × {fmtMm(env.depthUm)} × {fmtMm(env.heightUm)} mm{env.zMinUm > 0 ? `, from ${fmtMm(env.zMinUm)} above floor` : ''}
         </div>
       </div>
+      )}
+      {f.kind === 'basecabinet' && (
+        <div className="section">
+          <h3>Construction</h3>
+          <SelectField label="Front" value={f.params.front} options={[{ value: 'doors', label: 'Doors + shelves' }, { value: 'drawers', label: 'Drawer stack' }]} onChange={(v) => { const e = tool({ tool: 'set_parameter', args: { parameter: 'front', value: v } }, 'Change front'); if (e) alert(e); }} />
+          {f.params.front === 'doors' ? (
+            <>
+              <IntField label="Doors" value={f.params.doorCount} min={BASE_CABINET_LIMITS.doorCount.min} max={BASE_CABINET_LIMITS.doorCount.max} onCommit={(v) => tool({ tool: 'set_parameter', args: { parameter: 'doorCount', value: v } }, 'Change doors')} />
+              <IntField label="Shelves" value={f.params.shelfCount} min={BASE_CABINET_LIMITS.shelfCount.min} max={BASE_CABINET_LIMITS.shelfCount.max} onCommit={(v) => tool({ tool: 'set_parameter', args: { parameter: 'shelfCount', value: v } }, 'Change shelves')} />
+            </>
+          ) : (
+            <IntField label="Drawers" value={f.params.drawerCount} min={BASE_CABINET_LIMITS.drawerCount.min} max={BASE_CABINET_LIMITS.drawerCount.max} onCommit={(v) => tool({ tool: 'set_parameter', args: { parameter: 'drawerCount', value: v } }, 'Change drawers')} />
+          )}
+          {resolved && <div className="field-hint num">{resolved.parts.length} parts · {resolved.hardware.reduce((n, h) => n + h.qty, 0)} hardware items</div>}
+        </div>
+      )}
 
       {f.kind === 'wardrobe' && (
         <div className="section">
@@ -407,7 +423,7 @@ function FurnitureProps({ f }: { f: FurnitureItem }) {
           <div className="field-hint" style={{ marginBottom: 6 }}>Shutters / fronts</div>
           <div className="finish-grid">
             {FINISHES.map((fin) => (
-              <button key={fin.id} className={`finish ${f.materials.shutter === fin.id ? 'on' : ''}`} style={{ background: fin.color }} title={fin.name} onClick={() => update({ materials: { ...f.materials, shutter: fin.id } }, 'Change finish')} />
+              <button key={fin.id} className={`finish ${f.materials.shutter === fin.id ? 'on' : ''}`} style={{ background: fin.color }} title={fin.name} aria-label={`Fronts ${fin.name}`} onClick={() => update({ materials: { ...f.materials, shutter: fin.id } }, 'Change finish')} />
             ))}
           </div>
           <div className="finish-name">{FINISHES.find((x) => x.id === f.materials.shutter)?.name}</div>
@@ -418,6 +434,17 @@ function FurnitureProps({ f }: { f: FurnitureItem }) {
             ))}
           </div>
           <div className="finish-name">{FINISHES.find((x) => x.id === f.materials.carcass)?.name}</div>
+          {f.kind === 'basecabinet' && (
+            <>
+              <div className="field-hint" style={{ margin: '10px 0 6px' }}>Worktop</div>
+              <div className="finish-grid">
+                {WORKTOP_FINISHES.map((fin) => (
+                  <button key={fin.id} className={`finish ${f.materials.worktop === fin.id ? 'on' : ''}`} style={{ background: fin.color }} title={fin.name} aria-label={`Worktop ${fin.name}`} onClick={() => update({ materials: { ...f.materials, worktop: fin.id } }, 'Change worktop')} />
+                ))}
+              </div>
+              <div className="finish-name">{WORKTOP_FINISHES.find((x) => x.id === f.materials.worktop)?.name}</div>
+            </>
+          )}
         </div>
       )}
       {f.kind === 'library' && (
@@ -516,7 +543,7 @@ export function Properties() {
   return (
     <div className="empty">
       <strong style={{ color: 'var(--ink)' }}>Nothing selected</strong>
-      <p>Click a piece, wall or room in the plan. Use the Wall and Room tools above the plan to draw.</p>
+      <p>Click a piece, wall or room in the plan or 3D view to inspect and edit it. Draw with the tools on the left; describe changes in the command bar (<span className="kbd">⌘K</span>).</p>
       <p>
         <span className="kbd">⌘/Ctrl Z</span> undo · <span className="kbd">⇧⌘Z</span> redo
         <br />

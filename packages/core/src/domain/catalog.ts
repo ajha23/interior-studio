@@ -19,6 +19,15 @@ export const FINISHES: Finish[] = [
   { id: 'ivory', name: 'Ivory satin', color: '#e6dcc7', kind: 'laminate' },
 ];
 
+/** Worktop surfaces for kitchen base units. */
+export const WORKTOP_FINISHES: Finish[] = [
+  { id: 'granite-black', name: 'Black galaxy granite', color: '#2b2b2d', kind: 'paint' },
+  { id: 'quartz-white', name: 'White quartz', color: '#eceae6', kind: 'paint' },
+  { id: 'marble', name: 'Statuario marble', color: '#e7e4de', kind: 'paint' },
+  { id: 'oak-butcher', name: 'Oak butcher block', color: '#b8895a', kind: 'veneer' },
+  { id: 'steel', name: 'Stainless steel', color: '#b9bcbf', kind: 'paint' },
+];
+
 export const FLOOR_FINISHES = [
   { id: 'oak-floor', name: 'Oak planks', color: '#b89466' },
   { id: 'marble', name: 'Statuario marble', color: '#e7e4de' },
@@ -34,7 +43,7 @@ export const WALL_COLORS = [
 ];
 
 export function finishById(id: string): Finish {
-  return FINISHES.find((f) => f.id === id) ?? FINISHES[0];
+  return FINISHES.find((f) => f.id === id) ?? WORKTOP_FINISHES.find((f) => f.id === id) ?? FINISHES[0];
 }
 
 /** Default construction method — illustrative until reviewed by the team's carpenter. */

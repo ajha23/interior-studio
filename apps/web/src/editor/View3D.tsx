@@ -90,13 +90,15 @@ function Furniture({ f, project, selected, xray, onSelect }: { f: FurnitureItem;
     const r = resolveParametric(f, project.rulePack);
     const carcass = finishById(f.materials.carcass).color;
     const shutter = finishById(f.materials.shutter).color;
-    return r.parts.map((p) => ({ ...p.box, key: p.key, color: p.material === 'shutter' ? shutter : p.material === 'back' ? BACK_COLOR : p.role === 'drawer-box' ? '#e9e1d2' : carcass, role: p.role }));
+    const worktop = f.kind === 'basecabinet' ? finishById(f.materials.worktop).color : carcass;
+    return r.parts.map((p) => ({ ...p.box, key: p.key, color: p.material === 'shutter' ? shutter : p.material === 'worktop' ? worktop : p.material === 'back' ? BACK_COLOR : p.role === 'drawer-box' ? '#e9e1d2' : carcass, role: p.role }));
   }, [f, project.rulePack]);
   const W = env.widthUm;
   const D = env.depthUm;
   const outlineBox = useMemo(() => new THREE.BoxGeometry(toM(W) + 0.02, toM(env.heightUm - env.zMinUm) + 0.02, toM(D) + 0.02), [W, D, env.heightUm, env.zMinUm]);
   return (
     <group
+      name={f.id}
       position={[toM(f.xUm), 0, toM(f.yUm)]}
       rotation={[0, -(f.rotDeg * Math.PI) / 180, 0]}
       onClick={(e) => {

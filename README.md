@@ -55,3 +55,11 @@ npm run check        # typecheck + tests + production build
 ```
 
 Lengths are integer micrometres internally; the UI shows millimetres. The default construction rule pack is illustrative and needs carpenter review before any cut list is used for production.
+
+## Editor architecture (Sprint 1)
+
+- **Workspace:** top bar (views, undo/redo, share, overflow menu) · tool rail (Select V, Wall W, Room M, Door D, Window N, Paint B, Comment C) · left panel (Add, Catalogue, Materials, Scene) · plan/3D viewport · inspector · status bar.
+- **Scene model:** typed `Project` (schema v6, µm integers) changed only through invertible `Command`s → undo/redo, autosave (2.5 s) to `project_versions`.
+- **Kitchen base cabinet** (`basecabinet`): parametric template with limits in `BASE_CABINET_LIMITS`, regenerated parts for 3D, plan, elevations and cut lists.
+- **AI command bar (⌘K):** request → deterministic parser or `ai-command` (Gemini function calling) → validated scene tools → one undoable batch → autosave. See `docs/adr/0002-scene-tools-and-ai-commands.md`.
+- **Tests:** `npm test` (Vitest, core) and `npm run e2e` (Playwright driving the real editor route with an in-memory Supabase mock in `e2e/backend.ts`).

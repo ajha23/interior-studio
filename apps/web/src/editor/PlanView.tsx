@@ -132,7 +132,7 @@ function FurnitureShape({ project, f, selected, severity, fs }: { project: Proje
   let fill = '#e8e2d6';
   if (isParametric(f)) {
     const r = resolveParametric(f, project.rulePack);
-    fill = finishById(f.materials.shutter).color;
+    fill = f.kind === 'basecabinet' && f.params.worktopUm > 0 ? finishById(f.materials.worktop).color : finishById(f.materials.shutter).color;
     const fronts = r.parts.filter((p) => p.role === 'shutter' || p.role === 'drawer-front');
     const frontY = Math.min(...fronts.map((p) => p.box.y), env.depthUm);
     if (fronts.length) details.push(ln(P(0, frontY), P(env.widthUm, frontY), 'front'));
@@ -566,7 +566,7 @@ export function PlanView() {
         else if (tool !== 'select') setTool('select');
         setPreview({});
       }
-      const shortcuts: Record<string, Tool> = { w: 'wall', m: 'room', d: 'door', n: 'window', v: 'select', c: 'comment' };
+      const shortcuts: Record<string, Tool> = { w: 'wall', m: 'room', d: 'door', n: 'window', v: 'select', c: 'comment', b: 'paint' };
       const t = shortcuts[e.key.toLowerCase()];
       if (t && !e.metaKey && !e.ctrlKey && (!readOnly || t === 'comment' || t === 'select') && !useStudio.getState().clientView) setTool(t);
     };
@@ -879,27 +879,10 @@ export function PlanView() {
 
   const selItem = selection?.kind === 'furniture' ? project.furniture.find((f) => f.id === selection.id) : null;
   const drawProject = draftOpening ? { ...project, openings: project.openings.map((o) => (o.id === draftOpening.id ? draftOpening : o)) } : project;
-  const tools: { t: Tool; label: string; key: string }[] = [
-    { t: 'select', label: 'Select', key: 'V' },
-    { t: 'wall', label: 'Wall', key: 'W' },
-    { t: 'room', label: 'Room', key: 'M' },
-    { t: 'door', label: 'Door', key: 'D' },
-    { t: 'window', label: 'Window', key: 'N' },
-    { t: 'comment', label: 'Comment', key: 'C' },
-  ];
 
   return (
     <div className="view" ref={wrap}>
       <div className="view-label">Plan · mm</div>
-      {!readOnly && (
-        <div className="plan-tools" role="toolbar" aria-label="Plan tools">
-          {tools.map((x) => (
-            <button key={x.t} className={`btn ${tool === x.t ? 'on' : ''}`} onClick={() => setTool(x.t)} title={`${x.label} (${x.key})`} aria-pressed={tool === x.t}>
-              {x.label}
-            </button>
-          ))}
-        </div>
-      )}
       <div className="view-tools">
         <button className="btn" onClick={fit} title="Zoom to fit">Fit</button>
       </div>

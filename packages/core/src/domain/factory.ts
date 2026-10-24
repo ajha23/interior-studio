@@ -1,7 +1,7 @@
 import { DEFAULT_RULE_PACK } from './catalog';
-import { SCHEMA_VERSION, type DecorKind, type DecorItem, type FurnitureItem, type Opening, type Plan, type Project, type ProjectCore, type RoomInfo, type TvUnitItem, type Wall, type WallSideSign, type WardrobeItem } from './types';
+import { SCHEMA_VERSION, type DecorKind, type DecorItem, type FurnitureItem, type Opening, type Plan, type Project, type ProjectCore, type RoomInfo, type TvUnitItem, type BaseCabinetItem, type BaseCabinetParams, type Wall, type WallSideSign, type WardrobeItem } from './types';
 import { mm } from './units';
-import { TVUNIT_TEMPLATE_VERSION, WARDROBE_TEMPLATE_VERSION } from '../furniture';
+import { BASECABINET_TEMPLATE_VERSION, DEFAULT_BASE_CABINET, TVUNIT_TEMPLATE_VERSION, WARDROBE_TEMPLATE_VERSION } from '../furniture';
 
 export function uid(prefix: string): string {
   const r = Math.random().toString(36).slice(2, 8);
@@ -35,6 +35,23 @@ export function newTvUnit(x = mm(1200), y = mm(200)): TvUnitItem {
     rulePackVersion: DEFAULT_RULE_PACK.version,
     params: { widthUm: mm(1800), heightUm: mm(400), depthUm: mm(400), mountHeightUm: mm(250), modules: ['flap', 'open', 'drawer'], wallPanelHeightUm: mm(1200) },
     materials: { carcass: 'white-matte', shutter: 'walnut' },
+  };
+}
+
+/** Kitchen base unit. `preset` picks a door or drawer front; width defaults to 600 mm. */
+export function newBaseCabinet(x = mm(1200), y = mm(300), patch: Partial<BaseCabinetParams> = {}): BaseCabinetItem {
+  const params = { ...DEFAULT_BASE_CABINET, ...patch };
+  return {
+    id: uid('bc'),
+    kind: 'basecabinet',
+    name: params.front === 'drawers' ? 'Drawer base unit' : 'Base cabinet',
+    xUm: x,
+    yUm: y,
+    rotDeg: 0,
+    templateVersion: BASECABINET_TEMPLATE_VERSION,
+    rulePackVersion: DEFAULT_RULE_PACK.version,
+    params,
+    materials: { carcass: 'white-matte', shutter: 'sage', worktop: 'granite-black' },
   };
 }
 

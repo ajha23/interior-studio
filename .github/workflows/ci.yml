@@ -29,3 +29,23 @@ jobs:
         env:
           VITE_SUPABASE_URL: https://pkbctmaiawztzmwqkpgw.supabase.co
           VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_KpNjQ1QaBf1PaMi_aTuEIg_-5taFJ86
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: End-to-end editor tests (mocked backend)
+        run: npx playwright test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-results
+          path: test-results

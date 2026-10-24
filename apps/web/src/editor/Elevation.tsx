@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { finishById } from '@studio/core';
-import type { TvUnitItem, WardrobeItem } from '@studio/core';
+import type { ParametricItem } from '@studio/core';
 import { fmtMm, mm } from '@studio/core';
 import type { Part, ResolvedFurniture } from '@studio/core';
 import { Dim } from './PlanView';
@@ -9,7 +9,7 @@ const k = (v: number) => v / 1000;
 
 type Mode = 'front' | 'internal' | 'side';
 
-export function Elevation({ item, r, mode }: { item: WardrobeItem | TvUnitItem; r: ResolvedFurniture; mode: Mode }) {
+export function Elevation({ item, r, mode }: { item: ParametricItem; r: ResolvedFurniture; mode: Mode }) {
   const { widthUm: W, depthUm: D, heightUm: H } = r.overall;
   const span = mode === 'side' ? D : W;
   const fs = Math.max(k(Math.max(span, H)) / 34, 22);
@@ -18,6 +18,7 @@ export function Elevation({ item, r, mode }: { item: WardrobeItem | TvUnitItem; 
   const vbH = k(H) + margin * 2.4;
   const Y = (z: number) => margin + k(H - z); // flip z
   const shutter = finishById(item.materials.shutter).color;
+  const worktop = item.kind === 'basecabinet' ? finishById(item.materials.worktop).color : shutter;
   const carcass = finishById(item.materials.carcass).color;
   const isFront = (p: Part) => p.role === 'shutter' || p.role === 'drawer-front';
 
@@ -29,11 +30,11 @@ export function Elevation({ item, r, mode }: { item: WardrobeItem | TvUnitItem; 
 
   const shapes: ReactNode[] = [];
   if (mode === 'front') {
-    r.parts.filter((p) => ['side', 'top', 'bottom', 'panel'].includes(p.role)).forEach((p) => shapes.push(rect(p, { fill: p.role === 'panel' ? shutter : carcass })));
+    r.parts.filter((p) => ['side', 'top', 'bottom', 'panel', 'plinth', 'worktop'].includes(p.role)).forEach((p) => shapes.push(rect(p, { fill: p.role === 'panel' || p.role === 'plinth' ? shutter : p.role === 'worktop' ? worktop : carcass })));
     r.parts.filter((p) => p.role === 'partition' || p.role === 'shelf').forEach((p) => shapes.push(rect(p, { fill: carcass })));
     r.parts.filter(isFront).forEach((p) => {
       shapes.push(rect(p, { fill: shutter }));
-      if (p.role === 'shutter' && item.kind === 'wardrobe') {
+      if (p.role === 'shutter' && (item.kind === 'wardrobe' || item.kind === 'basecabinet')) {
         // Handle marks on the meeting edge
         const midZ = Y(p.box.z + p.box.h / 2);
         const onLeft = p.box.x + p.box.w / 2 > W / 2;

@@ -16,3 +16,6 @@ export * from './catalog/library';
 export * from './catalog/items';
 export * from './templates/roomTemplate';
 export * from './recipe/recipe';
+export * from './tools/sceneTools';
+export * from './tools/nl';
+export * from './tools/anchor';

@@ -1,7 +1,7 @@
 import type { Um } from './units';
 import type { Lighting } from './lighting';
 
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 /** Where a dimension came from — an estimate must never be presented as a verified measurement. */
 export type Provenance = 'site_measured' | 'drawing' | 'estimate';
@@ -69,7 +69,7 @@ export interface Plan {
   defaultCeilingUm: Um;
 }
 
-export type TemplateKey = 'wardrobe' | 'tvunit';
+export type TemplateKey = 'wardrobe' | 'tvunit' | 'basecabinet';
 export type DecorKind = 'bed' | 'sofa' | 'table' | 'side-table' | 'box';
 export type FurnitureKind = TemplateKey | DecorKind | 'library' | 'model';
 
@@ -94,6 +94,22 @@ export interface TvUnitParams {
   mountHeightUm: Um; // underside of console above floor (wall-hung)
   modules: TvModuleType[];
   wallPanelHeightUm: Um; // 0 = none; panel sits on top of the console
+}
+
+/** Kitchen base unit (see furniture/basecabinet.ts for limits and construction). */
+export interface BaseCabinetParams {
+  widthUm: Um;
+  /** Floor to carcass top, including the plinth, excluding the worktop. */
+  heightUm: Um;
+  /** Carcass plus shutters, wall to door face. */
+  depthUm: Um;
+  plinthUm: Um;
+  /** 0 = no worktop. */
+  worktopUm: Um;
+  front: 'doors' | 'drawers';
+  doorCount: number;
+  drawerCount: number;
+  shelfCount: number;
 }
 
 export interface DecorParams {
@@ -128,6 +144,14 @@ export interface TvUnitItem extends FurnitureBase {
   materials: { carcass: string; shutter: string };
 }
 
+export interface BaseCabinetItem extends FurnitureBase {
+  kind: 'basecabinet';
+  templateVersion: number;
+  rulePackVersion: number;
+  params: BaseCabinetParams;
+  materials: { carcass: string; shutter: string; worktop: string };
+}
+
 export interface DecorItem extends FurnitureBase {
   kind: DecorKind;
   params: DecorParams;
@@ -157,14 +181,15 @@ export interface ModelItem extends FurnitureBase {
   native: { widthUm: Um; depthUm: Um; heightUm: Um };
 }
 
-export type FurnitureItem = WardrobeItem | TvUnitItem | DecorItem | LibraryItem | ModelItem;
+export type FurnitureItem = WardrobeItem | TvUnitItem | BaseCabinetItem | DecorItem | LibraryItem | ModelItem;
+export type ParametricItem = WardrobeItem | TvUnitItem | BaseCabinetItem;
 
 export function isDecor(f: FurnitureItem): f is DecorItem {
   return f.kind === 'bed' || f.kind === 'sofa' || f.kind === 'table' || f.kind === 'side-table' || f.kind === 'box';
 }
 
-export function isParametric(f: FurnitureItem): f is WardrobeItem | TvUnitItem {
-  return f.kind === 'wardrobe' || f.kind === 'tvunit';
+export function isParametric(f: FurnitureItem): f is ParametricItem {
+  return f.kind === 'wardrobe' || f.kind === 'tvunit' || f.kind === 'basecabinet';
 }
 
 /** Construction method, versioned. Pinned per project so rule changes never alter old designs. */

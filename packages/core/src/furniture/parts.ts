@@ -10,9 +10,9 @@ export interface Box3 {
   h: Um;
 }
 
-export type PartRole = 'side' | 'top' | 'bottom' | 'partition' | 'shelf' | 'back' | 'shutter' | 'drawer-front' | 'drawer-box' | 'drawer-bottom' | 'panel';
+export type PartRole = 'side' | 'top' | 'bottom' | 'partition' | 'shelf' | 'back' | 'shutter' | 'drawer-front' | 'drawer-box' | 'drawer-bottom' | 'panel' | 'plinth' | 'worktop';
 
-export type PartMaterial = 'carcass' | 'shutter' | 'back';
+export type PartMaterial = 'carcass' | 'shutter' | 'back' | 'worktop';
 
 export interface Part {
   key: string;
@@ -42,7 +42,7 @@ export interface Issue {
 }
 
 export interface ResolvedFurniture {
-  templateKey: 'wardrobe' | 'tvunit';
+  templateKey: 'wardrobe' | 'tvunit' | 'basecabinet';
   templateVersion: number;
   overall: { widthUm: Um; depthUm: Um; heightUm: Um; zMinUm: Um };
   /** Module spans along width for dimension chains (inner clear widths). */

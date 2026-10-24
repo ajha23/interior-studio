@@ -84,5 +84,7 @@ export const SCENE_MIGRATIONS: MigrationRegistry = {
     3: (scene) => ({ ...(scene as Record<string, unknown>), schemaVersion: 4 }),
     // v5 adds an optional floor-plan underlay for tracing: purely additive.
     4: (scene) => ({ ...(scene as Record<string, unknown>), schemaVersion: 5 }),
+    // v6 adds the parametric kitchen base cabinet furniture kind: purely additive.
+    5: (scene) => ({ ...(scene as Record<string, unknown>), schemaVersion: 6 }),
   },
 };

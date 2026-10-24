@@ -1,5 +1,5 @@
 import { BOARD_SHEET, finishById } from '../domain/catalog';
-import type { RulePack, TvUnitItem, WardrobeItem } from '../domain/types';
+import type { ParametricItem, RulePack } from '../domain/types';
 import { areaM2, plainMm, type Um } from '../domain/units';
 import { resolveParametric } from './index';
 import type { Part, ResolvedFurniture } from './parts';
@@ -23,17 +23,18 @@ export interface MaterialTotal {
   sheets: number;
 }
 
-export function materialLabel(part: Part, item: WardrobeItem | TvUnitItem, rp: RulePack): string {
+export function materialLabel(part: Part, item: ParametricItem, rp: RulePack): string {
   const board = `${rp.carcassBoard.split(',')[0]} ${plainMm(part.thicknessUm)} mm`;
   if (part.material === 'back') return `Back ply ${plainMm(part.thicknessUm)} mm`;
   if (part.material === 'shutter') return `${board} · ${finishById(item.materials.shutter).name}`;
+  if (part.material === 'worktop') return `Worktop ${plainMm(part.thicknessUm)} mm · ${finishById(item.kind === 'basecabinet' ? item.materials.worktop : item.materials.shutter).name}`;
   return `${board} · ${finishById(item.materials.carcass).name}`;
 }
 
 function partLabel(p: Part): string {
   switch (p.role) {
     case 'side': return 'Side panel';
-    case 'top': return 'Top';
+    case 'top': return /rail/.test(p.key) ? 'Rail' : 'Top';
     case 'bottom': return 'Bottom';
     case 'partition': return 'Partition';
     case 'shelf': return 'Shelf';
@@ -42,12 +43,14 @@ function partLabel(p: Part): string {
     case 'drawer-front': return 'Drawer front';
     case 'drawer-bottom': return 'Drawer bottom';
     case 'panel': return 'Wall panel';
+    case 'plinth': return 'Plinth';
+    case 'worktop': return 'Worktop';
     case 'drawer-box': return /side/.test(p.key) ? 'Drawer side' : /front$/.test(p.key) ? 'Drawer inner front' : 'Drawer back';
   }
 }
 
 /** Collapse identical parts (same size, thickness, material, banding) into scheduled lines. */
-export function buildSchedule(item: WardrobeItem | TvUnitItem, rp: RulePack, resolved?: ResolvedFurniture): { rows: ScheduleRow[]; totals: MaterialTotal[]; resolved: ResolvedFurniture } {
+export function buildSchedule(item: ParametricItem, rp: RulePack, resolved?: ResolvedFurniture): { rows: ScheduleRow[]; totals: MaterialTotal[]; resolved: ResolvedFurniture } {
   const r = resolved ?? resolveParametric(item, rp);
   const groups = new Map<string, ScheduleRow>();
   for (const p of r.parts) {
@@ -76,7 +79,7 @@ export function buildSchedule(item: WardrobeItem | TvUnitItem, rp: RulePack, res
   return { rows, totals, resolved: r };
 }
 
-export function scheduleCsv(item: WardrobeItem | TvUnitItem, rp: RulePack, projectName: string, revisionLabel: string): string {
+export function scheduleCsv(item: ParametricItem, rp: RulePack, projectName: string, revisionLabel: string): string {
   const { rows, resolved } = buildSchedule(item, rp);
   const esc = (s: string | number) => `"${String(s).replace(/"/g, '""')}"`;
   const lines = [

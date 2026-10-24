@@ -4,7 +4,8 @@ import { mm, plainMm, type Um } from '@studio/core';
 interface MmFieldProps {
   label: string;
   value: Um;
-  onCommit: (v: Um) => void;
+  /** Return an error message to reject the value (the field reverts and shows why). */
+  onCommit: (v: Um) => void | string | null;
   min?: number; // mm
   max?: number; // mm
   hint?: ReactNode;
@@ -15,18 +16,26 @@ interface MmFieldProps {
 export function MmField({ label, value, onCommit, min, max, hint, testId }: MmFieldProps) {
   const [text, setText] = useState(plainMm(value));
   const [focused, setFocused] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     if (!focused) setText(plainMm(value));
   }, [value, focused]);
   const n = Number(text);
-  const invalid = text.trim() === '' || !Number.isFinite(n) || (min !== undefined && n < min) || (max !== undefined && n > max);
+  const outOfRange = (min !== undefined && n < min) || (max !== undefined && n > max);
+  const invalid = text.trim() === '' || !Number.isFinite(n) || outOfRange;
   const commit = () => {
     if (invalid) {
+      if (text.trim() !== '' && outOfRange) setError(`${label} must be between ${min} and ${max ?? '∞'} mm. Kept ${plainMm(value)} mm.`);
       setText(plainMm(value));
       return;
     }
     const v = mm(n);
-    if (v !== value) onCommit(v);
+    if (v === value) return setError(null);
+    const err = onCommit(v);
+    if (typeof err === 'string') {
+      setError(err);
+      setText(plainMm(value));
+    } else setError(null);
   };
   return (
     <div className="field">
@@ -56,13 +65,15 @@ export function MmField({ label, value, onCommit, min, max, hint, testId }: MmFi
         />
         <span className="unit">mm</span>
       </div>
+      {error && <div className="field-error" role="alert" style={{ gridColumn: '1 / -1' }}>{error}</div>}
       {hint && <div className="field-hint" style={{ gridColumn: '1 / -1' }}>{hint}</div>}
     </div>
   );
 }
 
-export function IntField({ label, value, onCommit, min, max, unit }: { label: string; value: number; onCommit: (v: number) => void; min: number; max: number; unit?: string }) {
+export function IntField({ label, value, onCommit, min, max, unit }: { label: string; value: number; onCommit: (v: number) => void | string | null; min: number; max: number; unit?: string }) {
   const [text, setText] = useState(String(value));
+  const [error, setError] = useState<string | null>(null);
   useEffect(() => setText(String(value)), [value]);
   const n = Number(text);
   const invalid = !Number.isInteger(n) || n < min || n > max;
@@ -76,11 +87,20 @@ export function IntField({ label, value, onCommit, min, max, unit }: { label: st
           min={min}
           max={max}
           onChange={(e) => setText(e.target.value)}
-          onBlur={() => (invalid ? setText(String(value)) : n !== value && onCommit(n))}
+          onBlur={() => {
+            if (invalid) return setText(String(value));
+            if (n === value) return;
+            const err = onCommit(n);
+            if (typeof err === 'string') {
+              setError(err);
+              setText(String(value));
+            } else setError(null);
+          }}
           onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
         />
         {unit && <span className="unit">{unit}</span>}
       </div>
+      {error && <div className="field-error" role="alert" style={{ gridColumn: '1 / -1' }}>{error}</div>}
     </div>
   );
 }

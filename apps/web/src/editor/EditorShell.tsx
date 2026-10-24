@@ -5,8 +5,11 @@ import { DocsView } from './DocsView';
 import { useRooms, useValidation } from './hooks';
 import { PlanView } from './PlanView';
 import { Properties } from './Properties';
-import { Sidebar } from './Sidebar';
-import { CatalogPanel, type LeftTab } from './CatalogPanel';
+import { AddPanel, ScenePanel } from './Sidebar';
+import { CatalogPanel } from './CatalogPanel';
+import { CommandBar } from './CommandBar';
+import { Icon, type IconName } from './icons';
+import type { Tool } from './store';
 
 const View3D = lazy(() => import('./View3D').then((m) => ({ default: m.View3D })));
 
@@ -35,6 +38,24 @@ function SaveIndicator() {
   return <span className={`save ${saveState === 'error' ? 'err' : ''}`} role="status" aria-live="polite">{text}</span>;
 }
 
+function useClickOutside(open: boolean, close: () => void) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const on = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) close();
+    };
+    const key = (e: KeyboardEvent) => e.key === 'Escape' && close();
+    window.addEventListener('mousedown', on);
+    window.addEventListener('keydown', key);
+    return () => {
+      window.removeEventListener('mousedown', on);
+      window.removeEventListener('keydown', key);
+    };
+  }, [open, close]);
+  return ref;
+}
+
 function TopBar({ chrome }: { chrome: EditorChrome }) {
   const project = useStudio((s) => s.project);
   const dispatch = useStudio((s) => s.dispatch);
@@ -50,11 +71,13 @@ function TopBar({ chrome }: { chrome: EditorChrome }) {
   const saveState = useStudio((s) => s.saveState);
   const openComments = useStudio((s) => s.openComments);
   const [name, setName] = useState(project.name);
+  const [menu, setMenu] = useState(false);
+  const menuRef = useClickOutside(menu, () => setMenu(false));
   const file = useRef<HTMLInputElement>(null);
   useEffect(() => setName(project.name), [project.name]);
   const views: { v: ViewMode; label: string }[] = [
-    { v: 'split', label: 'Split' },
     { v: 'plan', label: 'Plan' },
+    { v: 'split', label: 'Split' },
     { v: '3d', label: '3D' },
     { v: 'docs', label: 'Drawings' },
   ];
@@ -72,87 +95,151 @@ function TopBar({ chrome }: { chrome: EditorChrome }) {
     dispatch({ type: 'project.meta', patch: { name: n } });
     chrome.onRename(n);
   };
+  const item = (label: string, onClick: () => void, opts: { on?: boolean; hint?: string; disabled?: boolean } = {}) => (
+    <button
+      role="menuitem"
+      className={`menu-item ${opts.on ? 'on' : ''}`}
+      disabled={opts.disabled}
+      onClick={() => {
+        setMenu(false);
+        onClick();
+      }}
+    >
+      <span>{label}</span>
+      {opts.hint && <span className="menu-hint">{opts.hint}</span>}
+    </button>
+  );
   return (
     <header className="topbar">
-      <button className="tb-btn" onClick={chrome.onBack} title="Back to projects" aria-label="Back to projects">←</button>
-      <div className="brand">
-        <span className="brand-mark">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#24473d" strokeWidth="2">
+      <div className="tb-left">
+        <button className="icon-btn" onClick={chrome.onBack} title="Back to projects" aria-label="Back to projects">
+          <Icon name="back" />
+        </button>
+        <span className="brand-mark" aria-hidden>
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M3 14V2h4v12M10 14V7h4v7" />
           </svg>
         </span>
+        <div className="proj">
+          <input
+            className="proj-name"
+            value={name}
+            readOnly={readOnly}
+            aria-label="Project name"
+            onChange={(e) => setName(e.target.value)}
+            onBlur={commitName}
+            onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+          />
+          <span className="proj-client">
+            {project.client} · <SaveIndicator />
+          </span>
+        </div>
       </div>
-      <div className="proj">
-        <input
-          className="proj-name"
-          value={name}
-          readOnly={readOnly}
-          aria-label="Project name"
-          onChange={(e) => setName(e.target.value)}
-          onBlur={commitName}
-          onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-        />
-        <span className="proj-client">{project.client}</span>
-      </div>
-      <span className="spacer" />
-      <button className="tb-btn" disabled={readOnly || !past.length} onClick={undo} title={past.length ? `Undo: ${past.at(-1)!.label}` : 'Nothing to undo'}>
-        ↶ Undo
-      </button>
-      <button className="tb-btn" disabled={readOnly || !future.length} onClick={redo} title={future.length ? `Redo: ${future[0].label}` : 'Nothing to redo'}>
-        ↷ Redo
-      </button>
-      <div className="seg">
+      <div className="seg" role="tablist" aria-label="View">
         {views.map((x) => (
-          <button key={x.v} className={view === x.v ? 'on' : ''} onClick={() => setView(x.v)}>
+          <button key={x.v} role="tab" aria-selected={view === x.v} className={view === x.v ? 'on' : ''} onClick={() => setView(x.v)}>
             {x.label}
           </button>
         ))}
       </div>
-      {!readOnly && (
-        <button
-          className="tb-btn"
-          disabled={saveState === 'saving'}
-          onClick={() => {
-            const msg = prompt('Name this version (optional)', '');
-            if (msg !== null) void saveNow('manual', msg.trim());
-          }}
-          title="Save a named version you can come back to"
-        >
-          Save version
+      <div className="tb-right">
+        <button className="icon-btn" disabled={readOnly || !past.length} onClick={undo} title={past.length ? `Undo: ${past.at(-1)!.label} (⌘Z)` : 'Nothing to undo'} aria-label="Undo">
+          <Icon name="undo" />
         </button>
-      )}
-      <button className={`tb-btn ${chrome.panel === 'comments' ? 'primary' : ''}`} onClick={() => chrome.onPanel('comments')} title="Comment threads on this design (C to pin one)">Comments{openComments ? ` · ${openComments}` : ''}</button>
-      <button className={`tb-btn ${chrome.panel === 'history' ? 'primary' : ''}`} onClick={() => chrome.onPanel('history')} title="Version history">History</button>
-      <button className={`tb-btn ${chrome.panel === 'renders' ? 'primary' : ''}`} onClick={() => chrome.onPanel('renders')} title="Photoreal renders of the 3D view">Render</button>
-      <button className={`tb-btn ${chrome.panel === 'ai' ? 'primary' : ''}`} onClick={() => chrome.onPanel('ai')} title="AI images and 3D models">AI</button>
-      <button className={`tb-btn ${chrome.panel === 'share' ? 'primary' : ''}`} onClick={() => chrome.onPanel('share')} title="Share a view-only link with your client">Share</button>
-      <button className="tb-btn" onClick={exportJson} title="Download the project file">Export</button>
-      {!readOnly && (
-        <>
-          <button className="tb-btn" onClick={() => file.current?.click()} title="Replace this design with a project file">Import</button>
-          <input
-            ref={file}
-            type="file"
-            accept="application/json,.json"
-            hidden
-            onChange={async (e) => {
-              const f = e.target.files?.[0];
-              e.target.value = '';
-              if (!f) return;
-              try {
-                const raw = JSON.parse(await f.text()) as { schemaVersion?: number; furniture?: unknown };
-                if (!raw || typeof raw.schemaVersion !== 'number' || raw.schemaVersion > SCHEMA_VERSION || !Array.isArray(raw.furniture)) throw new Error('Not an Interior Studio project file, or saved by a newer version.');
-                const p = migrateScene<Project>(raw, raw.schemaVersion, SCENE_MIGRATIONS);
-                if (confirm(`Replace this design with “${p.name}”? You can undo or restore from history.`)) replaceScene(p, `Import ${f.name}`);
-              } catch (err) {
-                alert((err as Error).message);
-              }
-            }}
-          />
-        </>
-      )}
-      <SaveIndicator />
+        <button className="icon-btn" disabled={readOnly || !future.length} onClick={redo} title={future.length ? `Redo: ${future[0].label} (⇧⌘Z)` : 'Nothing to redo'} aria-label="Redo">
+          <Icon name="redo" />
+        </button>
+        <span className="tb-sep" />
+        <button className={`tb-btn ${chrome.panel === 'comments' ? 'on' : ''}`} onClick={() => chrome.onPanel('comments')} title="Comment threads on this design (C to pin one)">
+          <Icon name="comment" /> {openComments ? openComments : ''}
+        </button>
+        <button className={`tb-btn ${chrome.panel === 'ai' ? 'on' : ''}`} onClick={() => chrome.onPanel('ai')} title="AI images and 3D models">
+          <Icon name="sparkle" /> AI studio
+        </button>
+        <button className={`tb-btn ${chrome.panel === 'renders' ? 'on' : ''}`} onClick={() => chrome.onPanel('renders')} title="Photoreal renders of the 3D view">
+          Render
+        </button>
+        <button className={`tb-btn primary ${chrome.panel === 'share' ? 'on' : ''}`} onClick={() => chrome.onPanel('share')} title="Share a view-only link with your client">
+          Share
+        </button>
+        <div className="menu-wrap" ref={menuRef}>
+          <button className={`icon-btn ${menu ? 'on' : ''}`} aria-haspopup="menu" aria-expanded={menu} aria-label="More actions" onClick={() => setMenu((m) => !m)}>
+            <Icon name="more" />
+          </button>
+          {menu && (
+            <div className="menu" role="menu">
+              {!readOnly &&
+                item('Save named version…', () => {
+                  const msg = prompt('Name this version (optional)', '');
+                  if (msg !== null) void saveNow('manual', msg.trim());
+                }, { disabled: saveState === 'saving' })}
+              {item('Version history', () => chrome.onPanel('history'), { on: chrome.panel === 'history' })}
+              {item('Export project file', exportJson, { hint: '.json' })}
+              {!readOnly && item('Import project file…', () => file.current?.click())}
+            </div>
+          )}
+        </div>
+        <input
+          ref={file}
+          type="file"
+          accept="application/json,.json"
+          hidden
+          onChange={async (e) => {
+            const f = e.target.files?.[0];
+            e.target.value = '';
+            if (!f) return;
+            try {
+              const raw = JSON.parse(await f.text()) as { schemaVersion?: number; furniture?: unknown };
+              if (!raw || typeof raw.schemaVersion !== 'number' || raw.schemaVersion > SCHEMA_VERSION || !Array.isArray(raw.furniture)) throw new Error('Not an Interior Studio project file, or saved by a newer version.');
+              const p = migrateScene<Project>(raw, raw.schemaVersion, SCENE_MIGRATIONS);
+              if (confirm(`Replace this design with “${p.name}”? You can undo or restore from history.`)) replaceScene(p, `Import ${f.name}`);
+            } catch (err) {
+              alert((err as Error).message);
+            }
+          }}
+        />
+      </div>
     </header>
+  );
+}
+
+const RAIL: { t: Tool; label: string; key: string; icon: IconName; draws?: boolean }[] = [
+  { t: 'select', label: 'Select', key: 'V', icon: 'select' },
+  { t: 'wall', label: 'Wall', key: 'W', icon: 'wall', draws: true },
+  { t: 'room', label: 'Room', key: 'M', icon: 'room', draws: true },
+  { t: 'door', label: 'Door', key: 'D', icon: 'door', draws: true },
+  { t: 'window', label: 'Window', key: 'N', icon: 'window', draws: true },
+  { t: 'paint', label: 'Paint finishes', key: 'B', icon: 'paint' },
+  { t: 'comment', label: 'Comment', key: 'C', icon: 'comment' },
+];
+
+/** Vertical tool rail. Drawing tools need the plan, so they bring it into view. */
+function ToolRail() {
+  const tool = useStudio((s) => s.tool);
+  const setTool = useStudio((s) => s.setTool);
+  const view = useStudio((s) => s.view);
+  const setView = useStudio((s) => s.setView);
+  const readOnly = useStudio((s) => s.readOnly);
+  return (
+    <nav className="rail" aria-label="Tools">
+      {RAIL.filter((r) => !readOnly || r.t === 'select' || r.t === 'comment').map((r) => (
+        <button
+          key={r.t}
+          className={`rail-btn ${tool === r.t ? 'on' : ''}`}
+          aria-pressed={tool === r.t}
+          aria-label={r.label}
+          title={`${r.label} (${r.key})`}
+          onClick={() => {
+            const next = tool === r.t && r.t !== 'select' ? 'select' : r.t;
+            if (r.draws && next !== 'select' && (view === '3d' || view === 'docs')) setView('split');
+            setTool(next);
+          }}
+        >
+          <Icon name={r.icon} size={18} />
+          <span className="rail-key">{r.key}</span>
+        </button>
+      ))}
+    </nav>
   );
 }
 
@@ -266,26 +353,38 @@ function useShortcuts() {
   }, []);
 }
 
+type LeftTab = 'add' | 'catalogue' | 'materials' | 'scene';
+
 function LeftPanel() {
-  const [tab, setTab] = useState<LeftTab>('plan');
+  const readOnly = useStudio((s) => s.readOnly);
+  const [tab, setTab] = useState<LeftTab>(readOnly ? 'scene' : 'add');
   const tool = useStudio((s) => s.tool);
   // Picking the Paint tool from elsewhere brings its palette into view.
   useEffect(() => {
     if (tool === 'paint') setTab('materials');
   }, [tool]);
+  const tabs: { t: LeftTab; label: string }[] = [
+    { t: 'add', label: 'Add' },
+    { t: 'catalogue', label: 'Catalogue' },
+    { t: 'materials', label: 'Materials' },
+    { t: 'scene', label: 'Scene' },
+  ];
   return (
     <>
       <div className="left-tabs" role="tablist">
-        {(['plan', 'catalogue', 'materials'] as const).map((t) => (
-          <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>
-            {t === 'plan' ? 'Plan' : t === 'catalogue' ? 'Catalogue' : 'Materials'}
+        {tabs.map((x) => (
+          <button key={x.t} role="tab" aria-selected={tab === x.t} className={tab === x.t ? 'on' : ''} onClick={() => setTab(x.t)}>
+            {x.label}
           </button>
         ))}
       </div>
-      {tab === 'plan' ? <Sidebar /> : <CatalogPanel tab={tab} />}
+      {tab === 'add' ? <AddPanel /> : tab === 'scene' ? <ScenePanel /> : <CatalogPanel tab={tab} />}
     </>
   );
 }
+
+// Test and debugging hook (development builds only).
+if (import.meta.env.DEV) void import('../render/live').then(({ liveView }) => Object.assign(window, { __studio: { store: useStudio, liveView } }));
 
 export function EditorShell({ chrome }: { chrome: EditorChrome }) {
   const view = useStudio((s) => s.view);
@@ -299,6 +398,7 @@ export function EditorShell({ chrome }: { chrome: EditorChrome }) {
     <div className="editor-root">
       <div className="app">
         <TopBar chrome={chrome} />
+        <ToolRail />
         <aside className="left">
           <div className="mobile-note">Designed for desktop. On a phone you can review designs; editing works best on a laptop.</div>
           <LeftPanel />
@@ -313,6 +413,7 @@ export function EditorShell({ chrome }: { chrome: EditorChrome }) {
           {view === 'plan' && <PlanView />}
           {view === '3d' && three}
           {view === 'docs' && <DocsView />}
+          {view !== 'docs' && <CommandBar />}
           {chrome.drawer}
         </main>
         <aside className="right">

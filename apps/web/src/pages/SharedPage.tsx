@@ -148,7 +148,7 @@ function SelectedCard() {
   const f = selection?.kind === 'furniture' ? project.furniture.find((x) => x.id === selection.id) : null;
   if (!f) return <div className="share-hint">Tap a piece to see its size and finish.</div>;
   const e = envelope(f);
-  const finish = f.kind === 'library' ? materialById(f.materials.main).name : f.kind === 'wardrobe' || f.kind === 'tvunit' ? materialById(f.materials.shutter).name : null;
+  const finish = f.kind === 'library' ? materialById(f.materials.main).name : f.kind === 'wardrobe' || f.kind === 'tvunit' || f.kind === 'basecabinet' ? materialById(f.materials.shutter).name : null;
   return (
     <div className="share-card">
       <span className="swatch" style={{ background: itemSwatch(f) }} />

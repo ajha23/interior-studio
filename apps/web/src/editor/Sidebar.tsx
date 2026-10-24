@@ -1,8 +1,9 @@
 import { useMemo } from 'react';
-import { envelope, fmtMm, itemSwatch, newDecor, newTvUnit, newWardrobe, wallIndexLabel, type DecorKind } from '@studio/core';
-import { useStudio, type Tool } from './store';
+import { envelope, fmtMm, itemSwatch, mm, newBaseCabinet, newDecor, newTvUnit, newWardrobe, wallIndexLabel, type DecorKind, type FurnitureItem } from '@studio/core';
+import { useStudio } from './store';
 import { severityById, useRooms, useValidation } from './hooks';
 import { usePlaceFurniture } from './place';
+import { Icon, type IconName } from './icons';
 
 const DECOR: { kind: DecorKind; label: string }[] = [
   { kind: 'bed', label: 'Bed' },
@@ -12,89 +13,97 @@ const DECOR: { kind: DecorKind; label: string }[] = [
   { kind: 'box', label: 'Box / block' },
 ];
 
-const Icon = ({ d }: { d: string }) => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3">
-    <path d={d} />
-  </svg>
-);
-
-const DRAW: { t: Tool; label: string; icon: string }[] = [
-  { t: 'wall', label: 'Wall', icon: 'M2 8h12' },
-  { t: 'room', label: 'Room', icon: 'M2 2h12v12H2z' },
-  { t: 'door', label: 'Door', icon: 'M3 14V2h7v12M3 14h10' },
-  { t: 'window', label: 'Window', icon: 'M2 4h12v8H2zM8 4v8' },
+const KITCHEN: { label: string; hint: string; icon: IconName; make: () => FurnitureItem }[] = [
+  { label: 'Base cabinet', hint: '600 · 1 door', icon: 'cabinet', make: () => newBaseCabinet() },
+  { label: 'Double-door base', hint: '900 · 2 doors', icon: 'cabinet', make: () => ({ ...newBaseCabinet(undefined, undefined, { widthUm: mm(900), doorCount: 2 }), name: 'Double base cabinet' }) },
+  { label: 'Drawer unit', hint: '450 · 3 drawers', icon: 'drawers', make: () => newBaseCabinet(undefined, undefined, { widthUm: mm(450), front: 'drawers', drawerCount: 3 }) },
+  { label: 'Sink unit', hint: '800 · 2 doors', icon: 'cabinet', make: () => ({ ...newBaseCabinet(undefined, undefined, { widthUm: mm(800), doorCount: 2, shelfCount: 0 }), name: 'Sink unit' }) },
 ];
 
-export function Sidebar() {
-  const project = useStudio((s) => s.project);
-  const selection = useStudio((s) => s.selection);
-  const select = useStudio((s) => s.select);
-  const tool = useStudio((s) => s.tool);
-  const setTool = useStudio((s) => s.setTool);
+function AddButton({ icon, label, hint, tag, onClick }: { icon: IconName; label: string; hint?: string; tag?: string; onClick: () => void }) {
+  return (
+    <button className="add-tile" onClick={onClick}>
+      <span className="add-ico"><Icon name={icon} size={18} /></span>
+      <span className="add-txt">
+        <span>{label}</span>
+        {hint && <span className="add-hint num">{hint}</span>}
+      </span>
+      {tag && <span className="tag">{tag}</span>}
+    </button>
+  );
+}
+
+/** Add tab: parametric (manufacturable) pieces first, then visual blocks. */
+export function AddPanel() {
   const readOnly = useStudio((s) => s.readOnly);
-  const rooms = useRooms();
-  const results = useValidation();
-  const sev = useMemo(() => severityById(results), [results]);
-  const plan = project.plan;
-
-  const { place: addFurniture, targetRoom } = usePlaceFurniture();
-
+  const { place, targetRoom } = usePlaceFurniture();
+  if (readOnly) return <div className="section field-hint">View-only: you can browse the design but not add pieces.</div>;
   return (
     <>
       <div className="section">
-        <h3>
-          Rooms <span className="num" style={{ fontWeight: 400 }}>{rooms.length}</span>
-        </h3>
-        {rooms.length === 0 && <div className="field-hint">No closed room yet. Draw a room, or draw walls until they close.</div>}
-        <ul className="obj-list">
-          {rooms.map((r) => (
-            <li key={r.id} className={`obj ${selection?.kind === 'room' && selection.id === r.id ? 'sel' : ''}`} onClick={() => select({ kind: 'room', id: r.id })}>
-              <span className={`dot ${sev.get(r.id) ?? ''}`} />
-              <Icon d="M2 2h12v12H2z" />
-              <span>{r.info.name}</span>
-              <span className="meta num">{(r.areaUm2 / 1e12).toFixed(1)} m²</span>
-            </li>
+        <h3>Kitchen{targetRoom ? <span className="num h3-meta"> → {targetRoom.info.name}</span> : null}</h3>
+        <div className="add-list">
+          {KITCHEN.map((k) => (
+            <AddButton key={k.label} icon={k.icon} label={k.label} hint={k.hint} tag="CUT" onClick={() => place(k.make(), { againstWall: true })} />
           ))}
-        </ul>
-      </div>
-      {!readOnly && (
-        <div className="section">
-          <h3>Draw</h3>
-          <div className="add-grid">
-            {DRAW.map((d) => (
-              <button key={d.t} className={`add-btn ${tool === d.t ? 'on' : ''}`} aria-pressed={tool === d.t} onClick={() => setTool(tool === d.t ? 'select' : d.t)}>
-                <Icon d={d.icon} /> {d.label}
-              </button>
-            ))}
-          </div>
         </div>
-      )}
+      </div>
       <div className="section">
-        <h3>Custom furniture{targetRoom ? <span className="num" style={{ fontWeight: 400 }}> → {targetRoom.info.name}</span> : null}</h3>
-        <div className="add-grid" style={{ gridTemplateColumns: '1fr' }}>
-          <button className="add-btn" onClick={() => addFurniture(newWardrobe())}>
-            <Icon d="M2 2h12v12H2zM6 2v12M10 2v12" /> Wardrobe <span className="tag">CUT</span>
-          </button>
-          <button className="add-btn" onClick={() => addFurniture(newTvUnit())}>
-            <Icon d="M2 3h12v6H2zM2 11h12v2H2z" /> TV unit <span className="tag">CUT</span>
-          </button>
+        <h3>Custom furniture</h3>
+        <div className="add-list">
+          <AddButton icon="wardrobe" label="Wardrobe" hint="2400 · 4 modules" tag="CUT" onClick={() => place(newWardrobe())} />
+          <AddButton icon="tv" label="TV unit" hint="1800 · wall-hung" tag="CUT" onClick={() => place(newTvUnit())} />
         </div>
       </div>
       <div className="section">
         <h3>Basic blocks</h3>
         <div className="add-grid">
           {DECOR.map((d) => (
-            <button key={d.kind} className="add-btn" onClick={() => addFurniture(newDecor(d.kind, 0, 0))}>
-              <Icon d="M3 5h10v7H3z" /> {d.label}
+            <button key={d.kind} className="add-btn" onClick={() => place(newDecor(d.kind, 0, 0))}>
+              <Icon name="block" /> {d.label}
             </button>
           ))}
         </div>
       </div>
+      <div className="section field-hint">
+        Pieces marked <span className="tag inline">CUT</span> are parametric: they regenerate from their dimensions and produce elevations and a cut list. Find 70+ visual pieces in the Catalogue tab.
+      </div>
+    </>
+  );
+}
+
+/** Scene tab: an outline of rooms, pieces and openings with their check status. */
+export function ScenePanel() {
+  const project = useStudio((s) => s.project);
+  const selection = useStudio((s) => s.selection);
+  const select = useStudio((s) => s.select);
+  const rooms = useRooms();
+  const results = useValidation();
+  const sev = useMemo(() => severityById(results), [results]);
+  const plan = project.plan;
+  return (
+    <>
       <div className="section">
         <h3>
-          In this plan <span className="num" style={{ fontWeight: 400 }}>{project.furniture.length + project.openings.length}</span>
+          Rooms <span className="num h3-meta">{rooms.length}</span>
         </h3>
+        {rooms.length === 0 && <div className="field-hint">No closed room yet. Draw a room (M), or draw walls (W) until they close.</div>}
         <ul className="obj-list">
+          {rooms.map((r) => (
+            <li key={r.id} className={`obj ${selection?.kind === 'room' && selection.id === r.id ? 'sel' : ''}`} onClick={() => select({ kind: 'room', id: r.id })}>
+              <span className={`dot ${sev.get(r.id) ?? ''}`} />
+              <Icon name="room" />
+              <span>{r.info.name}</span>
+              <span className="meta num">{(r.areaUm2 / 1e12).toFixed(1)} m²</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div className="section">
+        <h3>
+          Objects <span className="num h3-meta">{project.furniture.length + project.openings.length}</span>
+        </h3>
+        <ul className="obj-list" aria-label="Objects">
           {project.furniture.map((f) => (
             <li key={f.id} className={`obj ${selection?.kind === 'furniture' && selection.id === f.id ? 'sel' : ''}`} onClick={() => select({ kind: 'furniture', id: f.id })}>
               <span className={`dot ${sev.get(f.id) ?? ''}`} />
@@ -106,6 +115,7 @@ export function Sidebar() {
           {project.openings.map((o) => (
             <li key={o.id} className={`obj ${selection?.kind === 'opening' && selection.id === o.id ? 'sel' : ''}`} onClick={() => select({ kind: 'opening', id: o.id })}>
               <span className={`dot ${sev.get(o.id) ?? ''}`} />
+              <Icon name={o.kind === 'door' ? 'door' : 'window'} />
               <span>{o.kind === 'door' ? 'Door' : 'Window'}</span>
               <span className="meta num">
                 {wallIndexLabel(plan, o.wallId).replace('wall ', 'W')} · {fmtMm(o.widthUm)}
@@ -113,9 +123,6 @@ export function Sidebar() {
             </li>
           ))}
         </ul>
-      </div>
-      <div className="section field-hint">
-        Custom pieces marked <span className="tag" style={{ fontSize: 9, padding: '1px 4px', borderRadius: 3, background: 'var(--accent-tint)', color: 'var(--accent)', fontWeight: 600 }}>CUT</span> generate elevations and a cut list. Catalogue pieces and blocks are visual only — find 70+ pieces in the Catalogue tab.
       </div>
     </>
   );

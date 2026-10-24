@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { liveHash, useStudio } from './store';
-import { isParametric, type Project, type RevisionStatus, type TvUnitItem, type WardrobeItem } from '@studio/core';
+import { isParametric, type Project, type RevisionStatus, type ParametricItem } from '@studio/core';
 import { fmtMm, plainMm } from '@studio/core';
 import { buildSchedule, scheduleCsv } from '@studio/core';
 import { Elevation } from './Elevation';
@@ -64,7 +64,7 @@ function TitleBlock({ project, drawing, number, rev }: { project: Project; drawi
   );
 }
 
-function FurnitureSheet({ project, item, index, rev }: { project: Project; item: WardrobeItem | TvUnitItem; index: number; rev: ReturnType<typeof useRevisionState> }) {
+function FurnitureSheet({ project, item, index, rev }: { project: Project; item: ParametricItem; index: number; rev: ReturnType<typeof useRevisionState> }) {
   const { rows, totals, resolved } = useMemo(() => buildSchedule(item, project.rulePack), [item, project.rulePack]);
   const errors = resolved.issues.filter((i) => i.severity === 'error');
   return (
@@ -230,7 +230,7 @@ export function DocsView() {
         <TitleBlock project={project} drawing="Furnished floor plan" number="IS-A01" rev={rev} />
       </section>
 
-      {parametric.length === 0 && <div className="sheet empty">Add a wardrobe or TV unit to generate elevations and a cut list. Catalogue furniture (beds, sofas, tables) is visual only and never appears in manufacturing documents.</div>}
+      {parametric.length === 0 && <div className="sheet empty">Add a wardrobe, TV unit or kitchen base cabinet to generate elevations and a cut list. Catalogue furniture (beds, sofas, tables) is visual only and never appears in manufacturing documents.</div>}
       {parametric.map((item, i) => (
         <FurnitureSheet key={item.id} project={project} item={item} index={i} rev={rev} />
       ))}
