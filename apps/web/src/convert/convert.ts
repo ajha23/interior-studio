@@ -260,7 +260,7 @@ function shrinkTexture(t: THREE.Texture) {
  * Convert dropped files (one model, optionally with .mtl and textures, or a .zip of them)
  * into a GLB in metres, Y up, resting on the floor and centred.
  */
-export async function convertToGlb(input: File[], opts: { unit: UnitChoice } = { unit: 'auto' }): Promise<ConvertResult> {
+export async function convertToGlb(input: File[], opts: { unit: UnitChoice; fitMaxMm?: number } = { unit: 'auto' }): Promise<ConvertResult> {
   loadWarnings = [];
   const total = input.reduce((s, f) => s + f.size, 0);
   if (total > MAX_SOURCE_BYTES) throw new Error(`Files up to ${MAX_SOURCE_BYTES / 1024 / 1024} MB.`);
@@ -286,7 +286,9 @@ export async function convertToGlb(input: File[], opts: { unit: UnitChoice } = {
     unit = guessUnit(maxDim, format);
     unitGuessed = true;
   }
-  const s = UNIT_SCALE[unit];
+  // AI-generated models come in arbitrary units: scale so the largest side matches the size given.
+  const s = opts.fitMaxMm ? opts.fitMaxMm / 1000 / maxDim : UNIT_SCALE[unit];
+  if (opts.fitMaxMm) unitGuessed = false;
   wrap.scale.setScalar(s);
   wrap.updateMatrixWorld(true);
   box = new THREE.Box3().setFromObject(wrap);

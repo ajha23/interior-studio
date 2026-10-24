@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { canAdmin, useAuth } from '../auth/AuthProvider';
+import { AiCreditsSection } from './AiCreditsSection';
 import { useInvite, useInvites, useMembers, useRevokeInvite, useUpdateMember } from '../data/team';
 import type { OrgRoleT } from '../lib/database.types';
 import { errorMessage } from '../lib/supabase';
@@ -106,6 +107,8 @@ export function TeamPage() {
           </tbody>
         </table>
       </section>
+
+      <AiCreditsSection admin={admin} />
 
       {admin && pending.length > 0 && (
         <section aria-labelledby="pending-h">

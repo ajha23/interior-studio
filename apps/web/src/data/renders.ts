@@ -11,7 +11,7 @@ export interface SavedRender {
   height: number;
   samples: number;
   mood: LightingPreset;
-  kind: 'still' | 'panorama';
+  kind: 'still' | 'panorama' | 'ai';
   caption: string;
   versionNo: number;
   createdAt: string;
@@ -36,7 +36,7 @@ export function useRenders(projectId: string) {
         height: r.height,
         samples: r.samples,
         mood: (r.mood in LIGHTING_PRESETS ? r.mood : 'daylight') as LightingPreset,
-        kind: r.kind === 'panorama' ? 'panorama' : 'still',
+        kind: r.kind === 'panorama' ? 'panorama' : r.kind === 'ai' ? 'ai' : 'still',
         caption: r.caption,
         versionNo: r.version_no,
         createdAt: r.created_at,

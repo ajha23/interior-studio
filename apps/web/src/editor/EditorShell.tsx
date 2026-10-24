@@ -10,7 +10,7 @@ import { CatalogPanel, type LeftTab } from './CatalogPanel';
 
 const View3D = lazy(() => import('./View3D').then((m) => ({ default: m.View3D })));
 
-export type DrawerPanel = 'history' | 'renders' | 'share';
+export type DrawerPanel = 'history' | 'renders' | 'share' | 'ai';
 
 export interface EditorChrome {
   onBack: () => void;
@@ -122,6 +122,7 @@ function TopBar({ chrome }: { chrome: EditorChrome }) {
       )}
       <button className={`tb-btn ${chrome.panel === 'history' ? 'primary' : ''}`} onClick={() => chrome.onPanel('history')} title="Version history">History</button>
       <button className={`tb-btn ${chrome.panel === 'renders' ? 'primary' : ''}`} onClick={() => chrome.onPanel('renders')} title="Photoreal renders of the 3D view">Render</button>
+      <button className={`tb-btn ${chrome.panel === 'ai' ? 'primary' : ''}`} onClick={() => chrome.onPanel('ai')} title="AI images and 3D models">AI</button>
       <button className={`tb-btn ${chrome.panel === 'share' ? 'primary' : ''}`} onClick={() => chrome.onPanel('share')} title="Share a view-only link with your client">Share</button>
       <button className="tb-btn" onClick={exportJson} title="Download the project file">Export</button>
       {!readOnly && (

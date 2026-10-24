@@ -24,6 +24,114 @@ export type Database = {
   __InternalSupabase: { PostgrestVersion: '14.18' };
   public: {
     Tables: {
+      ai_jobs: {
+        Row: {
+          id: string
+          org_id: string
+          project_id: string | null
+          kind: string
+          op: string
+          status: string
+          input: Json
+          output_path: string | null
+          render_id: string | null
+          provider: string
+          cost_credits: number
+          error: string | null
+          created_by: string
+          created_at: string
+          finished_at: string | null
+        }
+        Insert: {
+          id?: string
+          org_id: string
+          project_id?: string | null
+          kind: string
+          op: string
+          status?: string
+          input?: Json
+          output_path?: string | null
+          render_id?: string | null
+          provider: string
+          cost_credits?: number
+          error?: string | null
+          created_by: string
+          created_at?: string
+          finished_at?: string | null
+        }
+        Update: {
+          id?: string
+          org_id?: string
+          project_id?: string | null
+          kind?: string
+          op?: string
+          status?: string
+          input?: Json
+          output_path?: string | null
+          render_id?: string | null
+          provider?: string
+          cost_credits?: number
+          error?: string | null
+          created_by?: string
+          created_at?: string
+          finished_at?: string | null
+        }
+        Relationships: []
+      }
+      ai_settings: {
+        Row: {
+          org_id: string
+          monthly_credits: number
+          updated_at: string
+        }
+        Insert: {
+          org_id: string
+          monthly_credits?: number
+          updated_at?: string
+        }
+        Update: {
+          org_id?: string
+          monthly_credits?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ai_credit_ledger: {
+        Row: {
+          id: number
+          org_id: string
+          delta: number
+          reason: string
+          period: string | null
+          job_id: string | null
+          note: string
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          org_id: string
+          delta: number
+          reason: string
+          period?: string | null
+          job_id?: string | null
+          note?: string
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          org_id?: string
+          delta?: number
+          reason?: string
+          period?: string | null
+          job_id?: string | null
+          note?: string
+          created_by?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
       room_templates: {
         Row: {
           created_at: string
@@ -328,6 +436,7 @@ export type Database = {
     Views: { [_ in never]: never };
     Functions: {
       accept_pending_invites: { Args: never; Returns: number };
+      ai_credit_balance: { Args: { p_org: string }; Returns: number };
       save_project_version: {
         Args: {
           p_kind?: VersionKind;

@@ -242,8 +242,9 @@ function RenderCard({ r, canDelete, onDelete, onOpen }: { r: SavedRender; canDel
             <span className="pano-badge">360°</span>
           </button>
         ) : (
-          <a href={r.url} target="_blank" rel="noreferrer" title="Open full size">
+          <a href={r.url} target="_blank" rel="noreferrer" title="Open full size" className="render-thumb">
             <img src={r.url} alt={r.caption || 'Render'} loading="lazy" style={{ aspectRatio: `${r.width} / ${r.height}` }} />
+            {r.kind === 'ai' && <span className="pano-badge">AI</span>}
           </a>
         )
       ) : (
@@ -251,7 +252,7 @@ function RenderCard({ r, canDelete, onDelete, onOpen }: { r: SavedRender; canDel
       )}
       <div className="render-meta">
         <span className="render-caption">{r.caption || `${LIGHTING_PRESETS[r.mood].label} ${pano ? 'panorama' : 'render'}`}</span>
-        <span className="num">{r.width}×{r.height} · {LIGHTING_PRESETS[r.mood].label} · v{r.versionNo} · {relativeTime(r.createdAt)}</span>
+        <span className="num">{r.width}×{r.height} · {r.kind === 'ai' ? 'AI image' : LIGHTING_PRESETS[r.mood].label} · v{r.versionNo} · {relativeTime(r.createdAt)}</span>
       </div>
       <div className="btn-row">
         {r.url && <a className="btn" href={r.url} download>Download</a>}

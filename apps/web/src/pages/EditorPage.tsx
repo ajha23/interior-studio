@@ -10,6 +10,7 @@ import { EditorShell } from '../editor/EditorShell';
 import { VersionsPanel } from '../editor/VersionsPanel';
 import { RendersPanel } from '../editor/RendersPanel';
 import { SharePanel } from '../editor/SharePanel';
+import { AiPanel } from '../editor/AiPanel';
 import type { DrawerPanel } from '../editor/EditorShell';
 import { clearDraft, readDraft, useStudio, type RemoteSaver } from '../editor/store';
 import { SCENE_MIGRATIONS } from '../editor/migrations';
@@ -130,6 +131,7 @@ export default function EditorPage() {
           panel === 'history' ? <VersionsPanel projectId={projectId!} onClose={() => setPanel(null)} />
           : panel === 'renders' ? <RendersPanel projectId={projectId!} onClose={() => setPanel(null)} />
           : panel === 'share' ? <SharePanel projectId={projectId!} onClose={() => setPanel(null)} />
+          : panel === 'ai' ? <AiPanel projectId={projectId!} onClose={() => setPanel(null)} />
           : null,
       }}
     />

@@ -31,6 +31,12 @@ supabase/migrations Database schema, row-level security, seed
 - Wall faces can carry their own finish (`wall.finishes.pos/neg`); otherwise a face shows the colour of the room it faces.
 - Studio models: designers upload `.glb` files to the private `models` bucket (`<org_id>/<id>.glb` + thumbnail); rows live in `catalog_models` with org-scoped RLS.
 
+## AI studio
+
+- Edge functions `ai-image` (Gemini image model) and `ai-model` (fal.ai image-to-3D, default `fal-ai/trellis-2`) run with the studio's credit pool (`ai_credit_ledger`, monthly allowance in `ai_settings`, atomic debit via `ai_debit`, refunds on failure).
+- Secrets (set in Supabase → Edge Functions → Secrets; never in the app): `GEMINI_API_KEY`, `FAL_KEY`. Optional overrides: `GEMINI_IMAGE_MODEL` (default `gemini-3.1-flash-image`), `FAL_3D_ENDPOINT`.
+- AI images land in the project's render gallery (`renders.kind = 'ai'`); AI models are imported into Studio models (`source_format = 'ai'`), scaled to the size the designer gives.
+
 ## Access
 
 - Google sign-in through Supabase Auth. Access is invite-only: an admin invites an email on the Team page; the person gets the role on first sign-in.

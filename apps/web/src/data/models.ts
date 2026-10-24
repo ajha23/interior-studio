@@ -117,25 +117,28 @@ export interface UploadInput {
   name: string;
   category: string;
   unit: UnitChoice;
+  /** Scale so the largest side is this many mm (AI models have no real units). */
+  fitMaxMm?: number;
+  source?: 'ai';
 }
 
 export function useUploadModel() {
   const { activeOrg } = useAuth();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ files, name, category, unit }: UploadInput): Promise<{ id: string; report: ConvertReport | null }> => {
+    mutationFn: async ({ files, name, category, unit, fitMaxMm, source }: UploadInput): Promise<{ id: string; report: ConvertReport | null; info: { widthUm: number; depthUm: number; heightUm: number } }> => {
       if (!activeOrg) throw new Error('No studio selected.');
       if (!files.length) throw new Error('Choose a file.');
       // GLB files are stored as-is (they may use compression extensions a re-export would drop);
       // everything else is converted in the browser first.
-      const direct = files.length === 1 && /\.glb$/i.test(files[0].name) && unit === 'auto';
+      const direct = files.length === 1 && /\.glb$/i.test(files[0].name) && unit === 'auto' && !fitMaxMm;
       let glb: File;
       let report: ConvertReport | null = null;
       let baseNameGuess = files[0].name.replace(/\.[^.]+$/, '');
       if (direct) glb = files[0];
       else {
         const { convertToGlb } = await import('../convert/convert');
-        const res = await convertToGlb(files, { unit });
+        const res = await convertToGlb(files, { unit, fitMaxMm });
         report = res.report;
         baseNameGuess = res.name;
         glb = new File([res.glb], `${res.name || 'model'}.glb`, { type: 'model/gltf-binary' });
@@ -162,13 +165,13 @@ export function useUploadModel() {
         depth_um: info.depthUm,
         height_um: info.heightUm,
         bytes: glb.size,
-        source_format: report?.source ?? 'glb',
+        source_format: source ?? report?.source ?? 'glb',
       });
       if (error) {
         await supabase.storage.from(BUCKET).remove([`${base}.glb`, ...(thumbPath ? [thumbPath] : [])]);
         throw error;
       }
-      return { id, report };
+      return { id, report, info };
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['models'] }),
   });
