@@ -3,31 +3,22 @@ import { Link } from 'react-router-dom';
 import { canEdit, useAuth } from '../auth/AuthProvider';
 import { useProjects } from '../data/projects';
 import { errorMessage } from '../lib/supabase';
-import { NewProjectDialog } from '../ui/NewProjectDialog';
+import { NewProjectDialog, type ProjectStart } from '../ui/NewProjectDialog';
+import { TemplatePickerDialog } from '../ui/TemplatePickerDialog';
 import { ProjectCard } from '../ui/ProjectCard';
 
 const STARTS = [
-  {
-    title: 'Measured room',
-    body: 'Enter site measurements, place doors and windows, then add furniture.',
-    soon: false,
-  },
-  {
-    title: 'Trace a floor plan',
-    body: 'Import a plan image or DWG and trace walls in 2D.',
-    soon: true,
-  },
-  {
-    title: 'Start from a template',
-    body: 'Apply a whole-room style template and adapt it.',
-    soon: true,
-  },
-];
+  { id: 'measured', title: 'Measured room', body: 'Enter site measurements, place doors and windows, then add furniture.' },
+  { id: 'trace', title: 'Trace a floor plan', body: 'Upload the architect’s PDF or image, set the scale and trace the walls in 2D.' },
+  { id: 'template', title: 'Start from a template', body: 'Pick one of your studio’s room templates and adapt it.' },
+] as const;
 
 export function HomePage() {
   const { session, activeOrg } = useAuth();
   const projects = useProjects();
   const [open, setOpen] = useState(false);
+  const [picking, setPicking] = useState(false);
+  const [start, setStart] = useState<ProjectStart>({ kind: 'measured' });
   const first = ((session?.user.user_metadata?.full_name as string | undefined) ?? '').split(' ')[0];
   const editable = canEdit(activeOrg?.role);
 
@@ -36,7 +27,7 @@ export function HomePage() {
       <header className="page-head">
         <h1>{first ? `Hello, ${first}` : 'Home'}</h1>
         {editable && (
-          <button className="btn btn-primary" onClick={() => setOpen(true)}>+ New project</button>
+          <button className="btn btn-primary" onClick={() => { setStart({ kind: 'measured' }); setOpen(true); }}>+ New project</button>
         )}
       </header>
 
@@ -45,10 +36,17 @@ export function HomePage() {
           <h2 id="start-h" className="section-h">Start a design</h2>
           <div className="starts">
             {STARTS.map((s) => (
-              <button key={s.title} className="start" disabled={s.soon} onClick={() => setOpen(true)}>
+              <button
+                key={s.id}
+                className="start"
+                onClick={() => {
+                  if (s.id === 'template') return setPicking(true);
+                  setStart({ kind: s.id });
+                  setOpen(true);
+                }}
+              >
                 <strong>{s.title}</strong>
                 <span>{s.body}</span>
-                {s.soon && <em className="chip">Phase 1</em>}
               </button>
             ))}
           </div>
@@ -65,7 +63,7 @@ export function HomePage() {
         {projects.data && projects.data.length === 0 && (
           <div className="empty">
             <p>No projects yet.</p>
-            {editable && <button className="btn" onClick={() => setOpen(true)}>Create the first one</button>}
+            {editable && <button className="btn" onClick={() => { setStart({ kind: 'measured' }); setOpen(true); }}>Create the first one</button>}
           </div>
         )}
         <div className="grid">
@@ -73,7 +71,16 @@ export function HomePage() {
         </div>
       </section>
 
-      <NewProjectDialog open={open} onClose={() => setOpen(false)} />
+      <NewProjectDialog open={open} onClose={() => setOpen(false)} start={start} />
+      <TemplatePickerDialog
+        open={picking}
+        onClose={() => setPicking(false)}
+        onPick={(t) => {
+          setPicking(false);
+          setStart({ kind: 'template', name: t.name, roomType: t.roomType, template: t.template });
+          setOpen(true);
+        }}
+      />
     </div>
   );
 }

@@ -1,5 +1,6 @@
-import { uid } from '../domain/factory';
-import type { FurnitureItem, RoomInfo } from '../domain/types';
+import { blankProject, newOpening, singleRoomPlan, uid } from '../domain/factory';
+import { detectRooms } from '../plan/rooms';
+import type { FurnitureItem, Project, RoomInfo } from '../domain/types';
 import { mm, type Um } from '../domain/units';
 import { bbox, footprint, normDeg } from '../geometry/furniture';
 import { centroid, pointInPolygon } from '../plan/polygon';
@@ -90,4 +91,21 @@ export function templatedRoomInfo(t: RoomTemplate, room: DetectedRoom): RoomInfo
 export function isRoomTemplate(v: unknown): v is RoomTemplate {
   const t = v as RoomTemplate;
   return Boolean(t && typeof t === 'object' && t.version === ROOM_TEMPLATE_VERSION && Array.isArray(t.pieces) && typeof t.floorFinish === 'string');
+}
+
+/** A new project whose single room matches the template's room size, with the template applied. */
+export function projectFromTemplate(name: string, client: string, t: RoomTemplate, roomName: string): Project {
+  const base = blankProject(name, client);
+  const { plan, walls } = singleRoomPlan(roomName, t.widthUm, t.depthUm);
+  const [room] = detectRooms(plan);
+  const info = { ...room.info, floorFinish: t.floorFinish, wallColor: t.wallColor };
+  const furniture = instantiateRoomTemplate(t, { ...room, info });
+  const h = plan.defaultWallThicknessUm / 2;
+  return { ...base, plan: { ...plan, rooms: [info] }, furniture, openings: [newOpening('door', walls[2].id, h + mm(200), 1)] };
+}
+
+/** A new project with no walls yet, for tracing a floor plan. */
+export function emptyProject(name: string, client: string): Project {
+  const base = blankProject(name, client);
+  return { ...base, plan: { ...base.plan, walls: [], rooms: [] }, openings: [], furniture: [] };
 }

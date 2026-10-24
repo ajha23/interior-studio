@@ -17,7 +17,7 @@ const DRAFT_PREFIX = 'studio.draft.';
 
 export type Selection = { kind: 'furniture' | 'opening' | 'wall' | 'room'; id: string } | null;
 /** Plan tools. Doors and windows are placed by clicking a wall. */
-export type Tool = 'select' | 'wall' | 'room' | 'door' | 'window' | 'paint' | 'comment';
+export type Tool = 'select' | 'wall' | 'room' | 'door' | 'window' | 'paint' | 'comment' | 'calibrate';
 
 export type CommentAnchorDraft = { kind: 'point'; x: number; y: number } | { kind: 'item'; itemId: string };
 /** Comment markers shown in the plan (filled in by the editor page from the comments query). */

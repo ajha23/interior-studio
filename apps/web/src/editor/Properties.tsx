@@ -3,6 +3,7 @@ import { FINISHES, isDecor, materialById, materialsIn, type MaterialCategory } f
 import { patternUrl } from '../materials/patterns';
 import { catalogName } from './CatalogPanel';
 import { SaveTemplateForm } from './TemplatesPanel';
+import { TraceSettings } from './TracePanel';
 import type { Command } from '@studio/core';
 import { uid } from '@studio/core';
 import { useStudio } from './store';
@@ -526,6 +527,7 @@ export function Properties() {
         <span className="kbd">W</span> wall · <span className="kbd">M</span> room · <span className="kbd">D</span> door · <span className="kbd">N</span> window · <span className="kbd">Esc</span> stop
       </p>
       <PlanSettings />
+      <TraceSettings />
     </div>
   );
 }

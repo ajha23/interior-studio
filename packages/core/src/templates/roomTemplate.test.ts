@@ -41,3 +41,21 @@ describe('room templates', () => {
     });
   });
 });
+
+describe('project from template', () => {
+  it('builds a furnished room of the template size with no errors', async () => {
+    const { projectFromTemplate, emptyProject } = await import('./roomTemplate');
+    const p = sampleProject();
+    const [room] = detectRooms(p.plan);
+    const t = captureRoomTemplate(room, p.furniture);
+    const np = projectFromTemplate('New', 'Client', t, 'Bedroom');
+    const [r2] = detectRooms(np.plan);
+    expect(Math.abs(r2.areaUm2 - room.areaUm2) / room.areaUm2).toBeLessThan(0.001);
+    expect(r2.info.name).toBe('Bedroom');
+    expect(np.furniture.length).toBe(p.furniture.length);
+    expect(validateProject(np).filter((i) => i.severity === 'error')).toEqual([]);
+    const e = emptyProject('Trace', '');
+    expect(e.plan.walls).toHaveLength(0);
+    expect(e.openings).toHaveLength(0);
+  });
+});

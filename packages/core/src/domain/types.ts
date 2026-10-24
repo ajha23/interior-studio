@@ -1,7 +1,7 @@
 import type { Um } from './units';
 import type { Lighting } from './lighting';
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 /** Where a dimension came from — an estimate must never be presented as a verified measurement. */
 export type Provenance = 'site_measured' | 'drawing' | 'estimate';
@@ -213,4 +213,21 @@ export interface Project extends ProjectCore {
   revisions: Revision[];
   /** Presentation only (not part of revision hashes). Missing = default daylight. */
   lighting?: Lighting;
+  /** A scanned or exported floor plan shown under the walls for tracing. Not part of revisions. */
+  underlay?: Underlay;
+}
+
+export interface Underlay {
+  /** Object path in the studio's `plans` storage bucket. */
+  path: string;
+  /** Top-left corner in plan µm. */
+  xUm: Um;
+  yUm: Um;
+  /** Image width in plan µm (height follows the image's aspect ratio). */
+  widthUm: Um;
+  /** Image size in pixels, to keep the aspect ratio. */
+  pxWidth: number;
+  pxHeight: number;
+  opacity: number;
+  visible: boolean;
 }

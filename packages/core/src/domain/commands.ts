@@ -1,4 +1,4 @@
-import type { FurnitureItem, Opening, Plan, Project, RoomInfo, RulePack, Wall } from './types';
+import type { FurnitureItem, Opening, Plan, Project, RoomInfo, RulePack, Underlay, Wall } from './types';
 import { lightingOf, type Lighting } from './lighting';
 
 /**
@@ -8,6 +8,7 @@ import { lightingOf, type Lighting } from './lighting';
 export type Command =
   | { type: 'project.meta'; patch: { name?: string; client?: string } }
   | { type: 'lighting.update'; patch: Partial<Lighting> }
+  | { type: 'underlay.set'; underlay: Underlay | null }
   | { type: 'plan.update'; patch: Partial<Omit<Plan, 'walls' | 'rooms'>> }
   | { type: 'wall.add'; wall: Wall; index?: number }
   | { type: 'wall.update'; id: string; patch: Partial<Omit<Wall, 'id'>> }
@@ -43,6 +44,11 @@ export function applyCommand(p: Project, cmd: Command): [Project, Command] {
       const cur = lightingOf(p);
       const inv: Command = { type: 'lighting.update', patch: pick(cur, Object.keys(cmd.patch)) as Partial<Lighting> };
       return [{ ...p, lighting: { ...cur, ...cmd.patch } }, inv];
+    }
+    case 'underlay.set': {
+      const inv: Command = { type: 'underlay.set', underlay: p.underlay ?? null };
+      const { underlay: _old, ...rest } = p;
+      return [cmd.underlay ? { ...rest, underlay: cmd.underlay } : rest, inv];
     }
     case 'plan.update': {
       const inv: Command = { type: 'plan.update', patch: pick(p.plan, Object.keys(cmd.patch)) as Partial<Plan> };
@@ -139,6 +145,7 @@ export function describe(cmd: Command): string {
   switch (cmd.type) {
     case 'project.meta': return 'Rename project';
     case 'lighting.update': return 'Change lighting';
+    case 'underlay.set': return 'Change traced plan';
     case 'plan.update': return 'Edit plan settings';
     case 'wall.add': return 'Add wall';
     case 'wall.update': return 'Edit wall';

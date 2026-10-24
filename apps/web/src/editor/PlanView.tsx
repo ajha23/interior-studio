@@ -41,6 +41,8 @@ import {
 import { libraryPrims, materialById, catalogById, wallFaceFinish, type LibraryItem } from '@studio/core';
 import { useStudio, type Selection, type Tool } from './store';
 import { patternUrl, tileMm } from '../materials/patterns';
+import { useUnderlayUrl } from '../data/underlay';
+import { TraceStart } from './TracePanel';
 import { paintCommand } from './paint';
 import { severityById, useRooms, useValidation } from './hooks';
 
@@ -178,6 +180,15 @@ function FurnitureShape({ project, f, selected, severity, fs }: { project: Proje
       </text>
     </g>
   );
+}
+
+/** The traced floor-plan image, under everything else. */
+function UnderlayImage() {
+  const u = useStudio((s) => s.project.underlay);
+  const clientView = useStudio((s) => s.clientView);
+  const url = useUnderlayUrl(clientView || !u?.visible ? undefined : u.path).data;
+  if (!u || !u.visible || !url || clientView) return null;
+  return <image href={url} x={k(u.xUm)} y={k(u.yUm)} width={k(u.widthUm)} height={k((u.widthUm * u.pxHeight) / u.pxWidth)} opacity={u.opacity} preserveAspectRatio="none" pointerEvents="none" />;
 }
 
 /** Numbered comment markers; resolved threads fade. */
@@ -439,6 +450,7 @@ const TOOL_HINT: Record<Tool, string> = {
   window: 'Click a wall to place a window',
   paint: 'Click a floor, a wall face or a piece to apply the material · Alt-click a piece for its accent · Esc to stop',
   comment: 'Click a piece or a spot in the plan to start a comment there · Esc to stop',
+  calibrate: 'Click both ends of a length you know on the plan image (e.g. a long wall), then type its real length',
 };
 
 function movePlanEnds(plan: Plan, ends: { wallId: string; end: 'a' | 'b' }[], to: Vec): Plan {
@@ -496,13 +508,18 @@ export function PlanView() {
   const [chain, setChain] = useState<Vec | null>(null); // wall tool: start of the next segment
   const [panning, setPanning] = useState(false);
   const drag = useRef<Drag | null>(null);
+  const [calibA, setCalibA] = useState<Vec | null>(null);
+  const [calibCursor, setCalibCursor] = useState<Vec | null>(null);
   const plan = draftPlan ?? project.plan;
   const draftRooms = useMemo(() => (draftPlan ? detectRooms(draftPlan) : rooms), [draftPlan, rooms]);
 
   const planRef = useRef(project.plan);
   planRef.current = project.plan;
+  const underlayRef = useRef(project.underlay);
+  underlayRef.current = project.underlay;
   const fit = useCallback(() => {
-    const b = planBounds(planRef.current);
+    const u = underlayRef.current;
+    const b = !planRef.current.walls.length && u ? { minX: u.xUm, minY: u.yUm, maxX: u.xUm + u.widthUm, maxY: u.yUm + (u.widthUm * u.pxHeight) / u.pxWidth } : planBounds(planRef.current);
     const pad = 1200;
     const W = k(b.maxX - b.minX) + pad * 2;
     const D = k(b.maxY - b.minY) + pad * 2;
@@ -536,6 +553,8 @@ export function PlanView() {
   useEffect(() => {
     setChain(null);
     setPreview({});
+    setCalibA(null);
+    setCalibCursor(null);
   }, [tool]);
 
   useEffect(() => {
@@ -633,6 +652,25 @@ export function PlanView() {
       return;
     }
 
+    if (!readOnly && tool === 'calibrate' && project.underlay) {
+      if (!calibA) {
+        setCalibA(w);
+        return;
+      }
+      const span = Math.hypot(w.x - calibA.x, w.y - calibA.y);
+      const answer = span > mm(10) ? prompt('Real length between the two points, in mm (e.g. a wall you know is 3600):', '') : null;
+      const real = answer ? Number(answer.replace(/[^\d.]/g, '')) : NaN;
+      if (Number.isFinite(real) && real > 0) {
+        const f = mm(real) / span;
+        const u = project.underlay;
+        // Scale about the first point so it stays put on screen.
+        dispatch({ type: 'underlay.set', underlay: { ...u, widthUm: Math.round(u.widthUm * f), xUm: Math.round(calibA.x - (calibA.x - u.xUm) * f), yUm: Math.round(calibA.y - (calibA.y - u.yUm) * f) } }, 'Set plan scale');
+      }
+      setCalibA(null);
+      setCalibCursor(null);
+      setTool('select');
+      return;
+    }
     if (tool === 'comment') {
       const fEl = t.closest('[data-fid]');
       useStudio.getState().startComment(fEl ? { kind: 'item', itemId: fEl.getAttribute('data-fid')! } : { kind: 'point', x: Math.round(w.x), y: Math.round(w.y) });
@@ -703,6 +741,7 @@ export function PlanView() {
 
   const onPointerMove = (e: React.PointerEvent) => {
     const w = toWorld(e.clientX, e.clientY);
+    if (calibA) setCalibCursor(w);
     // Hover previews for drawing tools.
     if (!drag.current && !readOnly) {
       if (tool === 'wall') {
@@ -877,8 +916,16 @@ export function PlanView() {
         onDoubleClick={onDoubleClick}
         onWheel={onWheel}
       >
+        <UnderlayImage />
+        {calibA && (
+          <g pointerEvents="none">
+            <circle cx={k(calibA.x)} cy={k(calibA.y)} r={fs * 0.5} fill="var(--brass)" />
+            {calibCursor && <line x1={k(calibA.x)} y1={k(calibA.y)} x2={k(calibCursor.x)} y2={k(calibCursor.y)} stroke="var(--brass)" strokeWidth={fs * 0.15} strokeDasharray={`${fs * 0.6} ${fs * 0.3}`} />}
+          </g>
+        )}
         <PlanDrawing project={drawProject} plan={plan} rooms={draftRooms} selection={selection} override={override} preview={preview} fs={fs} />
       </svg>
+      {!readOnly && !project.plan.walls.length && !project.underlay && !useStudio.getState().clientView && <TraceStart />}
       <div className="zoom-ind">
         {override ? `x ${fmtMm(override.xUm)} · y ${fmtMm(override.yUm)} · hold Shift to disable snap` : tool !== 'select' ? TOOL_HINT[tool] : selItem ? `${selItem.name} · drag to move · arrows nudge 10 mm` : selection?.kind === 'wall' ? 'Drag the wall to move it · drag an end to reshape · Del deletes' : `${TOOL_HINT.select} · 1 px = ${(1 / pxPerMm).toFixed(1)} mm`}
       </div>

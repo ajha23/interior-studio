@@ -175,3 +175,10 @@ input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible
   .page { padding: 20px 16px 48px; }
   .search { min-width: 0; flex: 1; }
 }
+.tpl-dialog { width: min(760px, calc(100vw - 32px)); }
+.tpl-dialog h2 { margin: 0 0 12px; }
+.tpl-pick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px; max-height: 60vh; overflow-y: auto; }
+.tpl-pick { display: grid; gap: 4px; padding: 10px; text-align: left; border: 1px solid var(--line); border-radius: 10px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.tpl-pick:hover, .tpl-pick:focus-visible { border-color: var(--accent); }
+.tpl-pick span { font-size: 12px; opacity: .7; }
+.tpl-pick .tpl-preview { width: 100%; height: 120px; background: #f6f3ec; border-radius: 6px; }

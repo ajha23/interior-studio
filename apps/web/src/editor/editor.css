@@ -425,3 +425,12 @@ table.sched td.r, table.sched th.r { text-align: right; }
 .share-root .cc-msg.team { padding-left: 10px; border-left: 2px solid var(--accent); }
 .share-root .cc-done { font-size: 11.5px; color: var(--ok); }
 .share-root .cc-reply { display: grid; grid-template-columns: 1fr auto; gap: 6px; }
+.editor-root .trace-start { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(420px, calc(100% - 32px)); display: grid; gap: 8px; padding: 18px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,.1); z-index: 3; }
+.editor-root .trace-start strong { font-size: 15px; }
+.editor-root .trace-start p { margin: 0; font-size: 12.5px; color: var(--ink-2); line-height: 1.45; }
+.editor-root .trace-err { color: var(--error); font-size: 12px; margin: 0; }
+.editor-root .plan-svg.tool-calibrate { cursor: crosshair; }
+.editor-root .empty .section { text-align: left; }
+.editor-root .empty .btn-row { flex-wrap: wrap; justify-content: flex-start; }
+.editor-root .right { overflow-x: hidden; }
+.editor-root .light-row input[type="range"] { min-width: 0; width: 100%; }

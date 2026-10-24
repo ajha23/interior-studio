@@ -82,5 +82,7 @@ export const SCENE_MIGRATIONS: MigrationRegistry = {
     2: (scene) => ({ ...(scene as Record<string, unknown>), schemaVersion: 3 }),
     // v4 adds optional project lighting: purely additive.
     3: (scene) => ({ ...(scene as Record<string, unknown>), schemaVersion: 4 }),
+    // v5 adds an optional floor-plan underlay for tracing: purely additive.
+    4: (scene) => ({ ...(scene as Record<string, unknown>), schemaVersion: 5 }),
   },
 };
