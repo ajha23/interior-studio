@@ -15,7 +15,7 @@ type Entry =
 const toMmNum = (um: number) => Math.round(um / 100) / 10;
 
 /** Compact, model-friendly view of the scene: what can be targeted and with which values. */
-export function sceneContext(project: Project, selectionId: string | null) {
+export function sceneContext(project: Project, selectionId: string | null, selectedWallId: string | null = null) {
   return {
     units: 'mm',
     selectedId: selectionId,
@@ -29,9 +29,11 @@ export function sceneContext(project: Project, selectionId: string | null) {
         depthMm: toMmNum(e.depthUm),
         heightMm: toMmNum(e.heightUm),
         ...(f.kind === 'basecabinet' ? { params: { front: f.params.front, doorCount: f.params.doorCount, drawerCount: f.params.drawerCount, shelfCount: f.params.shelfCount, plinthMm: f.params.plinthUm / 1000, worktopMm: f.params.worktopUm / 1000 }, materials: f.materials } : {}),
+        ...(f.kind === 'wallcabinet' || f.kind === 'tallcabinet' ? { params: f.params, materials: f.materials } : {}),
         ...(f.kind === 'wardrobe' || f.kind === 'tvunit' ? { materials: f.materials } : {}),
       };
     }),
+    walls: project.plan.walls.map((w, i) => ({ number: i + 1, lengthMm: toMmNum(Math.hypot(w.b.x - w.a.x, w.b.y - w.a.y)), selected: selectedWallId === w.id })),
     finishes: { cabinet: FINISHES.map((f) => f.id), worktop: WORKTOP_FINISHES.map((f) => f.id) },
   };
 }
@@ -40,7 +42,7 @@ async function planWithModel(text: string, orgId: string, projectId: string): Pr
   const s = useStudio.getState();
   const selectionId = s.selection?.kind === 'furniture' ? s.selection.id : null;
   const { data, error } = await supabase.functions.invoke<{ calls: ToolCall[]; reply: string | null }>('ai-command', {
-    body: { orgId, projectId, text, context: sceneContext(s.project, selectionId), tools: TOOL_SPECS },
+    body: { orgId, projectId, text, context: sceneContext(s.project, selectionId, s.selection?.kind === 'wall' ? s.selection.id : null), tools: TOOL_SPECS },
   });
   if (error) {
     let msg = error.message;

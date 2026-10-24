@@ -8,7 +8,8 @@ import { planTool, planTools, type ToolContext } from './sceneTools';
 
 function setup(): { ctx: ToolContext; cab: BaseCabinetItem } {
   const p = sampleProject();
-  const cab = newBaseCabinet(mm(1800), mm(1500));
+  // Free floor in the sample bedroom (south-west, clear of the bed, wardrobe and door swing).
+  const cab = newBaseCabinet(mm(900), mm(2300));
   p.furniture.push(cab);
   return { ctx: { project: p, selection: { kind: 'furniture', id: cab.id } }, cab };
 }
@@ -75,14 +76,31 @@ describe('scene tools', () => {
 
   it('adds a cabinet flush beside the selected one', () => {
     const { ctx, cab } = setup();
-    const r = planTool(ctx, { tool: 'add_base_cabinet', args: { widthMm: 450, front: 'drawers' } });
+    const r = planTool(ctx, { tool: 'add_base_cabinet', args: { widthMm: 450, front: 'drawers', side: 'left' } });
     expect(r.ok).toBe(true);
     if (!r.ok || r.command?.type !== 'furniture.add') throw new Error('expected add');
     const added = r.command.item as BaseCabinetItem;
-    expect(added.xUm).toBe(cab.xUm + (mm(600) + mm(450)) / 2);
+    expect(added.xUm).toBe(cab.xUm - (mm(600) + mm(450)) / 2);
     expect(added.yUm).toBe(cab.yUm);
     expect(added.params.front).toBe('drawers');
     expect(r.selection).toEqual({ kind: 'furniture', id: added.id });
+  });
+
+  it('rejects edits that would collide with another piece, keeping the scene unchanged', () => {
+    const { ctx, cab } = setup();
+    // To the right there is the bed: refused. To the left there is room.
+    const blocked = planTool(ctx, { tool: 'add_base_cabinet', args: { widthMm: 600 } });
+    expect(blocked.ok).toBe(false);
+    if (!blocked.ok) expect(blocked.error).toMatch(/Queen bed and Base cabinet overlap/);
+    const r1 = planTool(ctx, { tool: 'add_base_cabinet', args: { widthMm: 600, side: 'left' } });
+    if (!r1.ok || !r1.command) throw new Error('expected add');
+    const next = apply(ctx.project, r1.command);
+    // Widening the first unit now runs into its new neighbour.
+    const r2 = planTool({ project: next, selection: { kind: 'furniture', id: cab.id } }, { tool: 'set_dimension', args: { dimension: 'width', valueMm: 900 } });
+    expect(r2.ok).toBe(false);
+    if (!r2.ok) expect(r2.error).toMatch(/overlap/);
+    const r3 = planTool({ project: next, selection: { kind: 'furniture', id: cab.id } }, { tool: 'move', args: { dxMm: 10000 } });
+    expect(r3.ok).toBe(false);
   });
 
   it('applies to other kinds within their own limits', () => {

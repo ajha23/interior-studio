@@ -86,5 +86,7 @@ export const SCENE_MIGRATIONS: MigrationRegistry = {
     4: (scene) => ({ ...(scene as Record<string, unknown>), schemaVersion: 5 }),
     // v6 adds the parametric kitchen base cabinet furniture kind: purely additive.
     5: (scene) => ({ ...(scene as Record<string, unknown>), schemaVersion: 6 }),
+    // v7 adds wall and tall kitchen cabinet kinds: purely additive.
+    6: (scene) => ({ ...(scene as Record<string, unknown>), schemaVersion: 7 }),
   },
 };

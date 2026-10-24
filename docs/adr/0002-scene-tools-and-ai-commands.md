@@ -21,3 +21,10 @@ Sprint 1 adds natural-language editing ("Change the selected base cabinet width 
 - Any client (inspector, command bar, future server-side agents) gets identical rules.
 - The parser is intentionally narrow; when it returns null the model decides, and the model's calls are still validated.
 - Schema v6 is additive (new furniture kind), migrated by an identity step.
+
+## Addendum — Sprint 2 (schema v7)
+
+- **Wall and tall cabinets** (`wallcabinet`, `tallcabinet`) join the base cabinet on the same parametric engine, each with its own limits table (`WALL_CABINET_LIMITS`, `TALL_CABINET_LIMITS`).
+- **Kitchen runs** (`kitchen/run.ts`): a wall's clear face inside its room is found from the room polygon; doors block every unit, windows block units whose height band overlaps the glass, and pieces standing against the face block the run. Each free stretch is split into 900/800/600/450/300 mm modules (fewest modules, most 600s) and, by default, widened to close the gap exactly.
+- **Spatial validation for tools:** geometry-changing tools are rejected if they *introduce* an overlap, out-of-room, wall-crossing or above-ceiling error. Pre-existing problems don't block, so older designs stay editable.
+- New tools `add_cabinet` and `fill_wall`; the inspector's "Kitchen run" actions call the same tools.

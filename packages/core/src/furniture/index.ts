@@ -3,12 +3,14 @@ import { mm, type Um } from '../domain/units';
 import type { Box3, ResolvedFurniture } from './parts';
 import { resolveTvUnit } from './tvunit';
 import { resolveBaseCabinet, WORKTOP_OVERHANG_UM } from './basecabinet';
+import { resolveTallCabinet, resolveWallCabinet } from './kitchen';
 import { resolveWardrobe } from './wardrobe';
 
 export * from './parts';
 export { resolveWardrobe, WARDROBE_TEMPLATE_VERSION } from './wardrobe';
 export { resolveTvUnit, TVUNIT_TEMPLATE_VERSION } from './tvunit';
 export * from './basecabinet';
+export * from './kitchen';
 
 const cache = new WeakMap<object, { rp: RulePack; out: ResolvedFurniture }>();
 
@@ -16,7 +18,12 @@ const cache = new WeakMap<object, { rp: RulePack; out: ResolvedFurniture }>();
 export function resolveParametric(item: ParametricItem, rp: RulePack): ResolvedFurniture {
   const hit = cache.get(item.params);
   if (hit && hit.rp === rp) return hit.out;
-  const out = item.kind === 'wardrobe' ? resolveWardrobe(item.params, rp) : item.kind === 'tvunit' ? resolveTvUnit(item.params, rp) : resolveBaseCabinet(item.params, rp);
+  const out =
+    item.kind === 'wardrobe' ? resolveWardrobe(item.params, rp)
+    : item.kind === 'tvunit' ? resolveTvUnit(item.params, rp)
+    : item.kind === 'wallcabinet' ? resolveWallCabinet(item.params, rp)
+    : item.kind === 'tallcabinet' ? resolveTallCabinet(item.params, rp)
+    : resolveBaseCabinet(item.params, rp);
   cache.set(item.params, { rp, out });
   return out;
 }
@@ -37,6 +44,10 @@ export function envelope(item: FurnitureItem): Envelope {
   if (item.kind === 'basecabinet') {
     const q = item.params;
     return { widthUm: q.widthUm, depthUm: q.depthUm + (q.worktopUm > 0 ? WORKTOP_OVERHANG_UM : 0), heightUm: q.heightUm + q.worktopUm, zMinUm: 0 };
+  }
+  if (item.kind === 'wallcabinet') {
+    const q = item.params;
+    return { widthUm: q.widthUm, depthUm: q.depthUm, heightUm: q.mountHeightUm + q.heightUm, zMinUm: q.mountHeightUm };
   }
   if (item.kind === 'library' || item.kind === 'model') {
     const q = item.params;

@@ -63,6 +63,8 @@ export function itemSwatch(f: FurnitureItem): string {
     case 'wardrobe':
     case 'tvunit':
     case 'basecabinet':
+    case 'wallcabinet':
+    case 'tallcabinet':
       return finishById(f.materials.shutter).color;
     case 'library':
       return materialById(f.materials.main).color;

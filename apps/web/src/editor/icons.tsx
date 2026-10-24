@@ -20,6 +20,8 @@ const PATHS = {
   layers: 'M8 2l6 3.2-6 3.2-6-3.2zM2 8.3l6 3.2 6-3.2M2 11.3l6 3.2 6-3.2',
   plus: 'M8 3v10M3 8h10',
   send: 'M2 8l11-5-4 11-2-4.5z',
+  wallunit: 'M2 2h12v6H2zM8 2v6M1 14h14M3 11h10',
+  tall: 'M4 1.5h8v13H4zM4 9h8M10 5v1.5M10 11v1.5',
 } as const;
 
 export type IconName = keyof typeof PATHS;

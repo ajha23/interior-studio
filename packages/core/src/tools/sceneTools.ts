@@ -6,12 +6,17 @@
  * call leaves the design exactly as it was.
  */
 import { FINISHES, WORKTOP_FINISHES, finishById } from '../domain/catalog';
-import type { Command } from '../domain/commands';
-import { newBaseCabinet } from '../domain/factory';
-import { isDecor, isParametric, type BaseCabinetParams, type FurnitureItem, type ParametricItem, type Project } from '../domain/types';
+import { applyCommand, type Command } from '../domain/commands';
+import { validateProject, type ValidationResult } from '../validation';
+import { newBaseCabinet, newTallCabinet, newWallCabinet } from '../domain/factory';
+import { isDecor, isKitchen, isParametric, type BaseCabinetParams, type FurnitureItem, type KitchenItem, type ParametricItem, type Project } from '../domain/types';
 import { fmtMm, mm, type Um } from '../domain/units';
 import { normDeg } from '../geometry/furniture';
 import { adjustBaseCabinet, BASE_CABINET_LIMITS } from '../furniture/basecabinet';
+import { adjustDoors, TALL_CABINET_LIMITS, WALL_CABINET_LIMITS } from '../furniture/kitchen';
+import { planRun, wallFace, type RunType } from '../kitchen/run';
+import { detectRooms } from '../plan/rooms';
+import { nearestWall, wallIndexLabel } from '../plan/walls';
 import { envelope, resolveParametric } from '../furniture';
 import type { Issue } from '../furniture/parts';
 import { MATERIALS, materialById } from '../materials/library';
@@ -24,7 +29,7 @@ export interface ToolContext {
   selection: ToolSelection;
 }
 
-export type ToolName = 'set_dimension' | 'set_parameter' | 'set_material' | 'rotate' | 'move' | 'rename' | 'delete' | 'select' | 'add_base_cabinet';
+export type ToolName = 'set_dimension' | 'set_parameter' | 'set_material' | 'rotate' | 'move' | 'rename' | 'delete' | 'select' | 'add_base_cabinet' | 'add_cabinet' | 'fill_wall';
 
 export interface ToolCall {
   tool: ToolName;
@@ -35,20 +40,20 @@ export type ToolResult =
   | { ok: true; command: Command | null; summary: string; selection?: ToolSelection; itemId?: string }
   | { ok: false; error: string };
 
-export type Dimension = 'width' | 'depth' | 'height' | 'plinth' | 'worktop' | 'mount_height' | 'elevation';
+export type Dimension = 'width' | 'depth' | 'height' | 'plinth' | 'worktop' | 'mount_height' | 'elevation' | 'split';
 export type MaterialSlot = 'carcass' | 'shutter' | 'worktop' | 'main' | 'accent' | 'color';
 
 /** JSON-schema tool declarations (for LLM function calling) generated from the same registry. */
 export const TOOL_SPECS: { name: ToolName; description: string; parameters: Record<string, unknown> }[] = [
   {
     name: 'set_dimension',
-    description: 'Change one overall dimension of a furniture piece in millimetres. Kitchen base cabinets: width 150–1200, height 600–1000 (floor to carcass top incl. plinth, excl. worktop), depth 300–700, plinth 0–200, worktop 0 or 12–60.',
+    description: 'Change one overall dimension of a furniture piece in millimetres. Base cabinets (basecabinet): width 150–1200, height 600–1000 (floor to carcass top incl. plinth, excl. worktop), depth 300–700, plinth 0–200, worktop 0 or 12–60. Wall cabinets (wallcabinet): width 150–1200, height 300–1000, depth 250–450, mount_height 1200–2200 (underside above floor). Tall units (tallcabinet): width 300–900, height 1800–2400, depth 300–700, plinth 0–200, split 0 or the top of the lower doors.',
     parameters: {
       type: 'object',
       properties: {
         target: { type: 'string', description: '"selected" (default), an item id, or an item name.' },
         expectKind: { type: 'string', description: 'Optional kind the user named: basecabinet, wardrobe, tvunit, bed, sofa, table, side-table, box, library, model.' },
-        dimension: { type: 'string', enum: ['width', 'depth', 'height', 'plinth', 'worktop', 'mount_height', 'elevation'] },
+        dimension: { type: 'string', enum: ['width', 'depth', 'height', 'plinth', 'worktop', 'mount_height', 'elevation', 'split'] },
         valueMm: { type: 'number', description: 'New absolute value in millimetres.' },
         deltaMm: { type: 'number', description: 'Or: change relative to the current value, in millimetres (negative to reduce).' },
       },
@@ -57,7 +62,7 @@ export const TOOL_SPECS: { name: ToolName; description: string; parameters: Reco
   },
   {
     name: 'set_parameter',
-    description: 'Change a construction parameter of a parametric piece: base cabinet front ("doors" or "drawers"), doorCount 1–2, drawerCount 1–5, shelfCount 0–3; wardrobe shutterCount, shelvesPerModule, drawersPerModule.',
+    description: 'Change a construction parameter of a parametric piece: base cabinet front ("doors" or "drawers"), doorCount 1–2, drawerCount 1–5, shelfCount 0–3; wall cabinet front ("doors", "flap" or "open"), doorCount, shelfCount 0–3; tall unit doorCount, shelfCount 0–6; wardrobe shutterCount, shelvesPerModule, drawersPerModule.',
     parameters: {
       type: 'object',
       properties: {
@@ -92,6 +97,16 @@ export const TOOL_SPECS: { name: ToolName; description: string; parameters: Reco
   { name: 'delete', description: 'Delete a piece.', parameters: { type: 'object', properties: { target: { type: 'string' } } } },
   { name: 'select', description: 'Select a piece by id or name.', parameters: { type: 'object', properties: { target: { type: 'string' } }, required: ['target'] } },
   {
+    name: 'add_cabinet',
+    description: 'Add one kitchen cabinet: type base, wall or tall. With a kitchen unit selected it goes beside it (side right/left); a wall cabinet added while a base cabinet is selected goes directly above it.',
+    parameters: { type: 'object', properties: { type: { type: 'string', enum: ['base', 'wall', 'tall'] }, widthMm: { type: 'number' }, front: { type: 'string', enum: ['doors', 'drawers', 'flap', 'open'] }, side: { type: 'string', enum: ['right', 'left'] } }, required: ['type'] },
+  },
+  {
+    name: 'fill_wall',
+    description: 'Fill a wall with a run of kitchen cabinets of one type (base, wall or tall), skipping doors, windows the units would block, and pieces already on the wall. Wall: "selected" (the selected wall), "behind_selected" (the wall behind the selected piece, default) or a wall number. fit "exact" (default) widens modules to close gaps; "standard" keeps 900/800/600/450/300 widths and leaves fillers.',
+    parameters: { type: 'object', properties: { wall: { type: 'string' }, type: { type: 'string', enum: ['base', 'wall', 'tall'] }, fit: { type: 'string', enum: ['exact', 'standard'] }, front: { type: 'string', enum: ['doors', 'drawers'] } }, required: ['type'] },
+  },
+  {
     name: 'add_base_cabinet',
     description: 'Add a kitchen base cabinet. With a base cabinet selected it is placed beside it (side "right" or "left"); otherwise at the centre of the first room.',
     parameters: { type: 'object', properties: { widthMm: { type: 'number' }, front: { type: 'string', enum: ['doors', 'drawers'] }, side: { type: 'string', enum: ['right', 'left'] } } },
@@ -100,6 +115,8 @@ export const TOOL_SPECS: { name: ToolName; description: string; parameters: Reco
 
 const KIND_LABEL: Record<FurnitureItem['kind'], string> = {
   basecabinet: 'base cabinet',
+  wallcabinet: 'wall cabinet',
+  tallcabinet: 'tall unit',
   wardrobe: 'wardrobe',
   tvunit: 'TV unit',
   bed: 'bed',
@@ -164,11 +181,19 @@ const DIMENSION_KEYS: Record<Dimension, string> = {
   worktop: 'worktopUm',
   mount_height: 'mountHeightUm',
   elevation: 'elevationUm',
+  split: 'splitUm',
 };
+
+/** The limits table for kitchen units (one source for tools, inspector and resolver). */
+function kitchenLimits(item: FurnitureItem): Record<string, { min: number; max: number; label: string }> | null {
+  return item.kind === 'basecabinet' ? BASE_CABINET_LIMITS : item.kind === 'wallcabinet' ? WALL_CABINET_LIMITS : item.kind === 'tallcabinet' ? TALL_CABINET_LIMITS : null;
+}
 
 function allowedDimensions(item: FurnitureItem): Dimension[] {
   switch (item.kind) {
     case 'basecabinet': return ['width', 'depth', 'height', 'plinth', 'worktop'];
+    case 'wallcabinet': return ['width', 'depth', 'height', 'mount_height'];
+    case 'tallcabinet': return ['width', 'depth', 'height', 'plinth', 'split'];
     case 'tvunit': return ['width', 'depth', 'height', 'mount_height'];
     case 'library':
     case 'model': return ['width', 'depth', 'height', 'elevation'];
@@ -184,6 +209,12 @@ function planParams(ctx: ToolContext, item: FurnitureItem, patch: Record<string,
     const adj = adjustBaseCabinet(item.params, { ...item.params, ...patch } as BaseCabinetParams);
     params = { ...patch };
     for (const k of Object.keys(adj.params) as (keyof BaseCabinetParams)[]) if (adj.params[k] !== item.params[k]) params[k] = adj.params[k];
+    notes.push(...adj.notes);
+  } else if (item.kind === 'wallcabinet' || item.kind === 'tallcabinet') {
+    const next = { ...item.params, ...patch } as typeof item.params;
+    const adj = adjustDoors(item.params, next, item.kind === 'tallcabinet' || (next as { front?: string }).front === 'doors');
+    params = { ...patch };
+    if (adj.params.doorCount !== item.params.doorCount) params.doorCount = adj.params.doorCount;
     notes.push(...adj.notes);
   }
   if (isParametric(item)) {
@@ -216,8 +247,9 @@ function setDimension(ctx: ToolContext, args: Record<string, unknown>): ToolResu
   if (!Number.isFinite(v)) return fail(`${dim} must be a number of millimetres.`);
   if (Math.abs(v * 10 - Math.round(v * 10)) > 1e-6) return fail('Dimensions are limited to 0.1 mm.');
   const um: Um = mm(Math.round(v * 10) / 10);
-  if (item.kind === 'basecabinet') {
-    const lim = BASE_CABINET_LIMITS[key as keyof typeof BASE_CABINET_LIMITS];
+  const limits = kitchenLimits(item);
+  if (limits) {
+    const lim = limits[key];
     if (um < lim.min || um > lim.max) return fail(`${lim.label} must be between ${fmtMm(lim.min)} and ${fmtMm(lim.max)} mm — ${fmtMm(um)} mm is outside the range.`);
   } else if (dim === 'elevation' || dim === 'mount_height') {
     if (um < 0 || um > mm(3000)) return fail(`${dim === 'elevation' ? 'Elevation' : 'Mount height'} must be between 0 and 3000 mm.`);
@@ -229,6 +261,8 @@ function setDimension(ctx: ToolContext, args: Record<string, unknown>): ToolResu
 
 const PARAMS_BY_KIND: Partial<Record<FurnitureItem['kind'], string[]>> = {
   basecabinet: ['front', 'doorCount', 'drawerCount', 'shelfCount'],
+  wallcabinet: ['front', 'doorCount', 'shelfCount'],
+  tallcabinet: ['doorCount', 'shelfCount'],
   wardrobe: ['shutterCount', 'shelvesPerModule', 'drawersPerModule'],
 };
 
@@ -241,14 +275,16 @@ function setParameter(ctx: ToolContext, args: Record<string, unknown>): ToolResu
   if (!allowed.includes(p)) return fail(allowed.length ? `A ${KIND_LABEL[item.kind]} has no "${p}" setting. Use ${allowed.join(', ')}.` : `A ${KIND_LABEL[item.kind]} has no construction settings.`);
   if (p === 'front') {
     const v = str(args.value).toLowerCase();
-    const front = v.startsWith('door') ? 'doors' : v.startsWith('drawer') ? 'drawers' : null;
-    if (!front) return fail('Front must be "doors" or "drawers".');
+    const options = item.kind === 'wallcabinet' ? ['doors', 'flap', 'open'] : ['doors', 'drawers'];
+    const front = options.find((o) => v.startsWith(o.replace(/s$/, ''))) ?? null;
+    if (!front) return fail(`Front must be ${options.map((o) => `"${o}"`).join(' or ')}.`);
     return planParams(ctx, item, { front }, `${front} front`);
   }
   const v = num(args.value);
   if (!Number.isInteger(v)) return fail(`${p} must be a whole number.`);
-  if (item.kind === 'basecabinet') {
-    const lim = BASE_CABINET_LIMITS[p as 'doorCount' | 'drawerCount' | 'shelfCount'];
+  const limits = kitchenLimits(item);
+  if (limits) {
+    const lim = limits[p];
     if (v < lim.min || v > lim.max) return fail(`${lim.label} must be between ${lim.min} and ${lim.max}.`);
   } else if (v < 0 || v > 12) return fail(`${p} must be between 0 and 12.`);
   return planParams(ctx, item, { [p]: v }, `${p.replace(/Count$/, ' count').replace(/([A-Z])/g, ' $1').toLowerCase()} ${v}`);
@@ -362,6 +398,103 @@ function addBaseCabinet(ctx: ToolContext, args: Record<string, unknown>): ToolRe
   return { ok: true, command: { type: 'furniture.add', item }, summary: `Added a ${fmtMm(item.params.widthUm)} mm ${front === 'drawers' ? 'drawer' : 'door'} base cabinet.`, selection: { kind: 'furniture', id: item.id }, itemId: item.id };
 }
 
+const RUN_KIND: Record<RunType, KitchenItem['kind']> = { base: 'basecabinet', wall: 'wallcabinet', tall: 'tallcabinet' };
+
+function selectedItem(ctx: ToolContext): FurnitureItem | undefined {
+  return ctx.selection?.kind === 'furniture' ? ctx.project.furniture.find((f) => f.id === ctx.selection!.id) : undefined;
+}
+
+function addCabinet(ctx: ToolContext, args: Record<string, unknown>): ToolResult {
+  const type = (str(args.type) || 'base') as RunType;
+  if (!['base', 'wall', 'tall'].includes(type)) return fail('Cabinet type must be base, wall or tall.');
+  const limits = type === 'base' ? BASE_CABINET_LIMITS : type === 'wall' ? WALL_CABINET_LIMITS : TALL_CABINET_LIMITS;
+  const w = args.widthMm === undefined ? 600 : num(args.widthMm);
+  if (!Number.isFinite(w) || mm(w) < limits.widthUm.min || mm(w) > limits.widthUm.max) return fail(`Width must be between ${fmtMm(limits.widthUm.min)} and ${fmtMm(limits.widthUm.max)} mm.`);
+  const widthUm = mm(w);
+  const doorCount = widthUm > mm(600) ? 2 : 1;
+  const frontArg = str(args.front);
+  let item: KitchenItem;
+  if (type === 'base') item = newBaseCabinet(0, 0, { widthUm, front: frontArg === 'drawers' ? 'drawers' : 'doors', doorCount });
+  else if (type === 'wall') item = newWallCabinet(0, 0, { widthUm, front: frontArg === 'flap' || frontArg === 'open' ? frontArg : 'doors', doorCount });
+  else item = newTallCabinet(0, 0, { widthUm, doorCount });
+  const sel = selectedItem(ctx);
+  if (sel && isKitchen(sel)) {
+    const a = (sel.rotDeg * Math.PI) / 180;
+    const eSel = envelope(sel);
+    const eNew = envelope(item);
+    const dBack = (eNew.depthUm - eSel.depthUm) / 2; // keep the backs flush
+    if (type === 'wall' && sel.kind === 'basecabinet') {
+      // Directly above the base unit, same width, backs on the same wall.
+      item.params = { ...item.params, widthUm: sel.params.widthUm, doorCount: sel.params.widthUm > mm(600) ? 2 : 1 };
+      const d2 = (envelope(item).depthUm - eSel.depthUm) / 2;
+      item.xUm = Math.round(sel.xUm - d2 * Math.sin(a));
+      item.yUm = Math.round(sel.yUm + d2 * Math.cos(a));
+    } else {
+      const dir = str(args.side) === 'left' ? -1 : 1;
+      const off = (eSel.widthUm + eNew.widthUm) / 2;
+      item.xUm = Math.round(sel.xUm + dir * off * Math.cos(a) - dBack * Math.sin(a));
+      item.yUm = Math.round(sel.yUm + dir * off * Math.sin(a) + dBack * Math.cos(a));
+      if (sel.kind === item.kind) {
+        const keep = sel.kind === 'basecabinet' ? ['heightUm', 'depthUm', 'plinthUm', 'worktopUm'] : sel.kind === 'wallcabinet' ? ['heightUm', 'depthUm', 'mountHeightUm'] : ['heightUm', 'depthUm', 'plinthUm', 'splitUm'];
+        const p = { ...item.params } as Record<string, unknown>;
+        for (const k of keep) p[k] = (sel.params as unknown as Record<string, unknown>)[k];
+        item.params = p as never;
+      }
+    }
+    item.rotDeg = sel.rotDeg;
+    // Match the selected unit's finishes (a base unit's worktop stays its own).
+    item.materials = { ...(item.materials as object), carcass: sel.materials.carcass, shutter: sel.materials.shutter } as never;
+  } else {
+    const xs = ctx.project.plan.walls.flatMap((wl) => [wl.a.x, wl.b.x]);
+    const ys = ctx.project.plan.walls.flatMap((wl) => [wl.a.y, wl.b.y]);
+    item.xUm = xs.length ? Math.round((Math.min(...xs) + Math.max(...xs)) / 2) : mm(1000);
+    item.yUm = ys.length ? Math.round((Math.min(...ys) + Math.max(...ys)) / 2) : mm(1000);
+  }
+  const what = type === 'base' ? `${item.kind === 'basecabinet' && item.params.front === 'drawers' ? 'drawer' : 'door'} base cabinet` : type === 'wall' ? 'wall cabinet' : 'tall unit';
+  return { ok: true, command: { type: 'furniture.add', item }, summary: `Added a ${fmtMm(envelope(item).widthUm)} mm ${what}${type === 'wall' && sel?.kind === 'basecabinet' ? ` above ${sel.name}` : ''}.`, selection: { kind: 'furniture', id: item.id }, itemId: item.id };
+}
+
+function fillWall(ctx: ToolContext, args: Record<string, unknown>): ToolResult {
+  const type = (str(args.type) || 'base') as RunType;
+  if (!['base', 'wall', 'tall'].includes(type)) return fail('Run type must be base, wall or tall.');
+  const which = str(args.wall) || (ctx.selection?.kind === 'wall' ? 'selected' : 'behind_selected');
+  let wallId: string | undefined;
+  const sel = selectedItem(ctx);
+  if (which === 'selected') {
+    if (ctx.selection?.kind !== 'wall') return fail('Select a wall first (click it in the plan).');
+    wallId = ctx.selection.id;
+  } else if (which === 'behind_selected') {
+    if (ctx.selection?.kind === 'wall') wallId = ctx.selection.id;
+    else if (sel) {
+      // The wall behind the piece: from its centre, step back half its depth.
+      const a = (sel.rotDeg * Math.PI) / 180;
+      const d = envelope(sel).depthUm / 2;
+      const back = { x: sel.xUm + Math.sin(a) * d, y: sel.yUm - Math.cos(a) * d };
+      wallId = nearestWall(ctx.project.plan, back, mm(150))?.wall.id;
+      if (!wallId) return fail(`${sel.name} isn't against a wall. Select a wall instead.`);
+    } else return fail('Select a wall, or a cabinet standing against the wall to fill.');
+  } else {
+    const n = Number(which.replace(/\D/g, ''));
+    wallId = Number.isInteger(n) && n >= 1 ? ctx.project.plan.walls[n - 1]?.id : undefined;
+    if (!wallId) return fail(`There is no wall "${which}".`);
+  }
+  const face = wallFace(ctx.project.plan, wallId, detectRooms(ctx.project.plan));
+  if (!face) return fail(`${wallIndexLabel(ctx.project.plan, wallId)} doesn't face a closed room.`);
+  const fit = str(args.fit) === 'standard' ? 'standard' : 'exact';
+  const front = str(args.front) === 'drawers' ? 'drawers' : str(args.front) === 'doors' ? 'doors' : undefined;
+  const template = sel && sel.kind === RUN_KIND[type] ? sel : ctx.project.furniture.find((f) => f.kind === RUN_KIND[type]);
+  const run = planRun(ctx.project, face, type, { fit, front, template });
+  if (!run.items.length) return fail(`No clear stretch of ${wallIndexLabel(ctx.project.plan, wallId)} is long enough for ${type} units (at least 150 mm, clear of doors${type === 'base' ? '' : ' and windows'} and other pieces).`);
+  const fillers = run.fillersUm.filter((f) => f > mm(1));
+  const widths = run.items.map((i) => fmtMm(i.params.widthUm)).join(' + ');
+  return {
+    ok: true,
+    command: { type: 'batch', label: `Fill wall with ${type} units`, commands: run.items.map((item): Command => ({ type: 'furniture.add', item })) },
+    summary: `Added ${run.items.length} ${type} unit${run.items.length > 1 ? 's' : ''} on ${wallIndexLabel(ctx.project.plan, wallId)}: ${widths} mm${fillers.length ? ` (filler ${fillers.map((f) => fmtMm(f)).join(', ')} mm)` : ''}.`,
+    itemId: run.items[0].id,
+  };
+}
+
 const HANDLERS: Record<ToolName, (ctx: ToolContext, args: Record<string, unknown>) => ToolResult> = {
   set_dimension: setDimension,
   set_parameter: setParameter,
@@ -372,10 +505,29 @@ const HANDLERS: Record<ToolName, (ctx: ToolContext, args: Record<string, unknown
   delete: del,
   select,
   add_base_cabinet: addBaseCabinet,
+  add_cabinet: addCabinet,
+  fill_wall: fillWall,
 };
 
 export function isToolName(s: string): s is ToolName {
   return s in HANDLERS;
+}
+
+/** Plan checks a geometry-changing tool must not make worse. */
+const SPATIAL = new Set(['OVERLAP', 'OUT_OF_ROOM', 'CROSSES_WALL', 'ABOVE_CEILING']);
+const GEOMETRIC: ReadonlySet<ToolName> = new Set(['set_dimension', 'set_parameter', 'rotate', 'move', 'add_cabinet', 'add_base_cabinet', 'fill_wall']);
+
+/**
+ * Reject a change that introduces a collision, pushes a piece out of its room, into a wall or
+ * through the ceiling. Problems that already existed don't block (so a messy design can be fixed
+ * step by step).
+ */
+function spatialCheck(project: Project, command: Command): string | null {
+  const key = (r: ValidationResult) => `${r.code}:${[...r.itemIds].sort().join(',')}`;
+  const pick = (p: Project) => validateProject(p).filter((r) => r.severity === 'error' && SPATIAL.has(r.code));
+  const before = new Set(pick(project).map(key));
+  const introduced = pick(applyCommand(project, command)[0]).filter((r) => !before.has(key(r)));
+  return introduced.length ? introduced.slice(0, 2).map((r) => r.message).join(' ') : null;
 }
 
 /** Validate one tool call against the scene. Never throws for bad input. */
@@ -383,7 +535,12 @@ export function planTool(ctx: ToolContext, call: ToolCall): ToolResult {
   if (!call || typeof call.tool !== 'string' || !isToolName(call.tool)) return fail(`Unknown action "${String(call?.tool)}".`);
   const args = call.args && typeof call.args === 'object' ? call.args : {};
   try {
-    return HANDLERS[call.tool](ctx, args);
+    const r = HANDLERS[call.tool](ctx, args);
+    if (r.ok && r.command && GEOMETRIC.has(call.tool)) {
+      const clash = spatialCheck(ctx.project, r.command);
+      if (clash) return fail(clash);
+    }
+    return r;
   } catch (e) {
     return fail(`Could not apply ${call.tool}: ${(e as Error).message}`);
   }

@@ -21,6 +21,8 @@ export function lengthToMm(value: string, unit: string | undefined): number {
 }
 
 const KIND_WORDS: [RegExp, string][] = [
+  [/\b(wall|upper|overhead|hanging)\s+(cabinet|unit|cupboard)s?\b/, 'wallcabinet'],
+  [/\btall\s+(unit|cabinet)s?\b|\bpantry\b|\blarder\b/, 'tallcabinet'],
   [/\b(base|kitchen|lower)\s+(cabinet|unit|module)s?\b|\bbase\s*unit\b|\bdrawer\s+(base\s+)?unit\b|\bsink\s+unit\b/, 'basecabinet'],
   [/\bward ?robes?\b|\bclosets?\b/, 'wardrobe'],
   [/\btv\s*(unit|console|cabinet)s?\b/, 'tvunit'],
@@ -66,6 +68,29 @@ function clause(raw: string): ToolCall[] | null {
   const target = targetOf(raw);
   const base = { target, ...(expectKind ? { expectKind } : {}) };
   let m: RegExpExecArray | null;
+
+  // Fill a wall: "fill this wall with base cabinets", "fill wall 2 with wall units, standard sizes".
+  if (/^(fill|line|run)\b/.test(s) && /\bwall\b/.test(s)) {
+    const type = expectKind === 'wallcabinet' ? 'wall' : expectKind === 'tallcabinet' ? 'tall' : /\b(base|lower|kitchen)\b|\bcabinets?\b|\bunits?\b/.test(s) ? 'base' : null;
+    if (!type) return null;
+    const args: Record<string, unknown> = { type };
+    m = /\bwall\s+(\d+)\b/.exec(s);
+    if (m) args.wall = m[1];
+    if (/\bstandard\b/.test(s)) args.fit = 'standard';
+    if (/\bdrawers?\b/.test(s)) args.front = 'drawers';
+    return [{ tool: 'fill_wall', args }];
+  }
+
+  // Add a wall or tall unit: "add a wall cabinet above it", "add a 450 tall pantry unit".
+  if (/^(add|insert|place|put|hang)\b/.test(s) && (expectKind === 'wallcabinet' || expectKind === 'tallcabinet')) {
+    m = new RegExp(`${NUM}${UNIT}`).exec(s);
+    const args: Record<string, unknown> = { type: expectKind === 'wallcabinet' ? 'wall' : 'tall' };
+    if (m) args.widthMm = lengthToMm(m[1], m[2]);
+    if (/\bflap\b|\blift[- ]?up\b/.test(s)) args.front = 'flap';
+    if (/\bopen\b/.test(s)) args.front = 'open';
+    if (/\bleft\b/.test(s)) args.side = 'left';
+    return [{ tool: 'add_cabinet', args }];
+  }
 
   // Add a cabinet: "add a 450 mm drawer base cabinet [to the left]".
   if (/^(add|insert|place|put)\b/.test(s) && expectKind === 'basecabinet') {

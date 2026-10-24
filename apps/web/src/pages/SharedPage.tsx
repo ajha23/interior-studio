@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { envelope, fmtMm, itemSwatch, materialById, migrateScene, SCHEMA_VERSION, type Project } from '@studio/core';
+import { envelope, fmtMm, isParametric, itemSwatch, materialById, migrateScene, SCHEMA_VERSION, type Project } from '@studio/core';
 import { fetchSharedDesign, type SharedDesign } from '../data/shares';
 import { SCENE_MIGRATIONS } from '../editor/migrations';
 import { useStudio } from '../editor/store';
@@ -148,7 +148,7 @@ function SelectedCard() {
   const f = selection?.kind === 'furniture' ? project.furniture.find((x) => x.id === selection.id) : null;
   if (!f) return <div className="share-hint">Tap a piece to see its size and finish.</div>;
   const e = envelope(f);
-  const finish = f.kind === 'library' ? materialById(f.materials.main).name : f.kind === 'wardrobe' || f.kind === 'tvunit' || f.kind === 'basecabinet' ? materialById(f.materials.shutter).name : null;
+  const finish = f.kind === 'library' ? materialById(f.materials.main).name : isParametric(f) ? materialById(f.materials.shutter).name : null;
   return (
     <div className="share-card">
       <span className="swatch" style={{ background: itemSwatch(f) }} />

@@ -166,18 +166,30 @@ function FurnitureShape({ project, f, selected, severity, fs }: { project: Proje
       details.push(ln(P(env.widthUm - mm(160), mm(200)), P(env.widthUm - mm(160), env.depthUm), 'ar'));
     }
   }
+  // Wall-hung units are drawn dashed over what stands below (drafting convention for overhead items).
+  const overhead = f.kind === 'wallcabinet';
+  // Labels only where they fit across the piece (narrow units in a run would otherwise overlap).
+  const xs = poly.map((v) => k(v.x));
+  const span = Math.max(...xs) - Math.min(...xs); // labels are horizontal
+  const nameFits = selected || f.name.length * fs * 0.6 < span * 0.96;
+  const dims = `${fmtMm(env.widthUm)} × ${fmtMm(env.depthUm)}`;
+  const dimsFit = selected || dims.length * fs * 0.55 < span * 0.96;
   const c = poly.reduce((a, v) => ({ x: a.x + k(v.x) / 4, y: a.y + k(v.y) / 4 }), { x: 0, y: 0 });
   const stroke = severity === 'error' ? 'var(--error)' : selected ? 'var(--accent)' : severity === 'warning' ? 'var(--warn)' : '#2b302d';
   return (
     <g data-fid={f.id} style={{ cursor: 'move' }}>
-      <polygon points={pts(poly)} fill={fill} fillOpacity={f.kind === 'library' ? 0.12 : 0.55} stroke={stroke} strokeWidth={selected ? fs * 0.2 : fs * 0.1} strokeDasharray={f.kind === 'library' && catalogById(f.ref)?.mount === 'ceiling' ? `${fs * 0.6} ${fs * 0.35}` : undefined} />
-      {details}
-      <text x={c.x} y={c.y - fs * 0.15} fontSize={fs * 1.05} textAnchor="middle" fill="#1f2522" fontWeight={600} pointerEvents="none" paintOrder="stroke" stroke="rgba(255,253,248,.85)" strokeWidth={fs * 0.3}>
+      {/* Overhead units take clicks on their outline only, so units below stay selectable. */}
+      {overhead && <polygon points={pts(poly)} fill="none" stroke="transparent" strokeWidth={fs * 0.9} pointerEvents="stroke" />}
+      <polygon pointerEvents={overhead ? 'none' : undefined} points={pts(poly)} fill={fill} fillOpacity={f.kind === 'library' ? 0.12 : overhead ? 0.14 : 0.55} stroke={stroke} strokeWidth={selected ? fs * 0.2 : fs * 0.1} strokeDasharray={overhead || (f.kind === 'library' && catalogById(f.ref)?.mount === 'ceiling') ? `${fs * 0.6} ${fs * 0.35}` : undefined} />
+      {!overhead && details}
+      {overhead && !selected ? null : <>
+      {nameFits && <text x={c.x} y={c.y - fs * 0.15} fontSize={fs * 1.05} textAnchor="middle" fill="#1f2522" fontWeight={600} pointerEvents="none" paintOrder="stroke" stroke="rgba(255,253,248,.85)" strokeWidth={fs * 0.3}>
         {f.name}
-      </text>
-      <text x={c.x} y={c.y + fs * 1.1} fontSize={fs * 0.9} textAnchor="middle" fill="#4b524e" fontFamily="IBM Plex Mono, monospace" pointerEvents="none" paintOrder="stroke" stroke="rgba(255,253,248,.85)" strokeWidth={fs * 0.3}>
-        {fmtMm(env.widthUm)} × {fmtMm(env.depthUm)}
-      </text>
+      </text>}
+      {dimsFit && <text x={c.x} y={c.y + fs * 1.1} fontSize={fs * 0.9} textAnchor="middle" fill="#4b524e" fontFamily="IBM Plex Mono, monospace" pointerEvents="none" paintOrder="stroke" stroke="rgba(255,253,248,.85)" strokeWidth={fs * 0.3}>
+        {dims}
+      </text>}
+      </>}
     </g>
   );
 }
@@ -388,7 +400,7 @@ export function PlanDrawing({
           </g>
         );
       })}
-      {items.map((f) => (
+      {[...items].sort((a, b) => Number(a.kind === 'wallcabinet') - Number(b.kind === 'wallcabinet')).map((f) => (
         <FurnitureShape key={f.id} project={project} f={f} selected={sel?.id === f.id} severity={sev.get(f.id)} fs={fs} />
       ))}
       {pl.walls.length > 0 && (

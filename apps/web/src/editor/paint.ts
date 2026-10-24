@@ -1,4 +1,4 @@
-import { FINISHES, WORKTOP_FINISHES, materialById, uid, type Command, type DetectedRoom, type Project, type WallSideSign } from '@studio/core';
+import { FINISHES, WORKTOP_FINISHES, isParametric, materialById, uid, type Command, type DetectedRoom, type Project, type WallSideSign } from '@studio/core';
 
 export type PaintTarget =
   | { kind: 'floor'; roomId: string }
@@ -27,7 +27,7 @@ export function paintCommand(project: Project, rooms: DetectedRoom[], target: Pa
   if (f.kind === 'basecabinet' && WORKTOP_FINISHES.some((x) => x.id === m.id)) {
     return { cmd: { type: 'furniture.update', id: f.id, patch: { materials: { ...f.materials, worktop: m.id } } }, label: `${f.name} worktop: ${m.name}` };
   }
-  if (f.kind === 'wardrobe' || f.kind === 'tvunit' || f.kind === 'basecabinet') {
+  if (isParametric(f)) {
     // Parametric pieces only take board finishes from the manufacturable list.
     if (!FINISHES.some((x) => x.id === m.id)) return null;
     return { cmd: { type: 'furniture.update', id: f.id, patch: { materials: { ...f.materials, [target.part === 'main' ? 'shutter' : 'carcass']: m.id } } }, label: `${f.name}: ${m.name}` };

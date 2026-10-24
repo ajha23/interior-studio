@@ -1,7 +1,7 @@
 import { DEFAULT_RULE_PACK } from './catalog';
-import { SCHEMA_VERSION, type DecorKind, type DecorItem, type FurnitureItem, type Opening, type Plan, type Project, type ProjectCore, type RoomInfo, type TvUnitItem, type BaseCabinetItem, type BaseCabinetParams, type Wall, type WallSideSign, type WardrobeItem } from './types';
+import { SCHEMA_VERSION, type DecorKind, type DecorItem, type FurnitureItem, type Opening, type Plan, type Project, type ProjectCore, type RoomInfo, type TvUnitItem, type BaseCabinetItem, type BaseCabinetParams, type WallCabinetItem, type WallCabinetParams, type TallCabinetItem, type TallCabinetParams, type Wall, type WallSideSign, type WardrobeItem } from './types';
 import { mm } from './units';
-import { BASECABINET_TEMPLATE_VERSION, DEFAULT_BASE_CABINET, TVUNIT_TEMPLATE_VERSION, WARDROBE_TEMPLATE_VERSION } from '../furniture';
+import { BASECABINET_TEMPLATE_VERSION, DEFAULT_BASE_CABINET, DEFAULT_TALL_CABINET, DEFAULT_WALL_CABINET, TALLCABINET_TEMPLATE_VERSION, WALLCABINET_TEMPLATE_VERSION, TVUNIT_TEMPLATE_VERSION, WARDROBE_TEMPLATE_VERSION } from '../furniture';
 
 export function uid(prefix: string): string {
   const r = Math.random().toString(36).slice(2, 8);
@@ -52,6 +52,38 @@ export function newBaseCabinet(x = mm(1200), y = mm(300), patch: Partial<BaseCab
     rulePackVersion: DEFAULT_RULE_PACK.version,
     params,
     materials: { carcass: 'white-matte', shutter: 'sage', worktop: 'granite-black' },
+  };
+}
+
+export function newWallCabinet(x = mm(1200), y = mm(200), patch: Partial<WallCabinetParams> = {}): WallCabinetItem {
+  const params = { ...DEFAULT_WALL_CABINET, ...patch };
+  return {
+    id: uid('wc'),
+    kind: 'wallcabinet',
+    name: params.front === 'open' ? 'Open wall shelf' : params.front === 'flap' ? 'Wall unit (flap)' : 'Wall cabinet',
+    xUm: x,
+    yUm: y,
+    rotDeg: 0,
+    templateVersion: WALLCABINET_TEMPLATE_VERSION,
+    rulePackVersion: DEFAULT_RULE_PACK.version,
+    params,
+    materials: { carcass: 'white-matte', shutter: 'ivory' },
+  };
+}
+
+export function newTallCabinet(x = mm(1200), y = mm(300), patch: Partial<TallCabinetParams> = {}): TallCabinetItem {
+  const params = { ...DEFAULT_TALL_CABINET, ...patch };
+  return {
+    id: uid('tc'),
+    kind: 'tallcabinet',
+    name: 'Tall pantry unit',
+    xUm: x,
+    yUm: y,
+    rotDeg: 0,
+    templateVersion: TALLCABINET_TEMPLATE_VERSION,
+    rulePackVersion: DEFAULT_RULE_PACK.version,
+    params,
+    materials: { carcass: 'white-matte', shutter: 'sage' },
   };
 }
 

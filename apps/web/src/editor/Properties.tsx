@@ -12,8 +12,8 @@ import { fmtMm, mm } from '@studio/core';
 import { envelope, resolveParametric } from '@studio/core';
 import { endpointsAt, nearestWall, normDeg, sideOf, wallGeom, wallIndexLabel, wallLength, wallPoint } from '@studio/core';
 import { DegField, IntField, MmField, SelectField, TextField } from './fields';
-import { runSceneTools } from './tools';
-import { anchoredMove, BASE_CABINET_LIMITS, counterHeightUm, WORKTOP_FINISHES, type ToolCall } from '@studio/core';
+import { KitchenConstruction, KitchenDimensions, KitchenRunActions, WallRunActions } from './KitchenInspector';
+import { anchoredMove, isKitchen, WORKTOP_FINISHES } from '@studio/core';
 import { useRooms, useValidation } from './hooks';
 
 function Issues({ ids }: { ids: string[] }) {
@@ -151,6 +151,7 @@ function WallProps({ w }: { w: Wall }) {
         <MmField label="Height" value={w.heightUm} min={1000} max={6000} onCommit={(v) => set({ heightUm: v }, 'Change wall height')} />
         <div className="field-hint">Direction {ang.toFixed(1)}° · start ({fmtMm(w.a.x)}, {fmtMm(w.a.y)})</div>
       </div>
+      <WallRunActions wallId={w.id} />
       <div className="section">
         <h3>Face finishes</h3>
         <div className="field-hint" style={{ marginBottom: 6 }}>Right-hand face (walking start → end)</div>
@@ -301,12 +302,6 @@ function FurnitureProps({ f }: { f: FurnitureItem }) {
     const cmd: Command = { type: 'furniture.params', id: f.id, params };
     dispatch(move ? { type: 'batch', label, commands: [cmd, move] } : cmd, label);
   };
-  /** Base cabinets edit through the same validated tools as AI commands; errors show on the field. */
-  const tool = (call: ToolCall, label: string): string | null => {
-    const r = runSceneTools([{ ...call, args: { ...call.args, target: f.id } }], label);
-    return r.ok ? null : r.error;
-  };
-
   const resolved = isParametric(f) ? resolveParametric(f, project.rulePack) : null;
   const shutterW = resolved?.parts.find((p) => p.role === 'shutter')?.widthUm;
 
@@ -341,18 +336,8 @@ function FurnitureProps({ f }: { f: FurnitureItem }) {
         </div>
       </div>
 
-      {f.kind === 'basecabinet' ? (
-        <div className="section">
-          <h3>Dimensions</h3>
-          <MmField label="Width" value={f.params.widthUm} min={150} max={1200} onCommit={(v) => tool({ tool: 'set_dimension', args: { dimension: 'width', valueMm: v / 1000 } }, 'Change width')} testId="furn-width" />
-          <MmField label="Height" value={f.params.heightUm} min={600} max={1000} onCommit={(v) => tool({ tool: 'set_dimension', args: { dimension: 'height', valueMm: v / 1000 } }, 'Change height')} hint="Floor to carcass top, incl. plinth." />
-          <MmField label="Depth" value={f.params.depthUm} min={300} max={700} onCommit={(v) => tool({ tool: 'set_dimension', args: { dimension: 'depth', valueMm: v / 1000 } }, 'Change depth')} hint="Wall to door face." />
-          <MmField label="Plinth" value={f.params.plinthUm} min={0} max={200} onCommit={(v) => tool({ tool: 'set_dimension', args: { dimension: 'plinth', valueMm: v / 1000 } }, 'Change plinth')} />
-          <MmField label="Worktop" value={f.params.worktopUm} min={0} max={60} onCommit={(v) => tool({ tool: 'set_dimension', args: { dimension: 'worktop', valueMm: v / 1000 } }, 'Change worktop')} hint="Thickness; 0 = none." />
-          <div className="field-hint num">
-            Counter height {fmtMm(counterHeightUm(f.params))} mm · envelope {fmtMm(env.widthUm)} × {fmtMm(env.depthUm)} × {fmtMm(env.heightUm)} mm
-          </div>
-        </div>
+      {isKitchen(f) ? (
+        <KitchenDimensions f={f} />
       ) : (
       <div className="section">
         <h3>Dimensions</h3>
@@ -383,20 +368,11 @@ function FurnitureProps({ f }: { f: FurnitureItem }) {
         </div>
       </div>
       )}
-      {f.kind === 'basecabinet' && (
-        <div className="section">
-          <h3>Construction</h3>
-          <SelectField label="Front" value={f.params.front} options={[{ value: 'doors', label: 'Doors + shelves' }, { value: 'drawers', label: 'Drawer stack' }]} onChange={(v) => { const e = tool({ tool: 'set_parameter', args: { parameter: 'front', value: v } }, 'Change front'); if (e) alert(e); }} />
-          {f.params.front === 'doors' ? (
-            <>
-              <IntField label="Doors" value={f.params.doorCount} min={BASE_CABINET_LIMITS.doorCount.min} max={BASE_CABINET_LIMITS.doorCount.max} onCommit={(v) => tool({ tool: 'set_parameter', args: { parameter: 'doorCount', value: v } }, 'Change doors')} />
-              <IntField label="Shelves" value={f.params.shelfCount} min={BASE_CABINET_LIMITS.shelfCount.min} max={BASE_CABINET_LIMITS.shelfCount.max} onCommit={(v) => tool({ tool: 'set_parameter', args: { parameter: 'shelfCount', value: v } }, 'Change shelves')} />
-            </>
-          ) : (
-            <IntField label="Drawers" value={f.params.drawerCount} min={BASE_CABINET_LIMITS.drawerCount.min} max={BASE_CABINET_LIMITS.drawerCount.max} onCommit={(v) => tool({ tool: 'set_parameter', args: { parameter: 'drawerCount', value: v } }, 'Change drawers')} />
-          )}
-          {resolved && <div className="field-hint num">{resolved.parts.length} parts · {resolved.hardware.reduce((n, h) => n + h.qty, 0)} hardware items</div>}
-        </div>
+      {isKitchen(f) && (
+        <>
+          <KitchenConstruction f={f} />
+          <KitchenRunActions f={f} />
+        </>
       )}
 
       {f.kind === 'wardrobe' && (

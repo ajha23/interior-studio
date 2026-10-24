@@ -1,4 +1,5 @@
 import type { Um } from '../domain/units';
+import type { TemplateKey } from '../domain/types';
 
 /** Axis-aligned box in furniture-local space (µm). x → width, y → depth (0 = back, +y = front), z → up. */
 export interface Box3 {
@@ -42,7 +43,7 @@ export interface Issue {
 }
 
 export interface ResolvedFurniture {
-  templateKey: 'wardrobe' | 'tvunit' | 'basecabinet';
+  templateKey: TemplateKey;
   templateVersion: number;
   overall: { widthUm: Um; depthUm: Um; heightUm: Um; zMinUm: Um };
   /** Module spans along width for dimension chains (inner clear widths). */

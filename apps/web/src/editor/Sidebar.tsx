@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { envelope, fmtMm, itemSwatch, mm, newBaseCabinet, newDecor, newTvUnit, newWardrobe, wallIndexLabel, type DecorKind, type FurnitureItem } from '@studio/core';
+import { envelope, fmtMm, itemSwatch, mm, newBaseCabinet, newDecor, newTallCabinet, newTvUnit, newWallCabinet, newWardrobe, wallIndexLabel, type DecorKind, type FurnitureItem } from '@studio/core';
 import { useStudio } from './store';
 import { severityById, useRooms, useValidation } from './hooks';
 import { usePlaceFurniture } from './place';
@@ -18,6 +18,9 @@ const KITCHEN: { label: string; hint: string; icon: IconName; make: () => Furnit
   { label: 'Double-door base', hint: '900 · 2 doors', icon: 'cabinet', make: () => ({ ...newBaseCabinet(undefined, undefined, { widthUm: mm(900), doorCount: 2 }), name: 'Double base cabinet' }) },
   { label: 'Drawer unit', hint: '450 · 3 drawers', icon: 'drawers', make: () => newBaseCabinet(undefined, undefined, { widthUm: mm(450), front: 'drawers', drawerCount: 3 }) },
   { label: 'Sink unit', hint: '800 · 2 doors', icon: 'cabinet', make: () => ({ ...newBaseCabinet(undefined, undefined, { widthUm: mm(800), doorCount: 2, shelfCount: 0 }), name: 'Sink unit' }) },
+  { label: 'Wall cabinet', hint: '600 · at 1450', icon: 'wallunit', make: () => newWallCabinet() },
+  { label: 'Wall unit, lift-up', hint: '900 × 360 · flap', icon: 'wallunit', make: () => newWallCabinet(undefined, undefined, { widthUm: mm(900), heightUm: mm(360), front: 'flap', shelfCount: 0, mountHeightUm: mm(1810) }) },
+  { label: 'Tall pantry', hint: '600 × 2170', icon: 'tall', make: () => newTallCabinet() },
 ];
 
 function AddButton({ icon, label, hint, tag, onClick }: { icon: IconName; label: string; hint?: string; tag?: string; onClick: () => void }) {
@@ -42,6 +45,7 @@ export function AddPanel() {
     <>
       <div className="section">
         <h3>Kitchen{targetRoom ? <span className="num h3-meta"> → {targetRoom.info.name}</span> : null}</h3>
+        <div className="field-hint" style={{ marginBottom: 8 }}>Tip: select a wall and use “Kitchen run” to fill it in one step.</div>
         <div className="add-list">
           {KITCHEN.map((k) => (
             <AddButton key={k.label} icon={k.icon} label={k.label} hint={k.hint} tag="CUT" onClick={() => place(k.make(), { againstWall: true })} />

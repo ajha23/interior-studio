@@ -1,7 +1,7 @@
 import type { Um } from './units';
 import type { Lighting } from './lighting';
 
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 /** Where a dimension came from — an estimate must never be presented as a verified measurement. */
 export type Provenance = 'site_measured' | 'drawing' | 'estimate';
@@ -69,7 +69,7 @@ export interface Plan {
   defaultCeilingUm: Um;
 }
 
-export type TemplateKey = 'wardrobe' | 'tvunit' | 'basecabinet';
+export type TemplateKey = 'wardrobe' | 'tvunit' | 'basecabinet' | 'wallcabinet' | 'tallcabinet';
 export type DecorKind = 'bed' | 'sofa' | 'table' | 'side-table' | 'box';
 export type FurnitureKind = TemplateKey | DecorKind | 'library' | 'model';
 
@@ -112,6 +112,31 @@ export interface BaseCabinetParams {
   shelfCount: number;
 }
 
+/** Wall-hung kitchen unit (see furniture/kitchen.ts). */
+export interface WallCabinetParams {
+  widthUm: Um;
+  heightUm: Um;
+  depthUm: Um;
+  /** Underside of the unit above the floor. */
+  mountHeightUm: Um;
+  front: 'doors' | 'flap' | 'open';
+  doorCount: number;
+  shelfCount: number;
+}
+
+/** Tall (pantry) unit standing on a plinth. */
+export interface TallCabinetParams {
+  widthUm: Um;
+  /** Floor to top, including the plinth. */
+  heightUm: Um;
+  depthUm: Um;
+  plinthUm: Um;
+  doorCount: number;
+  shelfCount: number;
+  /** Top of the lower doors above the floor; 0 = one full-height door set. */
+  splitUm: Um;
+}
+
 export interface DecorParams {
   widthUm: Um;
   depthUm: Um;
@@ -152,6 +177,22 @@ export interface BaseCabinetItem extends FurnitureBase {
   materials: { carcass: string; shutter: string; worktop: string };
 }
 
+export interface WallCabinetItem extends FurnitureBase {
+  kind: 'wallcabinet';
+  templateVersion: number;
+  rulePackVersion: number;
+  params: WallCabinetParams;
+  materials: { carcass: string; shutter: string };
+}
+
+export interface TallCabinetItem extends FurnitureBase {
+  kind: 'tallcabinet';
+  templateVersion: number;
+  rulePackVersion: number;
+  params: TallCabinetParams;
+  materials: { carcass: string; shutter: string };
+}
+
 export interface DecorItem extends FurnitureBase {
   kind: DecorKind;
   params: DecorParams;
@@ -181,15 +222,20 @@ export interface ModelItem extends FurnitureBase {
   native: { widthUm: Um; depthUm: Um; heightUm: Um };
 }
 
-export type FurnitureItem = WardrobeItem | TvUnitItem | BaseCabinetItem | DecorItem | LibraryItem | ModelItem;
-export type ParametricItem = WardrobeItem | TvUnitItem | BaseCabinetItem;
+export type FurnitureItem = WardrobeItem | TvUnitItem | BaseCabinetItem | WallCabinetItem | TallCabinetItem | DecorItem | LibraryItem | ModelItem;
+export type ParametricItem = WardrobeItem | TvUnitItem | BaseCabinetItem | WallCabinetItem | TallCabinetItem;
+export type KitchenItem = BaseCabinetItem | WallCabinetItem | TallCabinetItem;
 
 export function isDecor(f: FurnitureItem): f is DecorItem {
   return f.kind === 'bed' || f.kind === 'sofa' || f.kind === 'table' || f.kind === 'side-table' || f.kind === 'box';
 }
 
 export function isParametric(f: FurnitureItem): f is ParametricItem {
-  return f.kind === 'wardrobe' || f.kind === 'tvunit' || f.kind === 'basecabinet';
+  return f.kind === 'wardrobe' || f.kind === 'tvunit' || f.kind === 'basecabinet' || f.kind === 'wallcabinet' || f.kind === 'tallcabinet';
+}
+
+export function isKitchen(f: FurnitureItem): f is KitchenItem {
+  return f.kind === 'basecabinet' || f.kind === 'wallcabinet' || f.kind === 'tallcabinet';
 }
 
 /** Construction method, versioned. Pinned per project so rule changes never alter old designs. */
