@@ -10,3 +10,6 @@ export * from './furniture/schedule';
 export * from './geometry';
 export * from './validation';
 export * from './persistence/sceneMigrations';
+export * from './materials/library';
+export * from './catalog/library';
+export * from './catalog/items';

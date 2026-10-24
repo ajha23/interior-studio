@@ -6,6 +6,7 @@ import { useRooms, useValidation } from './hooks';
 import { PlanView } from './PlanView';
 import { Properties } from './Properties';
 import { Sidebar } from './Sidebar';
+import { CatalogPanel, type LeftTab } from './CatalogPanel';
 
 const View3D = lazy(() => import('./View3D').then((m) => ({ default: m.View3D })));
 
@@ -257,6 +258,27 @@ function useShortcuts() {
   }, []);
 }
 
+function LeftPanel() {
+  const [tab, setTab] = useState<LeftTab>('plan');
+  const tool = useStudio((s) => s.tool);
+  // Picking the Paint tool from elsewhere brings its palette into view.
+  useEffect(() => {
+    if (tool === 'paint') setTab('materials');
+  }, [tool]);
+  return (
+    <>
+      <div className="left-tabs" role="tablist">
+        {(['plan', 'catalogue', 'materials'] as const).map((t) => (
+          <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>
+            {t === 'plan' ? 'Plan' : t === 'catalogue' ? 'Catalogue' : 'Materials'}
+          </button>
+        ))}
+      </div>
+      {tab === 'plan' ? <Sidebar /> : <CatalogPanel tab={tab} />}
+    </>
+  );
+}
+
 export function EditorShell({ chrome }: { chrome: EditorChrome }) {
   const view = useStudio((s) => s.view);
   useShortcuts();
@@ -271,7 +293,7 @@ export function EditorShell({ chrome }: { chrome: EditorChrome }) {
         <TopBar chrome={chrome} />
         <aside className="left">
           <div className="mobile-note">Designed for desktop. On a phone you can review designs; editing works best on a laptop.</div>
-          <Sidebar />
+          <LeftPanel />
         </aside>
         <main className="main">
           {view === 'split' && (

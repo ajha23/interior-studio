@@ -17,7 +17,7 @@ const DRAFT_PREFIX = 'studio.draft.';
 
 export type Selection = { kind: 'furniture' | 'opening' | 'wall' | 'room'; id: string } | null;
 /** Plan tools. Doors and windows are placed by clicking a wall. */
-export type Tool = 'select' | 'wall' | 'room' | 'door' | 'window';
+export type Tool = 'select' | 'wall' | 'room' | 'door' | 'window' | 'paint';
 export type ViewMode = 'split' | 'plan' | '3d' | 'docs';
 export type SaveState = 'saved' | 'dirty' | 'saving' | 'error';
 
@@ -41,6 +41,8 @@ interface StudioState {
   selection: Selection;
   view: ViewMode;
   tool: Tool;
+  /** Material id the Paint tool applies. */
+  paint: string;
   readOnly: boolean;
   saveState: SaveState;
   savedVersionNo: number;
@@ -55,6 +57,8 @@ interface StudioState {
   select: (s: Selection) => void;
   setView: (v: ViewMode) => void;
   setTool: (t: Tool) => void;
+  /** Pick a material and switch to the Paint tool. */
+  setPaint: (materialId: string) => void;
   /** Replace the whole scene (restore an old version, import a file) as one undoable step. */
   replaceScene: (next: Project, label: string) => void;
   saveNow: (kind?: 'autosave' | 'manual', message?: string) => Promise<void>;
@@ -150,6 +154,7 @@ export const useStudio = create<StudioState>((set, get) => {
     selection: null,
     view: 'split',
     tool: 'select',
+    paint: 'oak-floor',
     readOnly: false,
     saveState: 'saved',
     savedVersionNo: 0,
@@ -208,6 +213,7 @@ export const useStudio = create<StudioState>((set, get) => {
     select: (selection) => set({ selection }),
     setView: (view) => set({ view }),
     setTool: (tool) => set({ tool: get().readOnly ? 'select' : tool }),
+    setPaint: (paint) => set({ paint, tool: get().readOnly ? 'select' : 'paint' }),
 
     replaceScene: (incoming, label) => {
       if (get().readOnly) return;

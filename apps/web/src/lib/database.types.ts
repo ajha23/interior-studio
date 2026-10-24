@@ -24,6 +24,59 @@ export type Database = {
   __InternalSupabase: { PostgrestVersion: '14.18' };
   public: {
     Tables: {
+      catalog_models: {
+        Row: {
+          bytes: number
+          category: string
+          created_at: string
+          created_by: string
+          depth_um: number
+          height_um: number
+          id: string
+          name: string
+          org_id: string
+          storage_path: string
+          thumb_path: string | null
+          width_um: number
+        }
+        Insert: {
+          bytes?: number
+          category?: string
+          created_at?: string
+          created_by?: string
+          depth_um: number
+          height_um: number
+          id?: string
+          name: string
+          org_id: string
+          storage_path: string
+          thumb_path?: string | null
+          width_um: number
+        }
+        Update: {
+          bytes?: number
+          category?: string
+          created_at?: string
+          created_by?: string
+          depth_um?: number
+          height_um?: number
+          id?: string
+          name?: string
+          org_id?: string
+          storage_path?: string
+          thumb_path?: string | null
+          width_um?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "catalog_models_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       org_invites: {
         Row: { accepted_at: string | null; created_at: string; email: string; id: string; invited_by: string | null; org_id: string; role: OrgRole };
         Insert: { accepted_at?: string | null; created_at?: string; email: string; id?: string; invited_by?: string | null; org_id: string; role?: OrgRole };

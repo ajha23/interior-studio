@@ -78,5 +78,7 @@ export const SCENE_MIGRATIONS: MigrationRegistry = {
   current: SCHEMA_VERSION,
   steps: {
     1: projectV1toV2,
+    // v3 adds catalogue/model furniture kinds and optional wall face finishes: purely additive.
+    2: (scene) => ({ ...(scene as Record<string, unknown>), schemaVersion: 3 }),
   },
 };

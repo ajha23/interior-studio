@@ -2,20 +2,48 @@ import { OrbitControls } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useMemo, useRef, useState, type ComponentRef } from 'react';
 import * as THREE from 'three';
-import { finishById, FLOOR_FINISHES, WALL_COLORS } from '@studio/core';
+import { finishById, libraryPrims, wallFaceFinish, type LibraryItem, type WallSideSign } from '@studio/core';
+import { threeMaterial } from '../materials/three';
+import { paintCommand, type PaintTarget } from './paint';
+import { ModelMesh } from './ModelMesh';
 import { useStudio } from './store';
-import { isParametric, type FurnitureItem, type Project } from '@studio/core';
+import { type FurnitureItem, type Project } from '@studio/core';
 import { toM } from '@studio/core';
-import { decorBoxes, envelope, interiorPoint, pointInPolygon, resolveParametric, wallGeom, wallPieces, wallPoint, type ColoredBox, type DetectedRoom } from '@studio/core';
+import { decorBoxes, isDecor, envelope, interiorPoint, pointInPolygon, resolveParametric, wallGeom, wallPieces, wallPoint, type ColoredBox, type DetectedRoom } from '@studio/core';
 import { useRooms } from './hooks';
 import { planBounds } from './PlanView';
 
 const BACK_COLOR = '#d9c7a4';
 
-function Furniture({ f, project, selected, xray, onSelect }: { f: FurnitureItem; project: Project; selected: boolean; xray: boolean; onSelect: () => void }) {
+const UNIT_BOX = new THREE.BoxGeometry(1, 1, 1);
+const UNIT_CYL = new THREE.CylinderGeometry(0.5, 0.5, 1, 28);
+const UNIT_SPHERE = new THREE.SphereGeometry(0.5, 24, 16);
+const UNIT_CONE = new THREE.CylinderGeometry(0.12, 0.5, 1, 28, 1, true);
+
+/** Catalogue piece: unit primitives scaled to each part, materials shared across the scene. */
+function LibraryParts({ f }: { f: LibraryItem }) {
+  const prims = useMemo(() => libraryPrims(f), [f]);
+  const W = f.params.widthUm;
+  const D = f.params.depthUm;
+  const z0 = f.params.elevationUm;
+  return (
+    <>
+      {prims.map((p) => {
+        const geo = p.shape === 'cylinder' ? UNIT_CYL : p.shape === 'sphere' ? UNIT_SPHERE : p.shape === 'cone' ? UNIT_CONE : UNIT_BOX;
+        const mat = threeMaterial(p.material.id, 'surface', { uMm: Math.max(p.w, p.d) / 1000, vMm: p.h / 1000, plain: p.material.pattern !== 'fabric' && p.material.pattern !== 'planks' });
+        return (
+          <mesh key={p.key} geometry={geo} material={mat} castShadow receiveShadow position={[toM(p.x + p.w / 2 - W / 2), toM(z0 + p.z + p.h / 2), toM(p.y + p.d / 2 - D / 2)]} scale={[toM(p.w), toM(p.h), toM(p.d)]} userData={{ part: p.tone === 'accent' ? 'accent' : 'main' }} />
+        );
+      })}
+    </>
+  );
+}
+
+function Furniture({ f, project, selected, xray, onSelect }: { f: FurnitureItem; project: Project; selected: boolean; xray: boolean; onSelect: (e: { altKey: boolean; part?: string }) => void }) {
   const env = envelope(f);
   const boxes: ColoredBox[] = useMemo(() => {
-    if (!isParametric(f)) return decorBoxes(f);
+    if (f.kind === 'library' || f.kind === 'model') return [];
+    if (isDecor(f)) return decorBoxes(f);
     const r = resolveParametric(f, project.rulePack);
     const carcass = finishById(f.materials.carcass).color;
     const shutter = finishById(f.materials.shutter).color;
@@ -30,9 +58,11 @@ function Furniture({ f, project, selected, xray, onSelect }: { f: FurnitureItem;
       rotation={[0, -(f.rotDeg * Math.PI) / 180, 0]}
       onClick={(e) => {
         e.stopPropagation();
-        onSelect();
+        onSelect({ altKey: e.nativeEvent.altKey, part: (e.object.userData as { part?: string }).part });
       }}
     >
+      {f.kind === 'library' && <LibraryParts f={f} />}
+      {f.kind === 'model' && <ModelMesh item={f} />}
       {boxes.map((b) => {
         const isFront = (b as ColoredBox & { role?: string }).role === 'shutter' || (b as ColoredBox & { role?: string }).role === 'drawer-front';
         return (
@@ -71,10 +101,14 @@ function Walls({ project, rooms }: { project: Project; rooms: DetectedRoom[] }) 
     }
     return m;
   }, [plan.walls, rooms]);
-  // A wall takes the colour of the first room it bounds.
-  const colorOf = (wallId: string) => {
-    const r = rooms.find((x) => x.wallIds.includes(wallId));
-    return WALL_COLORS.find((c) => c.id === (r?.info.wallColor ?? 'warm-white'))?.color ?? '#eee';
+  // Each face shows its own finish, else the colour of the room it faces, else that of the room behind it.
+  const faceOf = (w: (typeof plan.walls)[number], side: WallSideSign) => {
+    const own = wallFaceFinish(w, side);
+    if (own) return own;
+    const g = wallGeom(w);
+    const probe = (s: number) => wallPoint(g, g.len / 2, s * (w.thicknessUm / 2 + 50_000));
+    const r = rooms.find((x) => pointInPolygon(probe(side), x.interior)) ?? rooms.find((x) => pointInPolygon(probe(-side), x.interior)) ?? rooms.find((x) => x.wallIds.includes(w.id));
+    return r?.info.wallColor ?? 'warm-white';
   };
 
   // Cut-away: hide exterior walls whose outside face points at the camera, so rooms stay visible.
@@ -93,16 +127,14 @@ function Walls({ project, rooms }: { project: Project; rooms: DetectedRoom[] }) 
       {plan.walls.map((w) => {
         const g = wallGeom(w);
         const rotY = -Math.atan2(g.u.y, g.u.x);
-        const color = colorOf(w.id);
+        const pos = faceOf(w, 1);
+        const neg = faceOf(w, -1);
         return (
           <group key={w.id} ref={(el) => { groups.current[w.id] = el; }}>
             {wallPieces(plan, w, openings).map((pc, i) => {
               const mid = wallPoint(g, (pc.a0 + pc.a1) / 2);
               return (
-                <mesh key={i} position={[toM(mid.x), toM((pc.z0 + pc.z1) / 2), toM(mid.y)]} rotation={[0, rotY, 0]} receiveShadow castShadow>
-                  <boxGeometry args={[toM(pc.a1 - pc.a0), toM(pc.z1 - pc.z0), toM(w.thicknessUm)]} />
-                  <meshStandardMaterial color={color} roughness={0.95} />
-                </mesh>
+                <WallPiece key={i} wallId={w.id} position={[toM(mid.x), toM((pc.z0 + pc.z1) / 2), toM(mid.y)]} rotY={rotY} size={[pc.a1 - pc.a0, pc.z1 - pc.z0, w.thicknessUm]} pos={pos} neg={neg} />
               );
             })}
             {openings
@@ -126,6 +158,23 @@ function Walls({ project, rooms }: { project: Project; rooms: DetectedRoom[] }) 
   );
 }
 
+/**
+ * One wall segment. BoxGeometry material slots are +x, −x, +y, −y, +z, −z; after the rotation
+ * the local +z face is wall side +1.
+ */
+function WallPiece({ wallId, position, rotY, size, pos, neg }: { wallId: string; position: [number, number, number]; rotY: number; size: [number, number, number]; pos: string; neg: string }) {
+  const [L, H, T] = size;
+  const mats = useMemo(() => {
+    const edge = threeMaterial(pos, 'wall', { plain: true });
+    return [edge, edge, edge, edge, threeMaterial(pos, 'wall', { uMm: L / 1000, vMm: H / 1000 }), threeMaterial(neg, 'wall', { uMm: L / 1000, vMm: H / 1000 })];
+  }, [pos, neg, L, H]);
+  return (
+    <mesh position={position} rotation={[0, rotY, 0]} material={mats} receiveShadow castShadow userData={{ wallId }}>
+      <boxGeometry args={[toM(L), toM(H), toM(T)]} />
+    </mesh>
+  );
+}
+
 function Floor({ room }: { room: DetectedRoom }) {
   const shape = useMemo(() => {
     const s = new THREE.Shape();
@@ -133,11 +182,10 @@ function Floor({ room }: { room: DetectedRoom }) {
     s.closePath();
     return s;
   }, [room.interior]);
-  const color = FLOOR_FINISHES.find((x) => x.id === room.info.floorFinish)?.color ?? '#ccc';
+  const mat = threeMaterial(room.info.floorFinish, 'floor', { worldUv: true });
   return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+    <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow material={mat} userData={{ roomId: room.id }}>
       <shapeGeometry args={[shape]} />
-      <meshStandardMaterial color={color} roughness={0.8} />
     </mesh>
   );
 }
@@ -148,6 +196,13 @@ function Scene({ preset, presetNonce, xray }: { preset: Preset; presetNonce: num
   const project = useStudio((s) => s.project);
   const selection = useStudio((s) => s.selection);
   const select = useStudio((s) => s.select);
+  const tool = useStudio((s) => s.tool);
+  const dispatch = useStudio((s) => s.dispatch);
+  const paintWith = (target: PaintTarget) => {
+    const st = useStudio.getState();
+    const res = paintCommand(st.project, rooms, target, st.paint);
+    if (res) dispatch(res.cmd, res.label);
+  };
   const controls = useRef<ComponentRef<typeof OrbitControls>>(null);
   const { camera } = useThree();
   const rooms = useRooms();
@@ -188,10 +243,30 @@ function Scene({ preset, presetNonce, xray }: { preset: Preset; presetNonce: num
         const c = interiorPoint(r.interior);
         return <pointLight key={r.id} position={[toM(c.x), toM(r.info.ceilingUm) - 0.2, toM(c.y)]} intensity={1.2} distance={8} color="#ffe9c7" />;
       })}
-      <Walls project={project} rooms={rooms} />
-      <group onPointerMissed={() => select(null)}>
+      <group
+        onClick={(e) => {
+          if (tool !== 'paint') return;
+          e.stopPropagation();
+          const ud = e.object.userData as { wallId?: string; roomId?: string };
+          if (ud.roomId) paintWith({ kind: 'floor', roomId: ud.roomId });
+          else if (ud.wallId && e.face) {
+            const nz = e.face.normal.z;
+            if (Math.abs(nz) > 0.5) paintWith({ kind: 'wall', wallId: ud.wallId, side: nz > 0 ? 1 : -1 });
+          }
+        }}
+      >
+        <Walls project={project} rooms={rooms} />
+      </group>
+      <group onPointerMissed={() => tool !== 'paint' && select(null)}>
         {project.furniture.map((f) => (
-          <Furniture key={f.id} f={f} project={project} xray={xray} selected={selection?.kind === 'furniture' && selection.id === f.id} onSelect={() => select({ kind: 'furniture', id: f.id })} />
+          <Furniture
+            key={f.id}
+            f={f}
+            project={project}
+            xray={xray}
+            selected={selection?.kind === 'furniture' && selection.id === f.id}
+            onSelect={(ev) => (tool === 'paint' ? paintWith({ kind: 'furniture', id: f.id, part: ev.altKey || ev.part === 'accent' ? 'accent' : 'main' }) : select({ kind: 'furniture', id: f.id }))}
+          />
         ))}
       </group>
       <OrbitControls ref={controls} makeDefault maxPolarAngle={Math.PI / 2 - 0.03} minDistance={0.6} maxDistance={30} />

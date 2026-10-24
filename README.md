@@ -24,6 +24,13 @@ supabase/migrations Database schema, row-level security, seed
 - "Save version" stores a named version; History restores any version as one undoable step.
 - Scenes carry `schemaVersion`; `apps/web/src/editor/migrations.ts` upgrades old scenes on load.
 
+## Catalogue and materials
+
+- `packages/core/src/catalog/library.ts` — built-in catalogue (68 pieces). Each piece builds its parts from the size you give it, so every piece resizes exactly. Ids are stored in scenes; never rename one.
+- `packages/core/src/materials/library.ts` — 54 floor, wall and furniture materials with procedural patterns (planks, herringbone, tiles, marble, brick, stone, stripes, fabric). The same tile drives the plan, the 3D view and the swatches.
+- Wall faces can carry their own finish (`wall.finishes.pos/neg`); otherwise a face shows the colour of the room it faces.
+- Studio models: designers upload `.glb` files to the private `models` bucket (`<org_id>/<id>.glb` + thumbnail); rows live in `catalog_models` with org-scoped RLS.
+
 ## Access
 
 - Google sign-in through Supabase Auth. Access is invite-only: an admin invites an email on the Team page; the person gets the role on first sign-in.

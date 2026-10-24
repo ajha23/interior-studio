@@ -6,7 +6,6 @@ import {
   endpointsAt,
   envelope,
   finishById,
-  FLOOR_FINISHES,
   fmtMm,
   footprint,
   interiorPoint,
@@ -39,7 +38,10 @@ import {
   type Vec,
   type Wall,
 } from '@studio/core';
+import { libraryPrims, materialById, catalogById, wallFaceFinish, type LibraryItem } from '@studio/core';
 import { useStudio, type Selection, type Tool } from './store';
+import { patternUrl, tileMm } from '../materials/patterns';
+import { paintCommand } from './paint';
 import { severityById, useRooms, useValidation } from './hooks';
 
 const k = (v: Um) => v / 1000; // µm → drawing mm
@@ -136,6 +138,12 @@ function FurnitureShape({ project, f, selected, severity, fs }: { project: Proje
     r.modules.forEach((m, i) => {
       if (m.label === 'Hanging') details.push(ln(P(m.xUm + mm(40), frontY / 2), P(m.xUm + m.widthUm - mm(40), frontY / 2), `rod${i}`, { strokeWidth: fs * 0.1 }));
     });
+  } else if (f.kind === 'library') {
+    fill = materialById(f.materials.main).color;
+    details.push(...libraryTopView(f, P, fs));
+  } else if (f.kind === 'model') {
+    fill = '#cfc8bc';
+    details.push(ln(P(0, 0), P(env.widthUm, env.depthUm), 'x1', { strokeOpacity: 0.4 }), ln(P(env.widthUm, 0), P(0, env.depthUm), 'x2', { strokeOpacity: 0.4 }));
   } else {
     fill = f.params.color;
     if (f.kind === 'bed') {
@@ -160,7 +168,7 @@ function FurnitureShape({ project, f, selected, severity, fs }: { project: Proje
   const stroke = severity === 'error' ? 'var(--error)' : selected ? 'var(--accent)' : severity === 'warning' ? 'var(--warn)' : '#2b302d';
   return (
     <g data-fid={f.id} style={{ cursor: 'move' }}>
-      <polygon points={pts(poly)} fill={fill} fillOpacity={0.55} stroke={stroke} strokeWidth={selected ? fs * 0.2 : fs * 0.1} />
+      <polygon points={pts(poly)} fill={fill} fillOpacity={f.kind === 'library' ? 0.12 : 0.55} stroke={stroke} strokeWidth={selected ? fs * 0.2 : fs * 0.1} strokeDasharray={f.kind === 'library' && catalogById(f.ref)?.mount === 'ceiling' ? `${fs * 0.6} ${fs * 0.35}` : undefined} />
       {details}
       <text x={c.x} y={c.y - fs * 0.15} fontSize={fs * 1.05} textAnchor="middle" fill="#1f2522" fontWeight={600} pointerEvents="none" paintOrder="stroke" stroke="rgba(255,253,248,.85)" strokeWidth={fs * 0.3}>
         {f.name}
@@ -169,6 +177,43 @@ function FurnitureShape({ project, f, selected, severity, fs }: { project: Proje
         {fmtMm(env.widthUm)} × {fmtMm(env.depthUm)}
       </text>
     </g>
+  );
+}
+
+/** Top view of a catalogue piece: each part drawn from below to above so higher parts sit on top. */
+function libraryTopView(f: LibraryItem, P: (lx: Um, ly: Um) => Vec, fs: number): ReactNode[] {
+  const prims = libraryPrims(f)
+    .filter((p) => p.w * p.d > mm(30) * mm(30))
+    .sort((a, b) => a.z + a.h - (b.z + b.h));
+  return prims.map((p) => {
+    let ring: Vec[];
+    if (p.shape === 'box') ring = [P(p.x, p.y), P(p.x + p.w, p.y), P(p.x + p.w, p.y + p.d), P(p.x, p.y + p.d)];
+    else {
+      ring = [];
+      for (let i = 0; i < 20; i++) {
+        const a = (i / 20) * Math.PI * 2;
+        ring.push(P(p.x + p.w / 2 + (Math.cos(a) * p.w) / 2, p.y + p.d / 2 + (Math.sin(a) * p.d) / 2));
+      }
+    }
+    return <polygon key={p.key} points={ring.map((v) => `${v.x},${v.y}`).join(' ')} fill={p.material.color} fillOpacity={p.tone === 'glass' ? 0.25 : 0.7} stroke="#3b413e" strokeOpacity={0.55} strokeWidth={fs * 0.04} />;
+  });
+}
+
+/** SVG <pattern>s for patterned materials, sized to real-world mm. */
+export function MaterialPatterns({ ids }: { ids: string[] }) {
+  return (
+    <defs>
+      {ids.map((id) => {
+        const m = materialById(id, 'floor');
+        if (m.pattern === 'plain') return null;
+        const t = tileMm(m);
+        return (
+          <pattern key={id} id={`mat-${m.id}`} patternUnits="userSpaceOnUse" width={t} height={t}>
+            <image href={patternUrl(m.id)} width={t} height={t} preserveAspectRatio="none" />
+          </pattern>
+        );
+      })}
+    </defs>
   );
 }
 
@@ -269,12 +314,13 @@ export function PlanDrawing({
           <line x1="0" y1="0" x2="0" y2={fs * 0.9} stroke="#5c625e" strokeWidth={fs * 0.12} />
         </pattern>
       </defs>
+      <MaterialPatterns ids={[...new Set(rs.map((r) => materialById(r.info.floorFinish, 'floor').id))]} />
       {rs.map((r) => {
-        const floor = FLOOR_FINISHES.find((x) => x.id === r.info.floorFinish)?.color ?? '#eee';
+        const floor = materialById(r.info.floorFinish, 'floor');
         return (
           <g key={r.id}>
             <polygon data-room={r.id} points={pts(r.interior)} fill="var(--plan-floor)" stroke="none" />
-            <polygon points={pts(r.interior)} fill={floor} fillOpacity={selRoom?.id === r.id ? 0.35 : 0.18} stroke={selRoom?.id === r.id ? accent : 'none'} strokeWidth={fs * 0.15} pointerEvents="none" />
+            <polygon points={pts(r.interior)} fill={floor.pattern === 'plain' ? floor.color : `url(#mat-${floor.id})`} fillOpacity={selRoom?.id === r.id ? 0.6 : 0.38} stroke={selRoom?.id === r.id ? accent : 'none'} strokeWidth={fs * 0.15} pointerEvents="none" />
           </g>
         );
       })}
@@ -284,6 +330,17 @@ export function PlanDrawing({
         const isSel = selWall?.id === w.id;
         return <polygon key={w.id} data-wid={w.id} points={pts(wallBody(w, pl))} fill="url(#hatch)" stroke={isSel ? accent : sevW === 'error' ? 'var(--error)' : 'var(--plan-wall)'} strokeWidth={isSel ? fs * 0.22 : fs * 0.1} style={{ cursor: interactive ? 'pointer' : undefined }} />;
       })}
+      {pl.walls.flatMap((w) =>
+        ([1, -1] as const).map((side) => {
+          const id = wallFaceFinish(w, side);
+          if (!id) return null;
+          const g = wallGeom(w);
+          const t0 = (side * w.thicknessUm) / 2;
+          const t1 = side * (w.thicknessUm / 2 - Math.min(mm(40), w.thicknessUm / 3));
+          const q = [wallPoint(g, 0, t0), wallPoint(g, g.len, t0), wallPoint(g, g.len, t1), wallPoint(g, 0, t1)];
+          return <polygon key={`${w.id}${side}`} points={pts(q)} fill={materialById(id, 'wall').color} stroke="none" pointerEvents="none" />;
+        }),
+      )}
       {project.openings.map((o) => (
         <OpeningShape key={o.id} plan={pl} o={o} selected={selOpening?.id === o.id} fs={fs} />
       ))}
@@ -360,6 +417,7 @@ const TOOL_HINT: Record<Tool, string> = {
   room: 'Drag to draw a room (clear inside size)',
   door: 'Click a wall to place a door · click the other side of the wall to flip the swing',
   window: 'Click a wall to place a window',
+  paint: 'Click a floor, a wall face or a piece to apply the material · Alt-click a piece for its accent · Esc to stop',
 };
 
 function movePlanEnds(plan: Plan, ends: { wallId: string; end: 'a' | 'b' }[], to: Vec): Plan {
@@ -551,6 +609,26 @@ export function PlanView() {
         select({ kind: 'opening', id: o.id });
         setTool('select');
       }
+      return;
+    }
+
+    if (!readOnly && tool === 'paint') {
+      const fEl = t.closest('[data-fid]');
+      const wEl = t.closest('[data-wid]');
+      const rEl = t.closest('[data-room]');
+      const st = useStudio.getState();
+      const target = fEl
+        ? ({ kind: 'furniture', id: fEl.getAttribute('data-fid')!, part: e.altKey ? 'accent' : 'main' } as const)
+        : wEl
+          ? (() => {
+              const wall = project.plan.walls.find((x) => x.id === wEl.getAttribute('data-wid'))!;
+              return { kind: 'wall', wallId: wall.id, side: sideOf(wallGeom(wall), w) } as const;
+            })()
+          : rEl
+            ? ({ kind: 'floor', roomId: rEl.getAttribute('data-room')! } as const)
+            : null;
+      const res = target && paintCommand(project, rooms, target, st.paint);
+      if (res) dispatch(res.cmd, res.label);
       return;
     }
 

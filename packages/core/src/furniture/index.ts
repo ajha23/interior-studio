@@ -32,6 +32,10 @@ export function envelope(item: FurnitureItem): Envelope {
     const q = item.params;
     return { widthUm: q.widthUm, depthUm: q.depthUm, heightUm: q.mountHeightUm + q.heightUm + q.wallPanelHeightUm, zMinUm: q.mountHeightUm };
   }
+  if (item.kind === 'library' || item.kind === 'model') {
+    const q = item.params;
+    return { widthUm: q.widthUm, depthUm: q.depthUm, heightUm: q.elevationUm + q.heightUm, zMinUm: q.elevationUm };
+  }
   return { widthUm: p.widthUm, depthUm: p.depthUm, heightUm: p.heightUm, zMinUm: 0 };
 }
 

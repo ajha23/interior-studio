@@ -11,7 +11,7 @@ export interface Membership {
   role: OrgRoleT;
 }
 
-interface AuthState {
+export interface AuthState {
   status: 'loading' | 'signed-out' | 'signed-in';
   session: Session | null;
   memberships: Membership[];
@@ -23,7 +23,7 @@ interface AuthState {
   refreshMemberships: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthState | null>(null);
+export const AuthContext = createContext<AuthState | null>(null);
 const ACTIVE_ORG_KEY = 'studio.activeOrg';
 
 function readActiveOrg(): string | null {

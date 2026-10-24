@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
-import { FINISHES, FLOOR_FINISHES, WALL_COLORS } from '@studio/core';
+import { FINISHES, isDecor, materialById, materialsIn, type MaterialCategory } from '@studio/core';
+import { patternUrl } from '../materials/patterns';
+import { catalogName } from './CatalogPanel';
 import type { Command } from '@studio/core';
 import { uid } from '@studio/core';
 import { useStudio } from './store';
@@ -47,6 +49,28 @@ function PlanSettings() {
   );
 }
 
+/** Swatch grid for one material category; patterned materials show their tile. */
+export function MaterialPicker({ category, value, onPick, allowNone }: { category: MaterialCategory; value: string | undefined; onPick: (id: string | undefined) => void; allowNone?: string }) {
+  const list = materialsIn(category);
+  return (
+    <>
+      <div className="finish-grid">
+        {allowNone && <button className={`finish none ${!value ? 'on' : ''}`} title={allowNone} onClick={() => onPick(undefined)}>∅</button>}
+        {list.map((m) => (
+          <button
+            key={m.id}
+            className={`finish ${value === m.id ? 'on' : ''}`}
+            style={m.pattern === 'plain' ? { background: m.color } : { backgroundImage: `url(${patternUrl(m.id)})`, backgroundSize: 'cover' }}
+            title={m.name}
+            onClick={() => onPick(m.id)}
+          />
+        ))}
+      </div>
+      <div className="finish-name">{value ? materialById(value, category).name : allowNone}</div>
+    </>
+  );
+}
+
 function RoomProps({ room }: { room: DetectedRoom }) {
   const dispatch = useStudio((s) => s.dispatch);
   const plan = useStudio((s) => s.project.plan);
@@ -72,21 +96,12 @@ function RoomProps({ room }: { room: DetectedRoom }) {
       </div>
       <div className="section">
         <h3>Floor</h3>
-        <div className="finish-grid">
-          {FLOOR_FINISHES.map((f) => (
-            <button key={f.id} className={`finish ${info.floorFinish === f.id ? 'on' : ''}`} style={{ background: f.color }} title={f.name} onClick={() => set({ floorFinish: f.id }, 'Change floor')} />
-          ))}
-        </div>
-        <div className="finish-name">{FLOOR_FINISHES.find((f) => f.id === info.floorFinish)?.name}</div>
+        <MaterialPicker category="floor" value={info.floorFinish} onPick={(id) => set({ floorFinish: id }, 'Change floor')} />
       </div>
       <div className="section">
         <h3>Walls</h3>
-        <div className="finish-grid">
-          {WALL_COLORS.map((f) => (
-            <button key={f.id} className={`finish ${info.wallColor === f.id ? 'on' : ''}`} style={{ background: f.color }} title={f.name} onClick={() => set({ wallColor: f.id }, 'Change wall colour')} />
-          ))}
-        </div>
-        <div className="finish-name">{WALL_COLORS.find((f) => f.id === info.wallColor)?.name}</div>
+        <MaterialPicker category="wall" value={info.wallColor} onPick={(id) => set({ wallColor: id }, 'Change wall finish')} />
+        <div className="field-hint">Applies to every wall face in this room without its own finish. Use Materials → Paint for single faces.</div>
       </div>
       <div className="section">
         <h3>Checks</h3>
@@ -129,6 +144,13 @@ function WallProps({ w }: { w: Wall }) {
         <MmField label="Thickness" value={w.thicknessUm} min={50} max={600} onCommit={(v) => set({ thicknessUm: v }, 'Change wall thickness')} />
         <MmField label="Height" value={w.heightUm} min={1000} max={6000} onCommit={(v) => set({ heightUm: v }, 'Change wall height')} />
         <div className="field-hint">Direction {ang.toFixed(1)}° · start ({fmtMm(w.a.x)}, {fmtMm(w.a.y)})</div>
+      </div>
+      <div className="section">
+        <h3>Face finishes</h3>
+        <div className="field-hint" style={{ marginBottom: 6 }}>Right-hand face (walking start → end)</div>
+        <MaterialPicker category="wall" value={w.finishes?.pos} allowNone="Room colour" onPick={(id) => set({ finishes: { ...w.finishes, pos: id } }, 'Change wall face')} />
+        <div className="field-hint" style={{ margin: '10px 0 6px' }}>Left-hand face</div>
+        <MaterialPicker category="wall" value={w.finishes?.neg} allowNone="Room colour" onPick={(id) => set({ finishes: { ...w.finishes, neg: id } }, 'Change wall face')} />
       </div>
       <div className="section">
         <h3>Checks</h3>
@@ -302,7 +324,7 @@ function FurnitureProps({ f }: { f: FurnitureItem }) {
       <div className="section">
         <div className="prop-head">
           <strong>{f.name}</strong>
-          <span className="kind">{isParametric(f) ? `Parametric · template v${f.templateVersion}` : 'Catalogue · visual only'}</span>
+          <span className="kind">{isParametric(f) ? `Parametric · template v${f.templateVersion}` : f.kind === 'library' ? `Catalogue · ${catalogName(f.ref)}` : f.kind === 'model' ? 'Studio model' : 'Block · visual only'}</span>
         </div>
       </div>
       <div className="section">
@@ -330,7 +352,7 @@ function FurnitureProps({ f }: { f: FurnitureItem }) {
 
       <div className="section">
         <h3>Dimensions</h3>
-        <MmField label="Width" value={f.params.widthUm} min={200} max={6000} onCommit={(v) => setParams({ widthUm: v })} testId="furn-width" />
+        <MmField label="Width" value={f.params.widthUm} min={f.kind === 'library' || f.kind === 'model' ? 10 : 200} max={6000} onCommit={(v) => setParams({ widthUm: v })} testId="furn-width" />
         {f.kind === 'tvunit' ? (
           <>
             <MmField label="Console height" value={f.params.heightUm} min={150} max={1200} onCommit={(v) => setParams({ heightUm: v })} />
@@ -340,9 +362,17 @@ function FurnitureProps({ f }: { f: FurnitureItem }) {
           </>
         ) : (
           <>
-            <MmField label="Height" value={f.params.heightUm} min={100} max={4000} onCommit={(v) => setParams({ heightUm: v })} />
-            <MmField label={f.kind === 'wardrobe' ? 'Depth (incl. shutters)' : 'Depth'} value={f.params.depthUm} min={200} max={4000} onCommit={(v) => setParams({ depthUm: v })} />
+            <MmField label="Height" value={f.params.heightUm} min={f.kind === 'library' || f.kind === 'model' ? 5 : 100} max={4000} onCommit={(v) => setParams({ heightUm: v })} />
+            <MmField label={f.kind === 'wardrobe' ? 'Depth (incl. shutters)' : 'Depth'} value={f.params.depthUm} min={f.kind === 'library' || f.kind === 'model' ? 10 : 200} max={4000} onCommit={(v) => setParams({ depthUm: v })} />
           </>
+        )}
+        {(f.kind === 'library' || f.kind === 'model') && (
+          <MmField label="Height above floor" value={f.params.elevationUm} min={0} max={4000} onCommit={(v) => setParams({ elevationUm: v }, 'Change elevation')} hint="For wall- and ceiling-mounted pieces." />
+        )}
+        {f.kind === 'model' && (
+          <button className="btn" style={{ marginTop: 6 }} onClick={() => setParams({ ...f.native }, 'Reset size')}>
+            Reset to file size ({fmtMm(f.native.widthUm)} × {fmtMm(f.native.depthUm)} × {fmtMm(f.native.heightUm)})
+          </button>
         )}
         <div className="field-hint num">
           Envelope {fmtMm(env.widthUm)} × {fmtMm(env.depthUm)} × {fmtMm(env.heightUm)} mm{env.zMinUm > 0 ? `, from ${fmtMm(env.zMinUm)} above floor` : ''}
@@ -386,7 +416,16 @@ function FurnitureProps({ f }: { f: FurnitureItem }) {
           <div className="finish-name">{FINISHES.find((x) => x.id === f.materials.carcass)?.name}</div>
         </div>
       )}
-      {!isParametric(f) && (
+      {f.kind === 'library' && (
+        <div className="section">
+          <h3>Finishes</h3>
+          <div className="field-hint" style={{ marginBottom: 6 }}>Main</div>
+          <MaterialPicker category="surface" value={f.materials.main} onPick={(id) => id && update({ materials: { ...f.materials, main: id } }, 'Change finish')} />
+          <div className="field-hint" style={{ margin: '10px 0 6px' }}>Accent (legs, frame, handles)</div>
+          <MaterialPicker category="surface" value={f.materials.accent} onPick={(id) => id && update({ materials: { ...f.materials, accent: id } }, 'Change finish')} />
+        </div>
+      )}
+      {isDecor(f) && (
         <div className="section">
           <h3>Colour</h3>
           <div className="finish-grid">

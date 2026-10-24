@@ -1,6 +1,6 @@
 import type { Um } from './units';
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 /** Where a dimension came from — an estimate must never be presented as a verified measurement. */
 export type Provenance = 'site_measured' | 'drawing' | 'estimate';
@@ -21,6 +21,11 @@ export interface Wall {
   b: Pt;
   thicknessUm: Um;
   heightUm: Um;
+  /**
+   * Per-face finish (material ids). `pos` is side +1, `neg` side −1. Missing faces use the colour
+   * of the room they face.
+   */
+  finishes?: { pos?: string; neg?: string };
 }
 
 /**
@@ -65,7 +70,7 @@ export interface Plan {
 
 export type TemplateKey = 'wardrobe' | 'tvunit';
 export type DecorKind = 'bed' | 'sofa' | 'table' | 'side-table' | 'box';
-export type FurnitureKind = TemplateKey | DecorKind;
+export type FurnitureKind = TemplateKey | DecorKind | 'library' | 'model';
 
 export type WardrobeModuleType = 'shelves' | 'hanging' | 'drawers';
 
@@ -127,7 +132,35 @@ export interface DecorItem extends FurnitureBase {
   params: DecorParams;
 }
 
-export type FurnitureItem = WardrobeItem | TvUnitItem | DecorItem;
+/** Size of a catalogue or uploaded piece; `elevationUm` lifts wall- and ceiling-mounted items off the floor. */
+export interface LibraryParams {
+  widthUm: Um;
+  depthUm: Um;
+  heightUm: Um;
+  elevationUm: Um;
+}
+
+/** A piece from the built-in catalogue, generated from its size (see catalog/library.ts). */
+export interface LibraryItem extends FurnitureBase {
+  kind: 'library';
+  ref: string;
+  params: LibraryParams;
+  materials: { main: string; accent: string };
+}
+
+/** A studio-uploaded 3D model (GLB), scaled to `params` from its native size. */
+export interface ModelItem extends FurnitureBase {
+  kind: 'model';
+  modelId: string;
+  params: LibraryParams;
+  native: { widthUm: Um; depthUm: Um; heightUm: Um };
+}
+
+export type FurnitureItem = WardrobeItem | TvUnitItem | DecorItem | LibraryItem | ModelItem;
+
+export function isDecor(f: FurnitureItem): f is DecorItem {
+  return f.kind === 'bed' || f.kind === 'sofa' || f.kind === 'table' || f.kind === 'side-table' || f.kind === 'box';
+}
 
 export function isParametric(f: FurnitureItem): f is WardrobeItem | TvUnitItem {
   return f.kind === 'wardrobe' || f.kind === 'tvunit';

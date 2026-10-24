@@ -230,3 +230,31 @@ table.sched td.r, table.sched th.r { text-align: right; }
 .editor-root .plan-svg.tool-wall, .editor-root .plan-svg.tool-room { cursor: crosshair; }
 .editor-root .plan-svg.tool-door, .editor-root .plan-svg.tool-window { cursor: copy; }
 .editor-root .add-btn.on { border-color: var(--accent); background: var(--accent); color: #fff; }
+
+/* Phase 1b — left tabs, catalogue, materials */
+.editor-root .left-tabs { position: sticky; top: 0; z-index: 2; display: grid; grid-template-columns: repeat(3, 1fr); background: var(--panel); border-bottom: 1px solid var(--line); }
+.editor-root .left-tabs button { height: 36px; border: 0; background: none; font: inherit; font-size: 12px; font-weight: 500; color: var(--ink-2); cursor: pointer; border-bottom: 2px solid transparent; }
+.editor-root .left-tabs button.on { color: var(--accent); border-bottom-color: var(--accent); }
+.editor-root .left-tabs button:focus-visible { outline: 2px solid var(--accent-2); outline-offset: -2px; }
+.editor-root .input { width: 100%; height: 30px; padding: 0 8px; margin-bottom: 8px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); font: inherit; font-size: 12px; color: var(--ink); }
+.editor-root .input:focus { outline: none; border-color: var(--accent-2); box-shadow: 0 0 0 2px var(--accent-tint); }
+.editor-root .chips { margin-bottom: 6px; }
+.editor-root .cat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+.editor-root .cat-card-wrap { position: relative; display: grid; }
+.editor-root .cat-card { display: grid; grid-template-rows: 78px auto auto; gap: 2px; padding: 6px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); cursor: pointer; text-align: left; font: inherit; min-width: 0; }
+.editor-root .cat-card:hover:not(:disabled) { border-color: var(--accent-2); background: var(--accent-tint); }
+.editor-root .cat-card:disabled { cursor: default; opacity: .7; }
+.editor-root .cat-card .iso { width: 100%; height: 78px; object-fit: contain; }
+.editor-root .cat-card .iso.placeholder { display: grid; place-items: center; background: var(--paper); border-radius: 4px; color: var(--ink-2); font-size: 12px; font-weight: 600; }
+.editor-root .cat-name { font-size: 11.5px; line-height: 1.25; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.editor-root .cat-size { font-size: 10px; color: var(--ink-2); }
+.editor-root .cat-del { position: absolute; top: 4px; right: 4px; width: 20px; height: 20px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; font-size: 13px; line-height: 1; color: var(--ink-2); }
+.editor-root .cat-del:hover { color: var(--error); border-color: var(--error); }
+.editor-root .mat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.editor-root .mat { display: grid; gap: 4px; padding: 0; border: 0; background: none; cursor: pointer; text-align: left; font: inherit; }
+.editor-root .mat-swatch { aspect-ratio: 1; border-radius: 6px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.12); border: 2px solid transparent; }
+.editor-root .mat.on .mat-swatch { border-color: var(--accent); }
+.editor-root .mat:disabled { cursor: default; }
+.editor-root .mat-name { font-size: 10.5px; line-height: 1.2; color: var(--ink-2); }
+.editor-root .finish.none { display: grid; place-items: center; background: var(--paper); font-size: 14px; color: var(--ink-2); }
+.editor-root .finish-grid { grid-template-columns: repeat(6, 1fr); }

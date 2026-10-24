@@ -78,7 +78,7 @@ export function validateProject(p: ProjectCore, rooms: DetectedRoom[] = detectRo
       const where = wallIndexLabel(plan, o.wallId);
       if (o.kind === 'door') {
         const zone = doorSwingZone(plan, o);
-        if (zone && penetration(fps[i], zone) > 0) push({ severity: 'warning', code: 'DOOR_SWING', message: `${f.name} sits in the swing of the door on ${where}.`, itemIds: [f.id, o.id] });
+        if (zone && env.heightUm > mm(30) && penetration(fps[i], zone) > 0) push({ severity: 'warning', code: 'DOOR_SWING', message: `${f.name} sits in the swing of the door on ${where}.`, itemIds: [f.id, o.id] });
       } else if (env.heightUm > o.sillUm && env.zMinUm < o.sillUm + o.heightUm && windowStrips(plan, o).some((z) => penetration(fps[i], z) > 0)) {
         push({ severity: 'warning', code: 'WINDOW_BLOCKED', message: `${f.name} blocks part of the window on ${where}.`, itemIds: [f.id, o.id] });
       }
@@ -91,7 +91,9 @@ export function validateProject(p: ProjectCore, rooms: DetectedRoom[] = detectRo
       const b = furniture[j];
       const ea = envelope(a);
       const eb = envelope(b);
-      const vertical = ea.zMinUm < eb.heightUm && eb.zMinUm < ea.heightUm;
+      // Rugs and other flat floor coverings sit under furniture by design.
+      const flat = (e: typeof ea) => e.zMinUm === 0 && e.heightUm <= mm(30);
+      const vertical = ea.zMinUm < eb.heightUm && eb.zMinUm < ea.heightUm && !flat(ea) && !flat(eb);
       const pen = penetration(fps[i], fps[j]);
       if (vertical && pen > 0) push({ severity: 'error', code: 'OVERLAP', message: `${a.name} and ${b.name} overlap by ${fmtMm(pen)} mm.`, itemIds: [a.id, b.id] });
     }
@@ -105,7 +107,7 @@ export function validateProject(p: ProjectCore, rooms: DetectedRoom[] = detectRo
     const zone = frontZone(f, shutter.widthUm);
     furniture.forEach((g) => {
       if (g.id === f.id) return;
-      if (penetration(zone, footprint(g)) > 0 && envelope(g).zMinUm < f.params.heightUm) push({ severity: 'warning', code: 'SHUTTER_CLEARANCE', message: `${g.name} is within ${fmtMm(shutter.widthUm)} mm of ${f.name} — shutters can't open fully.`, itemIds: [f.id, g.id] });
+      if (penetration(zone, footprint(g)) > 0 && envelope(g).zMinUm < f.params.heightUm && envelope(g).heightUm > mm(30)) push({ severity: 'warning', code: 'SHUTTER_CLEARANCE', message: `${g.name} is within ${fmtMm(shutter.widthUm)} mm of ${f.name} — shutters can't open fully.`, itemIds: [f.id, g.id] });
     });
     const home = homes[i];
     const short = home ? outsideDistance(zone, home.interior) : 0;
