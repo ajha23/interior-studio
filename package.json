@@ -1,0 +1,25 @@
+{
+  "name": "interior-studio",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @studio/web",
+    "build": "npm run build -w @studio/web",
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "check": "npm run typecheck && npm run test && npm run build"
+  },
+  "devDependencies": {
+    "fast-check": "4.10.2",
+    "typescript": "5.9.3",
+    "vitest": "5.0.5"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
