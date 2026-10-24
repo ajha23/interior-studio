@@ -4,6 +4,8 @@ import { useDeleteRender, useRenders, useSaveRender, type SavedRender } from '..
 import { errorMessage } from '../lib/supabase';
 import { relativeTime } from '../ui/format';
 import { liveView } from '../render/live';
+import { cloudRenderAvailable } from '../render/cloud';
+import { useAuth } from '../auth/AuthProvider';
 import { useStudio } from './store';
 import { useRooms } from './hooks';
 import { planBounds } from './PlanView';
@@ -23,7 +25,19 @@ const PANOS = [
 ] as const;
 const PRESET_ORDER: LightingPreset[] = ['daylight', 'golden', 'overcast', 'evening', 'night'];
 
-type Job = { stage: 'preparing' | 'tracing'; fraction: number; started: number } | null;
+type Stage = 'preparing' | 'tracing' | 'uploading' | 'starting' | 'rendering' | 'denoising';
+type Job = { stage: Stage; fraction: number; started: number; cloud: boolean } | null;
+
+const STAGE_LABEL: Record<Stage, string> = {
+  preparing: 'Preparing scene…',
+  tracing: 'Tracing light',
+  uploading: 'Uploading scene…',
+  starting: 'Starting the render server…',
+  rendering: 'Rendering in Cycles',
+  denoising: 'Denoising…',
+};
+/** Cycles with adaptive sampling and denoising needs about half the browser tracer's samples. */
+const cyclesSamples = (spp: number) => Math.max(32, Math.round(spp / 2));
 
 export function RendersPanel({ projectId, onClose }: { projectId: string; onClose: () => void }) {
   const renders = useRenders(projectId);
@@ -48,6 +62,8 @@ export function RendersPanel({ projectId, onClose }: { projectId: string; onClos
   const [preview, setPreview] = useState<{ url: string; kind: 'still' | 'panorama' } | null>(null);
   const [viewing, setViewing] = useState<SavedRender | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [engine, setEngine] = useState<'browser' | 'cycles'>(cloudRenderAvailable ? 'cycles' : 'browser');
+  const { activeOrg } = useAuth();
   const abort = useRef<AbortController | null>(null);
   const has3d = view === 'split' || view === '3d';
 
@@ -86,9 +102,9 @@ export function RendersPanel({ projectId, onClose }: { projectId: string; onClos
     setPreview(null);
     const ctrl = new AbortController();
     abort.current = ctrl;
-    setJob({ stage: 'preparing', fraction: 0, started: performance.now() });
+    const cloud = engine === 'cycles' && cloudRenderAvailable && Boolean(activeOrg);
+    setJob({ stage: cloud ? 'uploading' : 'preparing', fraction: 0, started: performance.now(), cloud });
     try {
-      const { renderPathTraced } = await import('../render/pathtrace');
       const lights = rooms.map((r) => {
         const c = interiorPoint(r.interior);
         const b = bbox(r.interior);
@@ -97,27 +113,29 @@ export function RendersPanel({ projectId, onClose }: { projectId: string; onClos
       const pb = planBounds(project.plan);
       const eye = room ? interiorPoint(room.interior) : null;
       const big = p.w * p.h > 4_000_000;
-      const blob = await renderPathTraced(live, {
+      const common = {
         width: p.w,
         height: p.h,
-        samples: p.spp,
         rooms: lights,
         lighting,
         centre: { x: toM((pb.minX + pb.maxX) / 2), z: toM((pb.minY + pb.maxY) / 2) },
         panorama: mode === 'panorama' && eye ? { x: toM(eye.x), y: eyeMm / 1000, z: toM(eye.y) } : undefined,
-        format: big || mode === 'panorama' ? 'jpeg' : 'png',
+        format: (big || mode === 'panorama' ? 'jpeg' : 'png') as 'jpeg' | 'png',
         ceilings: mode === 'panorama' ? rooms.map((r) => ({ poly: r.interior.map((v) => ({ x: toM(v.x), z: toM(v.y) })), height: toM(r.info.ceilingUm) })) : undefined,
         signal: ctrl.signal,
-        onProgress: (stage, fraction) => setJob((j) => (j ? { ...j, stage, fraction } : j)),
-      });
+      };
+      const samples = cloud ? cyclesSamples(p.spp) : p.spp;
+      const blob = cloud
+        ? await (await import('../render/cloud')).renderInCloud(live, { ...common, samples, orgId: activeOrg!.orgId, onProgress: (stage, fraction) => setJob((j) => (j ? { ...j, stage, fraction } : j)) })
+        : await (await import('../render/pathtrace')).renderPathTraced(live, { ...common, samples, onProgress: (stage, fraction) => setJob((j) => (j ? { ...j, stage, fraction } : j)) });
       setPreview({ url: URL.createObjectURL(blob), kind: mode });
       if (!readOnly) {
         const defaultCaption = mode === 'panorama' && room ? `${room.info.name} — 360°` : '';
-        await save.mutateAsync({ blob, width: p.w, height: p.h, samples: p.spp, mood: lighting.preset, kind: mode, caption: caption.trim() || defaultCaption, versionNo });
+        await save.mutateAsync({ blob, width: p.w, height: p.h, samples, mood: lighting.preset, kind: mode, caption: caption.trim() || defaultCaption, versionNo, engine: cloud ? 'cycles' : 'browser' });
       }
       setCaption('');
     } catch (e) {
-      if ((e as Error).name !== 'AbortError') setError(`Render failed: ${errorMessage(e)}. Your browser may not support GPU path tracing (WebGL 2 with float textures).`);
+      if ((e as Error).name !== 'AbortError') setError(cloud ? `Cloud render failed: ${errorMessage(e)}` : `Render failed: ${errorMessage(e)}. Your browser may not support GPU path tracing (WebGL 2 with float textures).`);
     } finally {
       setJob(null);
       abort.current = null;
@@ -125,7 +143,7 @@ export function RendersPanel({ projectId, onClose }: { projectId: string; onClos
   };
 
   const elapsed = job ? Math.round((performance.now() - job.started) / 1000) : 0;
-  const eta = job && job.stage === 'tracing' && job.fraction > 0.03 ? Math.round((elapsed / job.fraction) * (1 - job.fraction)) : null;
+  const eta = job && (job.stage === 'tracing' || job.stage === 'rendering') && job.fraction > 0.03 ? Math.round((elapsed / job.fraction) * (1 - job.fraction)) : null;
   const presets = mode === 'still' ? STILLS : PANOS;
   const chosen = mode === 'still' ? still : pano;
 
@@ -145,6 +163,12 @@ export function RendersPanel({ projectId, onClose }: { projectId: string; onClos
           <button role="radio" aria-checked={mode === 'still'} className={`chip ${mode === 'still' ? 'on' : ''}`} onClick={() => setMode('still')} disabled={Boolean(job)}>Still image</button>
           <button role="radio" aria-checked={mode === 'panorama'} className={`chip ${mode === 'panorama' ? 'on' : ''}`} onClick={() => setMode('panorama')} disabled={Boolean(job)}>360° panorama</button>
         </div>
+        {cloudRenderAvailable && (
+          <div className="chips" role="radiogroup" aria-label="Renderer">
+            <button role="radio" aria-checked={engine === 'cycles'} className={`chip ${engine === 'cycles' ? 'on' : ''}`} onClick={() => setEngine('cycles')} disabled={Boolean(job)} title="Blender Cycles on the studio's render server: best quality, works on any laptop">Cloud · Blender Cycles</button>
+            <button role="radio" aria-checked={engine === 'browser'} className={`chip ${engine === 'browser' ? 'on' : ''}`} onClick={() => setEngine('browser')} disabled={Boolean(job)} title="Path tracing on this computer's graphics card">This computer</button>
+          </div>
+        )}
         <div className="render-presets" role="radiogroup" aria-label="Quality">
           {presets.map((p) => (
             <button
@@ -186,11 +210,12 @@ export function RendersPanel({ projectId, onClose }: { projectId: string; onClos
         {!readOnly && <input className="input" placeholder="Caption (optional), e.g. Living room — option B" value={caption} maxLength={200} onChange={(e) => setCaption(e.target.value)} disabled={Boolean(job)} />}
         {job ? (
           <div className="render-progress" aria-live="polite">
-            <div className="bar"><span style={{ width: `${Math.round((job.stage === 'preparing' ? job.fraction * 0.1 : 0.1 + job.fraction * 0.9) * 100)}%` }} /></div>
+            <div className={`bar ${job.stage === 'starting' ? 'indeterminate' : ''}`}><span style={{ width: `${Math.round((job.stage === 'tracing' || job.stage === 'rendering' ? 0.1 + job.fraction * 0.85 : job.stage === 'denoising' ? 0.97 : job.fraction * 0.1) * 100)}%` }} /></div>
             <div className="render-status">
-              <span>{job.stage === 'preparing' ? 'Preparing scene…' : `Tracing light · ${Math.round(job.fraction * 100)}%`}</span>
+              <span>{job.stage === 'tracing' || job.stage === 'rendering' ? `${STAGE_LABEL[job.stage]} · ${Math.round(job.fraction * 100)}%` : STAGE_LABEL[job.stage]}</span>
               <span className="num">{elapsed}s{eta !== null ? ` · ~${eta}s left` : ''}</span>
             </div>
+            {job.cloud && <span className="render-hint">Rendering on the studio’s server — keep designing, but keep this tab open.</span>}
             <button className="btn" onClick={() => abort.current?.abort()}>Cancel</button>
           </div>
         ) : (
@@ -239,12 +264,13 @@ function RenderCard({ r, canDelete, onDelete, onOpen }: { r: SavedRender; canDel
         pano ? (
           <button className="render-thumb" onClick={onOpen} title="Look around">
             <img src={r.url} alt={r.caption || '360° panorama'} loading="lazy" style={{ aspectRatio: '2 / 1' }} />
-            <span className="pano-badge">360°</span>
+            <span className="pano-badge">{r.engine === 'cycles' ? '360° · Cycles' : '360°'}</span>
           </button>
         ) : (
           <a href={r.url} target="_blank" rel="noreferrer" title="Open full size" className="render-thumb">
             <img src={r.url} alt={r.caption || 'Render'} loading="lazy" style={{ aspectRatio: `${r.width} / ${r.height}` }} />
             {r.kind === 'ai' && <span className="pano-badge">AI</span>}
+            {r.engine === 'cycles' && <span className="pano-badge">Cycles</span>}
           </a>
         )
       ) : (

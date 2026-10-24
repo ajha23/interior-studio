@@ -35,6 +35,7 @@ supabase/migrations Database schema, row-level security, seed
 
 - Edge functions `ai-image` (Gemini image model) and `ai-model` (Gemini text model → furniture *recipe* JSON: shaped parts, mm sizes, studio material ids) run with the studio's credit pool (`ai_credit_ledger`, monthly allowance in `ai_settings`, atomic debit via `ai_debit`, refunds on failure).
 - Secrets (set in Supabase → Edge Functions → Secrets; never in the app): `GEMINI_API_KEY` (the only provider key). Optional overrides: `GEMINI_IMAGE_MODEL` (default `gemini-3.1-flash-image`), `GEMINI_TEXT_MODEL` (default `gemini-3.6-flash`, falls back to `gemini-2.5-flash`).
+- Cloud renders: `workers/blender` (Blender Cycles on Cloud Run, Mumbai) — see its README. The Renders panel shows "Cloud · Blender Cycles" when `VITE_BLENDER_WORKER_URL` is set; renders carry `engine` = browser | cycles | ai.
 - AI 3D models: the recipe format lives in `packages/core/src/recipe` (`sanitizeRecipe`, `resizeRecipe`); the browser builds it with three.js (`apps/web/src/recipe/build.ts`), previews it, lets the designer resize/refine, then exports GLB into Studio models and keeps the recipe in `catalog_models.recipe`. The same format is meant to be built by a future Blender worker.
 - AI images land in the project's render gallery (`renders.kind = 'ai'`); AI models are imported into Studio models (`source_format = 'ai'`), scaled to the size the designer gives.
 

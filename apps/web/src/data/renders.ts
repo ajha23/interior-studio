@@ -12,6 +12,7 @@ export interface SavedRender {
   samples: number;
   mood: LightingPreset;
   kind: 'still' | 'panorama' | 'ai';
+  engine: 'browser' | 'cycles' | 'ai';
   caption: string;
   versionNo: number;
   createdAt: string;
@@ -37,6 +38,7 @@ export function useRenders(projectId: string) {
         samples: r.samples,
         mood: (r.mood in LIGHTING_PRESETS ? r.mood : 'daylight') as LightingPreset,
         kind: r.kind === 'panorama' ? 'panorama' : r.kind === 'ai' ? 'ai' : 'still',
+        engine: r.engine === 'cycles' ? 'cycles' : r.engine === 'ai' ? 'ai' : 'browser',
         caption: r.caption,
         versionNo: r.version_no,
         createdAt: r.created_at,
@@ -49,7 +51,7 @@ export function useSaveRender(projectId: string) {
   const { activeOrg } = useAuth();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (r: { blob: Blob; width: number; height: number; samples: number; mood: LightingPreset; kind: 'still' | 'panorama'; caption: string; versionNo: number }) => {
+    mutationFn: async (r: { blob: Blob; width: number; height: number; samples: number; mood: LightingPreset; kind: 'still' | 'panorama'; caption: string; versionNo: number; engine?: 'browser' | 'cycles' }) => {
       if (!activeOrg) throw new Error('No studio selected.');
       const id = crypto.randomUUID();
       const jpeg = r.blob.type === 'image/jpeg';
@@ -67,6 +69,7 @@ export function useSaveRender(projectId: string) {
         samples: r.samples,
         mood: r.mood,
         kind: r.kind,
+        engine: r.engine ?? 'browser',
         caption: r.caption.slice(0, 200),
       });
       if (error) {

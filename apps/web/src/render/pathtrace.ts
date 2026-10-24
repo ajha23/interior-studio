@@ -127,6 +127,49 @@ function isCutawayWall(o: THREE.Object3D): boolean {
   return o.children.some((c) => (c.userData as { wallId?: string }).wallId !== undefined);
 }
 
+/**
+ * The renderable part of the live scene: visible single-material meshes, glass made transmissive,
+ * plus ceilings for panoramas. Shared by the browser path tracer and cloud (Blender) renders.
+ */
+export function prepareRenderScene(src: THREE.Scene, opts: Pick<RenderOptions, 'panorama' | 'ceilings'>): THREE.Scene {
+  const scene = renderableCopy(src, Boolean(opts.panorama));
+  // The editor shows rooms open-topped; a panorama from inside needs a ceiling overhead.
+  const ceilingMat = new THREE.MeshStandardMaterial({ color: '#f4f1ea', roughness: 0.9, side: THREE.DoubleSide });
+  for (const c of opts.ceilings ?? []) {
+    const shape = new THREE.Shape(c.poly.map((p) => new THREE.Vector2(p.x, -p.z)));
+    const mesh = new THREE.Mesh(new THREE.ShapeGeometry(shape), ceilingMat);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.position.y = c.height;
+    mesh.updateMatrixWorld(true);
+    scene.add(mesh);
+  }
+  return scene;
+}
+
+export interface FixtureLight {
+  x: number;
+  y: number;
+  z: number;
+  color: string;
+  intensity: number;
+  /** Cut-off distance in metres (0 = none). */
+  distance: number;
+}
+
+/** Light fittings switched on in the editor, as plain numbers (world metres). */
+export function lightRig(src: THREE.Scene, opts: Pick<RenderOptions, 'lighting'>): { fixtures: FixtureLight[] } {
+  const fixtures: FixtureLight[] = [];
+  if (!opts.lighting.fixturesOn) return { fixtures };
+  const p = new THREE.Vector3();
+  src.traverse((o) => {
+    const l = o as THREE.PointLight;
+    if (!l.isPointLight || !(l.userData as { fixture?: boolean }).fixture) return;
+    l.getWorldPosition(p);
+    fixtures.push({ x: p.x, y: p.y, z: p.z, color: `#${l.color.getHexString()}`, intensity: l.intensity, distance: l.distance });
+  });
+  return { fixtures };
+}
+
 const nextFrame = () => new Promise<void>((r) => setTimeout(r, 0));
 
 /**
@@ -146,33 +189,18 @@ export async function renderPathTraced(source: { scene: THREE.Scene; camera: THR
   renderer.toneMappingExposure = spec.exposure * Math.pow(2, opts.lighting.exposure);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
-  const scene = renderableCopy(source.scene, Boolean(opts.panorama));
+  const scene = prepareRenderScene(source.scene, opts);
   const sky = skyTexture(spec);
   scene.environment = sky;
   // Panoramas look out of the windows at the sky; stills keep a plain studio backdrop.
   scene.background = opts.panorama ? sky : new THREE.Color(spec.preview.background[1]);
   scene.environmentIntensity = 1;
-  // The editor shows rooms open-topped; a panorama from inside needs a ceiling overhead.
-  const ceilingMat = new THREE.MeshStandardMaterial({ color: '#f4f1ea', roughness: 0.9, side: THREE.DoubleSide });
-  for (const c of opts.ceilings ?? []) {
-    const shape = new THREE.Shape(c.poly.map((p) => new THREE.Vector2(p.x, -p.z)));
-    const mesh = new THREE.Mesh(new THREE.ShapeGeometry(shape), ceilingMat);
-    mesh.rotation.x = -Math.PI / 2;
-    mesh.position.y = c.height;
-    mesh.updateMatrixWorld(true);
-    scene.add(mesh);
+  const rig = lightRig(source.scene, opts);
+  for (const f of rig.fixtures) {
+    const light = new THREE.PointLight(f.color, f.intensity * 1.4, f.distance, 2);
+    light.position.set(f.x, f.y, f.z);
+    scene.add(light);
   }
-  // Light fittings switched on in the editor carry over as real lights (their shades are emissive).
-  if (opts.lighting.fixturesOn) {
-    source.scene.traverse((o) => {
-      const l = o as THREE.PointLight;
-      if (!l.isPointLight || !(l.userData as { fixture?: boolean }).fixture) return;
-      const copy = new THREE.PointLight(l.color, l.intensity * 1.4, l.distance, 2);
-      l.getWorldPosition(copy.position);
-      scene.add(copy);
-    });
-  }
-
   // Soft ceiling panels per room stand in for the fittings a designer would specify.
   for (const r of opts.rooms) {
     const w = Math.max(0.4, Math.min(1.4, r.w * 0.35));
