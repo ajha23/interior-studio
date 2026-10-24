@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
 
   const { data: link } = await db
     .from('share_links')
-    .select('id, project_id, org_id, version_id, label, show_renders, show_plan, expires_at, revoked_at, view_count')
+    .select('id, project_id, org_id, version_id, label, show_renders, show_plan, allow_comments, expires_at, revoked_at, view_count')
     .eq('token', token)
     .maybeSingle();
   // Same answer for unknown, revoked and expired links: don't reveal which tokens exist.
@@ -74,6 +74,21 @@ Deno.serve(async (req) => {
     }
   }
 
+  // Threads this link's visitors started, with every reply (the team's included).
+  let comments: unknown[] = [];
+  if (link.allow_comments) {
+    const { data: roots } = await db.from('comments').select('id').eq('share_link_id', link.id).is('parent_id', null).limit(200);
+    const ids = (roots ?? []).map((r) => r.id);
+    if (ids.length) {
+      const { data: rows } = await db
+        .from('comments')
+        .select('id, parent_id, anchor, body, source, author_name, created_at, resolved_at')
+        .or(`id.in.(${ids.join(',')}),parent_id.in.(${ids.join(',')})`)
+        .order('created_at');
+      comments = rows ?? [];
+    }
+  }
+
   await db.from('share_links').update({ view_count: link.view_count + 1, last_viewed_at: new Date().toISOString() }).eq('id', link.id);
 
   return json({
@@ -84,6 +99,8 @@ Deno.serve(async (req) => {
     schemaVersion: version.schema_version,
     scene,
     showPlan: link.show_plan,
+    allowComments: link.allow_comments,
+    comments,
     renders,
     models,
   });

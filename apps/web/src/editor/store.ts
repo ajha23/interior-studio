@@ -17,7 +17,17 @@ const DRAFT_PREFIX = 'studio.draft.';
 
 export type Selection = { kind: 'furniture' | 'opening' | 'wall' | 'room'; id: string } | null;
 /** Plan tools. Doors and windows are placed by clicking a wall. */
-export type Tool = 'select' | 'wall' | 'room' | 'door' | 'window' | 'paint';
+export type Tool = 'select' | 'wall' | 'room' | 'door' | 'window' | 'paint' | 'comment';
+
+export type CommentAnchorDraft = { kind: 'point'; x: number; y: number } | { kind: 'item'; itemId: string };
+/** Comment markers shown in the plan (filled in by the editor page from the comments query). */
+export interface CommentPin {
+  id: string;
+  n: number;
+  x: number;
+  y: number;
+  resolved: boolean;
+}
 export type ViewMode = 'split' | 'plan' | '3d' | 'docs';
 export type SaveState = 'saved' | 'dirty' | 'saving' | 'error';
 
@@ -43,6 +53,13 @@ interface StudioState {
   tool: Tool;
   /** Material id the Paint tool applies. */
   paint: string;
+  /** Where a new comment thread will point, set by the Comment tool. */
+  commentAnchor: CommentAnchorDraft | null;
+  commentPins: CommentPin[];
+  openComments: number;
+  focusedComment: string | null;
+  /** A side panel the editor should open (the page owns which panel is open). */
+  panelRequest: { panel: string; n: number } | null;
   readOnly: boolean;
   /** Public share view: read-only, no validation markers. */
   clientView: boolean;
@@ -61,6 +78,10 @@ interface StudioState {
   setTool: (t: Tool) => void;
   /** Pick a material and switch to the Paint tool. */
   setPaint: (materialId: string) => void;
+  startComment: (anchor: CommentAnchorDraft | null) => void;
+  setCommentPins: (pins: CommentPin[], openComments?: number) => void;
+  focusComment: (id: string | null) => void;
+  requestPanel: (panel: string) => void;
   /** Replace the whole scene (restore an old version, import a file) as one undoable step. */
   replaceScene: (next: Project, label: string) => void;
   saveNow: (kind?: 'autosave' | 'manual', message?: string) => Promise<void>;
@@ -157,6 +178,11 @@ export const useStudio = create<StudioState>((set, get) => {
     view: 'split',
     tool: 'select',
     paint: 'oak-floor',
+    commentAnchor: null,
+    commentPins: [],
+    openComments: 0,
+    focusedComment: null,
+    panelRequest: null,
     readOnly: false,
     clientView: false,
     saveState: 'saved',
@@ -216,8 +242,13 @@ export const useStudio = create<StudioState>((set, get) => {
 
     select: (selection) => set({ selection }),
     setView: (view) => set({ view }),
-    setTool: (tool) => set({ tool: get().readOnly ? 'select' : tool }),
+    // Viewers may still comment.
+    setTool: (tool) => set({ tool: get().readOnly && tool !== 'comment' && tool !== 'select' ? 'select' : tool }),
     setPaint: (paint) => set({ paint, tool: get().readOnly ? 'select' : 'paint' }),
+    startComment: (commentAnchor) => set((s) => ({ commentAnchor, tool: 'select', panelRequest: { panel: 'comments', n: (s.panelRequest?.n ?? 0) + 1 } })),
+    setCommentPins: (commentPins, openComments = 0) => set({ commentPins, openComments }),
+    focusComment: (focusedComment) => set({ focusedComment }),
+    requestPanel: (panel) => set((s) => ({ panelRequest: { panel, n: (s.panelRequest?.n ?? 0) + 1 } })),
 
     replaceScene: (incoming, label) => {
       if (get().readOnly) return;

@@ -24,6 +24,57 @@ export type Database = {
   __InternalSupabase: { PostgrestVersion: '14.18' };
   public: {
     Tables: {
+      comments: {
+        Row: {
+          id: string
+          org_id: string
+          project_id: string
+          parent_id: string | null
+          anchor: Json | null
+          body: string
+          source: string
+          author_id: string | null
+          author_name: string
+          share_link_id: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          created_at: string
+          edited_at: string | null
+        }
+        Insert: {
+          id?: string
+          org_id: string
+          project_id: string
+          parent_id?: string | null
+          anchor?: Json | null
+          body: string
+          source?: string
+          author_id?: string | null
+          author_name?: string
+          share_link_id?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          created_at?: string
+          edited_at?: string | null
+        }
+        Update: {
+          id?: string
+          org_id?: string
+          project_id?: string
+          parent_id?: string | null
+          anchor?: Json | null
+          body?: string
+          source?: string
+          author_id?: string | null
+          author_name?: string
+          share_link_id?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          created_at?: string
+          edited_at?: string | null
+        }
+        Relationships: []
+      }
       ai_jobs: {
         Row: {
           id: string
@@ -233,6 +284,7 @@ export type Database = {
       }
       share_links: {
         Row: {
+          allow_comments: boolean
           created_at: string
           created_by: string
           expires_at: string | null
@@ -249,6 +301,7 @@ export type Database = {
           view_count: number
         }
         Insert: {
+          allow_comments?: boolean
           created_at?: string
           created_by?: string
           expires_at?: string | null
@@ -265,6 +318,7 @@ export type Database = {
           view_count?: number
         }
         Update: {
+          allow_comments?: boolean
           created_at?: string
           created_by?: string
           expires_at?: string | null

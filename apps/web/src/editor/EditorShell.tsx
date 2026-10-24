@@ -10,7 +10,7 @@ import { CatalogPanel, type LeftTab } from './CatalogPanel';
 
 const View3D = lazy(() => import('./View3D').then((m) => ({ default: m.View3D })));
 
-export type DrawerPanel = 'history' | 'renders' | 'share' | 'ai';
+export type DrawerPanel = 'history' | 'renders' | 'share' | 'ai' | 'comments';
 
 export interface EditorChrome {
   onBack: () => void;
@@ -48,6 +48,7 @@ function TopBar({ chrome }: { chrome: EditorChrome }) {
   const saveNow = useStudio((s) => s.saveNow);
   const replaceScene = useStudio((s) => s.replaceScene);
   const saveState = useStudio((s) => s.saveState);
+  const openComments = useStudio((s) => s.openComments);
   const [name, setName] = useState(project.name);
   const file = useRef<HTMLInputElement>(null);
   useEffect(() => setName(project.name), [project.name]);
@@ -120,6 +121,7 @@ function TopBar({ chrome }: { chrome: EditorChrome }) {
           Save version
         </button>
       )}
+      <button className={`tb-btn ${chrome.panel === 'comments' ? 'primary' : ''}`} onClick={() => chrome.onPanel('comments')} title="Comment threads on this design (C to pin one)">Comments{openComments ? ` · ${openComments}` : ''}</button>
       <button className={`tb-btn ${chrome.panel === 'history' ? 'primary' : ''}`} onClick={() => chrome.onPanel('history')} title="Version history">History</button>
       <button className={`tb-btn ${chrome.panel === 'renders' ? 'primary' : ''}`} onClick={() => chrome.onPanel('renders')} title="Photoreal renders of the 3D view">Render</button>
       <button className={`tb-btn ${chrome.panel === 'ai' ? 'primary' : ''}`} onClick={() => chrome.onPanel('ai')} title="AI images and 3D models">AI</button>

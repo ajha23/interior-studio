@@ -180,6 +180,25 @@ function FurnitureShape({ project, f, selected, severity, fs }: { project: Proje
   );
 }
 
+/** Numbered comment markers; resolved threads fade. */
+function CommentPins({ fs }: { fs: number }) {
+  const pins = useStudio((s) => s.commentPins);
+  const focused = useStudio((s) => s.focusedComment);
+  const clientView = useStudio((s) => s.clientView);
+  if (clientView || !pins.length) return null;
+  const r = fs * 1.1;
+  return (
+    <g>
+      {pins.map((p) => (
+        <g key={p.id} data-cid={p.id} style={{ cursor: 'pointer' }} opacity={p.resolved ? 0.4 : 1} transform={`translate(${k(p.x)} ${k(p.y)})`}>
+          <path d={`M0 0 L${-r * 0.7} ${-r * 1.2} A${r} ${r} 0 1 1 ${r * 0.7} ${-r * 1.2} Z`} fill={focused === p.id ? 'var(--brass)' : 'var(--accent)'} stroke="#fff" strokeWidth={fs * 0.12} />
+          <text x={0} y={-r * 1.9} fontSize={fs * 1.0} textAnchor="middle" dominantBaseline="middle" fill="#fff" fontWeight={700} pointerEvents="none">{p.n}</text>
+        </g>
+      ))}
+    </g>
+  );
+}
+
 /** Top view of a catalogue piece: each part drawn from below to above so higher parts sit on top. */
 function libraryTopView(f: LibraryItem, P: (lx: Um, ly: Um) => Vec, fs: number): ReactNode[] {
   const prims = libraryPrims(f)
@@ -369,6 +388,7 @@ export function PlanDrawing({
       )}
       {extraDims}
       {handles}
+      <CommentPins fs={fs} />
       {preview?.wall && (
         <g pointerEvents="none">
           <line x1={k(preview.wall.from.x)} y1={k(preview.wall.from.y)} x2={k(preview.wall.to.x)} y2={k(preview.wall.to.y)} stroke={accent} strokeWidth={k(preview.wall.thickness)} strokeOpacity={0.35} strokeLinecap="square" />
@@ -418,6 +438,7 @@ const TOOL_HINT: Record<Tool, string> = {
   door: 'Click a wall to place a door · click the other side of the wall to flip the swing',
   window: 'Click a wall to place a window',
   paint: 'Click a floor, a wall face or a piece to apply the material · Alt-click a piece for its accent · Esc to stop',
+  comment: 'Click a piece or a spot in the plan to start a comment there · Esc to stop',
 };
 
 function movePlanEnds(plan: Plan, ends: { wallId: string; end: 'a' | 'b' }[], to: Vec): Plan {
@@ -526,9 +547,9 @@ export function PlanView() {
         else if (tool !== 'select') setTool('select');
         setPreview({});
       }
-      const shortcuts: Record<string, Tool> = { w: 'wall', m: 'room', d: 'door', n: 'window', v: 'select' };
+      const shortcuts: Record<string, Tool> = { w: 'wall', m: 'room', d: 'door', n: 'window', v: 'select', c: 'comment' };
       const t = shortcuts[e.key.toLowerCase()];
-      if (t && !e.metaKey && !e.ctrlKey && !readOnly) setTool(t);
+      if (t && !e.metaKey && !e.ctrlKey && (!readOnly || t === 'comment' || t === 'select') && !useStudio.getState().clientView) setTool(t);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -612,6 +633,11 @@ export function PlanView() {
       return;
     }
 
+    if (tool === 'comment') {
+      const fEl = t.closest('[data-fid]');
+      useStudio.getState().startComment(fEl ? { kind: 'item', itemId: fEl.getAttribute('data-fid')! } : { kind: 'point', x: Math.round(w.x), y: Math.round(w.y) });
+      return;
+    }
     if (!readOnly && tool === 'paint') {
       const fEl = t.closest('[data-fid]');
       const wEl = t.closest('[data-wid]');
@@ -629,6 +655,15 @@ export function PlanView() {
             : null;
       const res = target && paintCommand(project, rooms, target, st.paint);
       if (res) dispatch(res.cmd, res.label);
+      return;
+    }
+
+    // Comment pins open their thread.
+    const cEl = t.closest('[data-cid]');
+    if (cEl) {
+      const st = useStudio.getState();
+      st.focusComment(cEl.getAttribute('data-cid'));
+      st.requestPanel('comments');
       return;
     }
 
@@ -811,6 +846,7 @@ export function PlanView() {
     { t: 'room', label: 'Room', key: 'M' },
     { t: 'door', label: 'Door', key: 'D' },
     { t: 'window', label: 'Window', key: 'N' },
+    { t: 'comment', label: 'Comment', key: 'C' },
   ];
 
   return (

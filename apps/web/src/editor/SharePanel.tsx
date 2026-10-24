@@ -25,6 +25,7 @@ export function SharePanel({ projectId, onClose }: { projectId: string; onClose:
   const [expiry, setExpiry] = useState(30);
   const [showPlan, setShowPlan] = useState(true);
   const [showRenders, setShowRenders] = useState(true);
+  const [allowComments, setAllowComments] = useState(true);
   const [copied, setCopied] = useState<string | null>(null);
   const [showRevoked, setShowRevoked] = useState(false);
 
@@ -44,7 +45,7 @@ export function SharePanel({ projectId, onClose }: { projectId: string; onClose:
     // The link shows saved versions; make sure the latest edits are in one.
     if (saveState === 'dirty') await saveNow('autosave');
     const versionId = pin === 'current' ? (versions.data?.[0]?.id ?? null) : null;
-    const token = await create.mutateAsync({ label: label.trim(), versionId, showPlan, showRenders, expiresInDays: expiry || null });
+    const token = await create.mutateAsync({ label: label.trim(), versionId, showPlan, showRenders, allowComments, expiresInDays: expiry || null });
     setLabel('');
     void copy(token);
   };
@@ -77,6 +78,7 @@ export function SharePanel({ projectId, onClose }: { projectId: string; onClose:
           </label>
           <label className="versions-filter"><input type="checkbox" checked={showPlan} onChange={(e) => setShowPlan(e.target.checked)} /> Include the floor plan</label>
           <label className="versions-filter"><input type="checkbox" checked={showRenders} onChange={(e) => setShowRenders(e.target.checked)} /> Include saved renders</label>
+          <label className="versions-filter"><input type="checkbox" checked={allowComments} onChange={(e) => setAllowComments(e.target.checked)} /> Let the client comment</label>
           <button className="btn primary" disabled={create.isPending} onClick={() => void make()}>
             {create.isPending ? 'Creating…' : 'Create link & copy'}
           </button>
@@ -101,7 +103,7 @@ export function SharePanel({ projectId, onClose }: { projectId: string; onClose:
                 <span className={`v-kind ${dead ? 'autosave' : 'manual'}`}>{l.revoked_at ? 'Revoked' : dead ? 'Expired' : 'Live'}</span>
               </div>
               <div className="share-meta">
-                {l.version_id ? `Pinned to v${pinned ?? '?'}` : 'Latest design'} · {l.view_count} view{l.view_count === 1 ? '' : 's'}
+                {l.version_id ? `Pinned to v${pinned ?? '?'}` : 'Latest design'}{l.allow_comments ? ' · comments on' : ''} · {l.view_count} view{l.view_count === 1 ? '' : 's'}
                 {l.last_viewed_at ? ` · last ${relativeTime(l.last_viewed_at)}` : ''} · {l.expires_at ? `expires ${new Date(l.expires_at).toLocaleDateString()}` : 'no expiry'}
               </div>
               {!dead && (

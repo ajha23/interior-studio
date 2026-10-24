@@ -11,6 +11,7 @@ import { VersionsPanel } from '../editor/VersionsPanel';
 import { RendersPanel } from '../editor/RendersPanel';
 import { SharePanel } from '../editor/SharePanel';
 import { AiPanel } from '../editor/AiPanel';
+import { CommentsPanel, useCommentPins } from '../editor/CommentsPanel';
 import type { DrawerPanel } from '../editor/EditorShell';
 import { clearDraft, readDraft, useStudio, type RemoteSaver } from '../editor/store';
 import { SCENE_MIGRATIONS } from '../editor/migrations';
@@ -29,6 +30,12 @@ export default function EditorPage() {
   const hydrate = useStudio((s) => s.hydrate);
   const [load, setLoad] = useState<LoadState>({ kind: 'loading' });
   const [panel, setPanel] = useState<DrawerPanel | null>(null);
+  // The Comment tool and plan pins ask for the comments panel through the store.
+  const panelRequest = useStudio((s) => s.panelRequest);
+  useEffect(() => {
+    if (panelRequest) setPanel(panelRequest.panel as DrawerPanel);
+  }, [panelRequest]);
+  useCommentPins(projectId!);
   const lastHash = useRef<string | null>(null);
   const loadedFor = useRef<string | null>(null);
 
@@ -132,6 +139,7 @@ export default function EditorPage() {
           : panel === 'renders' ? <RendersPanel projectId={projectId!} onClose={() => setPanel(null)} />
           : panel === 'share' ? <SharePanel projectId={projectId!} onClose={() => setPanel(null)} />
           : panel === 'ai' ? <AiPanel projectId={projectId!} onClose={() => setPanel(null)} />
+          : panel === 'comments' ? <CommentsPanel projectId={projectId!} onClose={() => setPanel(null)} />
           : null,
       }}
     />

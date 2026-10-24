@@ -8,6 +8,7 @@ import { useStudio } from '../editor/store';
 import { useRooms } from '../editor/hooks';
 import { PlanView } from '../editor/PlanView';
 import { FullPageMessage } from '../ui/FullPageMessage';
+import { ClientComments } from './ClientComments';
 import '../editor/editor.css';
 
 const PanoViewer = lazy(() => import('../render/PanoViewer').then((m) => ({ default: m.PanoViewer })));
@@ -48,10 +49,10 @@ export default function SharedPage() {
   if (!q.data) return <FullPageMessage title="This link isn't available" body="It may have expired or been withdrawn by the studio. Ask your designer for a new link." />;
   if (q.data.schemaVersion > SCHEMA_VERSION) return <FullPageMessage title="Please reload" body="This design was saved by a newer version of the app." />;
   if (!ready) return <FullPageMessage title="Opening design…" />;
-  return <Presentation d={q.data} />;
+  return <Presentation d={q.data} token={token} />;
 }
 
-function Presentation({ d }: { d: SharedDesign }) {
+function Presentation({ d, token }: { d: SharedDesign; token: string }) {
   const tabs = useMemo(() => {
     const t: { id: Tab; label: string }[] = [{ id: '3d', label: '3D view' }];
     if (d.showPlan) t.push({ id: 'plan', label: 'Floor plan' });
@@ -116,6 +117,7 @@ function Presentation({ d }: { d: SharedDesign }) {
           </div>
         )}
         <RoomSummary />
+        {d.allowComments && <ClientComments token={token} initial={d.comments ?? []} />}
       </main>
       {lightbox !== null && d.renders[lightbox]?.kind === 'panorama' && (
         <div className="lightbox pano-box" role="dialog" aria-label="360° view">
