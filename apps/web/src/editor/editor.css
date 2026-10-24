@@ -258,3 +258,72 @@ table.sched td.r, table.sched th.r { text-align: right; }
 .editor-root .mat-name { font-size: 10.5px; line-height: 1.2; color: var(--ink-2); }
 .editor-root .finish.none { display: grid; place-items: center; background: var(--paper); font-size: 14px; color: var(--ink-2); }
 .editor-root .finish-grid { grid-template-columns: repeat(6, 1fr); }
+
+/* Phase 1c — renders, sharing, client view */
+.editor-root .versions.renders, .editor-root .versions.share { width: 340px; }
+.editor-root .render-form { display: grid; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.editor-root .render-form .input { margin-bottom: 0; }
+.editor-root .render-note { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border-radius: var(--radius); background: var(--warn-tint); color: var(--warn); font-size: 12px; }
+.editor-root .render-presets { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.editor-root .render-preset { display: grid; gap: 1px; padding: 8px; text-align: left; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); cursor: pointer; font: inherit; }
+.editor-root .render-preset strong { font-size: 13px; }
+.editor-root .render-preset .num { font-size: 11px; color: var(--ink-2); }
+.editor-root .render-preset.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); background: var(--accent-tint); }
+.editor-root .render-hint { font-size: 11px; line-height: 1.4; color: var(--ink-3); margin: 0; }
+.editor-root .render-mood { justify-self: start; }
+.editor-root .render-progress { display: grid; gap: 6px; }
+.editor-root .render-progress .bar { height: 6px; border-radius: 3px; background: var(--line-2); overflow: hidden; }
+.editor-root .render-progress .bar span { display: block; height: 100%; background: var(--accent); transition: width .2s; }
+.editor-root .render-status { display: flex; justify-content: space-between; font-size: 12px; color: var(--ink-2); }
+.editor-root .render-gallery, .editor-root .share-list { list-style: none; margin: 0; padding: 8px 14px 16px; display: grid; gap: 12px; }
+.editor-root .render-card { display: grid; gap: 6px; }
+.editor-root .render-card img { width: 100%; display: block; border-radius: var(--radius); background: var(--line-2); object-fit: cover; }
+.editor-root .render-missing { aspect-ratio: 16/9; display: grid; place-items: center; border-radius: var(--radius); background: var(--line-2); color: var(--ink-3); font-size: 12px; }
+.editor-root .render-meta { display: grid; font-size: 12px; }
+.editor-root .render-meta .num { font-size: 11px; color: var(--ink-3); }
+.editor-root .render-caption { font-weight: 500; }
+.editor-root .btn-row a.btn { text-decoration: none; display: inline-flex; align-items: center; }
+.editor-root .share-opt { display: grid; grid-template-columns: 60px 1fr; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-2); }
+.editor-root .share-list li { display: grid; gap: 6px; padding: 10px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.editor-root .share-list li.dead { opacity: .6; }
+.editor-root .share-label { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.editor-root .share-meta { font-size: 11px; color: var(--ink-3); line-height: 1.4; }
+
+.editor-root.share-root { height: auto; min-height: 100vh; display: flex; flex-direction: column; }
+.share-root .share-top { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 20px 24px 14px; background: var(--panel); border-bottom: 1px solid var(--line); }
+.share-root .share-title { display: grid; gap: 2px; min-width: 0; }
+.share-root .share-studio { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--brass); font-weight: 600; }
+.share-root .share-title h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -.01em; }
+.share-root .share-sub { font-size: 12.5px; color: var(--ink-2); }
+.share-root .share-main { flex: 1; display: grid; gap: 16px; padding: 16px 24px 8px; align-content: start; }
+.share-root .share-canvas { position: relative; height: min(72vh, 760px); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--paper); display: flex; }
+.share-root .share-canvas .zoom-ind { display: none; }
+.share-root .share-canvas > .view { height: 100%; }
+.share-root .share-hint, .share-root .share-card { position: absolute; left: 12px; bottom: 12px; padding: 8px 12px; border-radius: 8px; background: rgba(255,253,248,.94); box-shadow: 0 2px 12px rgba(0,0,0,.12); font-size: 12px; }
+.share-root .share-card { display: flex; gap: 10px; align-items: center; }
+.share-root .share-card .swatch { width: 28px; height: 28px; border-radius: 6px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
+.share-root .share-card .num { font-size: 11.5px; color: var(--ink-2); }
+.share-root .share-finish { font-size: 11.5px; color: var(--ink-3); }
+.share-root .share-renders { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+.share-root .share-renders figure { margin: 0; cursor: zoom-in; }
+.share-root .share-renders img { width: 100%; display: block; border-radius: 10px; object-fit: cover; background: var(--line-2); }
+.share-root .share-renders figcaption { font-size: 12.5px; color: var(--ink-2); padding-top: 6px; }
+.share-root .share-rooms { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.share-root .share-room { display: grid; gap: 2px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 13px; }
+.share-root .share-room .num { font-size: 11.5px; color: var(--ink-2); }
+.share-root .lightbox { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; align-content: center; gap: 10px; padding: 24px; background: rgba(15,18,16,.92); cursor: zoom-out; }
+.share-root .lightbox img { max-width: 100%; max-height: 86vh; border-radius: 6px; }
+.share-root .lightbox p { color: #eee; margin: 0; font-size: 13px; }
+.share-root .share-foot { padding: 14px 24px 22px; font-size: 11.5px; color: var(--ink-3); }
+@media (max-width: 640px) {
+  .share-root .share-top { padding: 14px 16px 10px; }
+  .share-root .share-main { padding: 12px 16px 8px; }
+  .share-root .share-canvas { height: 62vh; }
+  .share-root .share-renders { grid-template-columns: 1fr; }
+}
+.editor-root .versions.renders, .editor-root .versions.share { overflow-y: auto; }
+
+.share-root .share-tabs { display: inline-flex; padding: 3px; gap: 2px; border-radius: 9px; background: var(--line-2); }
+.share-root .share-tabs button { height: 32px; padding: 0 14px; border: 0; border-radius: 7px; background: none; font: inherit; font-size: 13px; font-weight: 500; color: var(--ink-2); cursor: pointer; }
+.share-root .share-tabs button.on { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+.share-root .share-tabs button:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 1px; }

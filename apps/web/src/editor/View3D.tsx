@@ -1,11 +1,12 @@
 import { OrbitControls } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { useMemo, useRef, useState, type ComponentRef } from 'react';
+import { useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
 import * as THREE from 'three';
 import { finishById, libraryPrims, wallFaceFinish, type LibraryItem, type WallSideSign } from '@studio/core';
 import { threeMaterial } from '../materials/three';
 import { paintCommand, type PaintTarget } from './paint';
 import { ModelMesh } from './ModelMesh';
+import { liveView } from '../render/live';
 import { useStudio } from './store';
 import { type FurnitureItem, type Project } from '@studio/core';
 import { toM } from '@studio/core';
@@ -204,8 +205,14 @@ function Scene({ preset, presetNonce, xray }: { preset: Preset; presetNonce: num
     if (res) dispatch(res.cmd, res.label);
   };
   const controls = useRef<ComponentRef<typeof OrbitControls>>(null);
-  const { camera } = useThree();
+  const { camera, scene } = useThree();
   const rooms = useRooms();
+  useEffect(() => {
+    liveView.current = { scene, camera: camera as THREE.PerspectiveCamera };
+    return () => {
+      liveView.current = null;
+    };
+  }, [scene, camera]);
   const bounds = planBounds(project.plan);
   const X0 = toM(bounds.minX);
   const Z0 = toM(bounds.minY);

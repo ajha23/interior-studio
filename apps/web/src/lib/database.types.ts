@@ -24,6 +24,139 @@ export type Database = {
   __InternalSupabase: { PostgrestVersion: '14.18' };
   public: {
     Tables: {
+      renders: {
+        Row: {
+          created_at: string
+          created_by: string
+          caption: string
+          height: number
+          id: string
+          mood: string
+          org_id: string
+          project_id: string
+          samples: number
+          storage_path: string
+          version_no: number
+          width: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string
+          caption?: string
+          height: number
+          id?: string
+          mood?: string
+          org_id: string
+          project_id: string
+          samples?: number
+          storage_path: string
+          version_no?: number
+          width: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          caption?: string
+          height?: number
+          id?: string
+          mood?: string
+          org_id?: string
+          project_id?: string
+          samples?: number
+          storage_path?: string
+          version_no?: number
+          width?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "renders_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "renders_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      share_links: {
+        Row: {
+          created_at: string
+          created_by: string
+          expires_at: string | null
+          id: string
+          label: string
+          last_viewed_at: string | null
+          org_id: string
+          project_id: string
+          revoked_at: string | null
+          show_plan: boolean
+          show_renders: boolean
+          token: string
+          version_id: string | null
+          view_count: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string
+          expires_at?: string | null
+          id?: string
+          label?: string
+          last_viewed_at?: string | null
+          org_id: string
+          project_id: string
+          revoked_at?: string | null
+          show_plan?: boolean
+          show_renders?: boolean
+          token?: string
+          version_id?: string | null
+          view_count?: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          expires_at?: string | null
+          id?: string
+          label?: string
+          last_viewed_at?: string | null
+          org_id?: string
+          project_id?: string
+          revoked_at?: string | null
+          show_plan?: boolean
+          show_renders?: boolean
+          token?: string
+          version_id?: string | null
+          view_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "share_links_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "share_links_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "share_links_version_id_fkey"
+            columns: ["version_id"]
+            isOneToOne: false
+            referencedRelation: "project_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       catalog_models: {
         Row: {
           bytes: number
@@ -175,3 +308,5 @@ export type ProjectStatusT = ProjectStatus;
 export type VersionKindT = VersionKind;
 export type ProjectRow = Database['public']['Tables']['projects']['Row'];
 export type ProjectVersionRow = VersionRow;
+export type RenderRow = Database['public']['Tables']['renders']['Row'];
+export type ShareLinkRow = Database['public']['Tables']['share_links']['Row'];

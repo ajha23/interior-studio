@@ -8,6 +8,9 @@ import { errorMessage } from '../lib/supabase';
 import { FullPageMessage } from '../ui/FullPageMessage';
 import { EditorShell } from '../editor/EditorShell';
 import { VersionsPanel } from '../editor/VersionsPanel';
+import { RendersPanel } from '../editor/RendersPanel';
+import { SharePanel } from '../editor/SharePanel';
+import type { DrawerPanel } from '../editor/EditorShell';
 import { clearDraft, readDraft, useStudio, type RemoteSaver } from '../editor/store';
 import { SCENE_MIGRATIONS } from '../editor/migrations';
 import '../editor/editor.css';
@@ -24,7 +27,7 @@ export default function EditorPage() {
   const updateProject = useUpdateProject();
   const hydrate = useStudio((s) => s.hydrate);
   const [load, setLoad] = useState<LoadState>({ kind: 'loading' });
-  const [historyOpen, setHistoryOpen] = useState(false);
+  const [panel, setPanel] = useState<DrawerPanel | null>(null);
   const lastHash = useRef<string | null>(null);
   const loadedFor = useRef<string | null>(null);
 
@@ -121,9 +124,13 @@ export default function EditorPage() {
       chrome={{
         onBack: () => void goBack(),
         onRename: (name) => updateProject.mutate({ id: projectId!, patch: { name } }),
-        onToggleHistory: () => setHistoryOpen((o) => !o),
-        historyOpen,
-        drawer: historyOpen ? <VersionsPanel projectId={projectId!} onClose={() => setHistoryOpen(false)} /> : null,
+        panel,
+        onPanel: (p) => setPanel((cur) => (cur === p ? null : p)),
+        drawer:
+          panel === 'history' ? <VersionsPanel projectId={projectId!} onClose={() => setPanel(null)} />
+          : panel === 'renders' ? <RendersPanel projectId={projectId!} onClose={() => setPanel(null)} />
+          : panel === 'share' ? <SharePanel projectId={projectId!} onClose={() => setPanel(null)} />
+          : null,
       }}
     />
   );

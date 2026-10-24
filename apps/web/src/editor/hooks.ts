@@ -11,8 +11,10 @@ export function useRooms(): DetectedRoom[] {
 
 export function useValidation(): ValidationResult[] {
   const project = useStudio((s) => s.project);
+  const clientView = useStudio((s) => s.clientView);
   const rooms = useRooms();
-  return useMemo(() => validateProject(coreOf(project), rooms), [project, rooms]);
+  // Clients see the design, not the designer's working checks.
+  return useMemo(() => (clientView ? [] : validateProject(coreOf(project), rooms)), [project, rooms, clientView]);
 }
 
 export function severityById(results: ValidationResult[]): Map<string, 'error' | 'warning'> {

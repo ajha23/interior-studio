@@ -44,13 +44,15 @@ interface StudioState {
   /** Material id the Paint tool applies. */
   paint: string;
   readOnly: boolean;
+  /** Public share view: read-only, no validation markers. */
+  clientView: boolean;
   saveState: SaveState;
   savedVersionNo: number;
   lastSavedAt: string | null;
   lastError: string | null;
   saver: RemoteSaver | null;
 
-  hydrate: (p: Project, opts: { versionNo: number; readOnly: boolean; saver: RemoteSaver }) => void;
+  hydrate: (p: Project, opts: { versionNo: number; readOnly: boolean; saver: RemoteSaver | null; clientView?: boolean }) => void;
   dispatch: (cmd: Command, label?: string) => void;
   undo: () => void;
   redo: () => void;
@@ -156,6 +158,7 @@ export const useStudio = create<StudioState>((set, get) => {
     tool: 'select',
     paint: 'oak-floor',
     readOnly: false,
+    clientView: false,
     saveState: 'saved',
     savedVersionNo: 0,
     lastSavedAt: null,
@@ -170,6 +173,7 @@ export const useStudio = create<StudioState>((set, get) => {
         future: [],
         selection: null,
         readOnly: opts.readOnly,
+        clientView: opts.clientView ?? false,
         tool: 'select',
         saver: opts.saver,
         saveState: 'saved',
