@@ -1,38 +1,66 @@
 import type { Um } from './units';
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 /** Where a dimension came from — an estimate must never be presented as a verified measurement. */
 export type Provenance = 'site_measured' | 'drawing' | 'estimate';
 
-export type WallSide = 'N' | 'E' | 'S' | 'W';
+/**
+ * Plan coordinate system (top view): +x → east, +y → south (screen down), z → up from finished floor.
+ * Integer micrometres throughout.
+ */
+export interface Pt {
+  x: Um;
+  y: Um;
+}
+
+/** A straight wall along its centreline. Walls meet where their endpoints coincide or touch another wall. */
+export interface Wall {
+  id: string;
+  a: Pt;
+  b: Pt;
+  thicknessUm: Um;
+  heightUm: Um;
+}
 
 /**
- * Room coordinate system (plan view):
- *   origin = inside face of the north-west corner
- *   +x → east along the north wall, +y → south, z → up from finished floor
+ * Side of a wall, relative to its direction a → b. The side's normal is `side * (−dy, dx) / |d|`,
+ * so with y pointing down, +1 is the right-hand side when walking from a to b.
  */
-export interface Room {
-  name: string;
-  widthUm: Um; // inside, west → east
-  depthUm: Um; // inside, north → south
-  ceilingUm: Um;
-  wallThicknessUm: Um;
-  source: Provenance;
-  floorFinish: string;
-  wallColor: string;
-}
+export type WallSideSign = 1 | -1;
 
 export interface Opening {
   id: string;
   kind: 'door' | 'window';
-  wall: WallSide;
-  /** Distance from the wall's start (N/S walls: from west end; E/W walls: from north end) to the near jamb. */
+  wallId: string;
+  /** Distance along the wall centreline from `wall.a` to the near jamb. */
   offsetUm: Um;
   widthUm: Um;
   heightUm: Um;
   sillUm: Um; // 0 for doors
-  hinge: 'start' | 'end'; // doors: which jamb carries the hinge
+  hinge: 'start' | 'end'; // doors: jamb nearer wall.a ('start') or wall.b ('end') carries the hinge
+  /** Doors: side the leaf swings into. Windows: the room-facing side. */
+  side: WallSideSign;
+}
+
+/** Stored room properties. The room polygon itself is derived from the walls; `seed` ties the two together. */
+export interface RoomInfo {
+  id: string;
+  name: string;
+  /** Any point inside the room; re-matched to the detected polygon after every wall edit. */
+  seed: Pt;
+  ceilingUm: Um;
+  floorFinish: string;
+  wallColor: string;
+}
+
+export interface Plan {
+  walls: Wall[];
+  rooms: RoomInfo[];
+  /** Applies to the whole plan until per-wall provenance arrives. */
+  source: Provenance;
+  defaultWallThicknessUm: Um;
+  defaultCeilingUm: Um;
 }
 
 export type TemplateKey = 'wardrobe' | 'tvunit';
@@ -126,7 +154,7 @@ export interface RulePack {
 export type RevisionStatus = 'design-approved' | 'released';
 
 export interface ProjectCore {
-  room: Room;
+  plan: Plan;
   openings: Opening[];
   furniture: FurnitureItem[];
   rulePack: RulePack;

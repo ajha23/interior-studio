@@ -1,11 +1,18 @@
 import { useMemo } from 'react';
 import { coreOf } from '@studio/core';
 import { useStudio } from './store';
-import { validateProject, type ValidationResult } from '@studio/core';
+import { detectRooms, validateProject, type DetectedRoom, type ValidationResult } from '@studio/core';
+
+/** Rooms derived from the walls; recomputed only when the plan changes. */
+export function useRooms(): DetectedRoom[] {
+  const plan = useStudio((s) => s.project.plan);
+  return useMemo(() => detectRooms(plan), [plan]);
+}
 
 export function useValidation(): ValidationResult[] {
   const project = useStudio((s) => s.project);
-  return useMemo(() => validateProject(coreOf(project)), [project]);
+  const rooms = useRooms();
+  return useMemo(() => validateProject(coreOf(project), rooms), [project, rooms]);
 }
 
 export function severityById(results: ValidationResult[]): Map<string, 'error' | 'warning'> {

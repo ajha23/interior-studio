@@ -1,5 +1,5 @@
 import { DEFAULT_RULE_PACK } from './catalog';
-import { SCHEMA_VERSION, type DecorKind, type DecorItem, type FurnitureItem, type Opening, type Project, type ProjectCore, type TvUnitItem, type WardrobeItem } from './types';
+import { SCHEMA_VERSION, type DecorKind, type DecorItem, type FurnitureItem, type Opening, type Plan, type Project, type ProjectCore, type RoomInfo, type TvUnitItem, type Wall, type WallSideSign, type WardrobeItem } from './types';
 import { mm } from './units';
 import { TVUNIT_TEMPLATE_VERSION, WARDROBE_TEMPLATE_VERSION } from '../furniture';
 
@@ -51,10 +51,41 @@ export function newDecor(kind: DecorKind, x: number, y: number): DecorItem {
   return { id: uid(kind), kind, name: d.name, xUm: x, yUm: y, rotDeg: 0, params: { widthUm: mm(d.w), depthUm: mm(d.d), heightUm: mm(d.h), color: d.color } };
 }
 
-export function newOpening(kind: 'door' | 'window'): Opening {
+export const DEFAULT_WALL_THICKNESS = mm(230);
+export const DEFAULT_CEILING = mm(2800);
+
+/**
+ * Four walls enclosing a rectangular clear floor `w × d` whose inside north-west corner is (x0, y0).
+ * Walls run N (west→east), E (north→south), S (east→west), W (south→north) so they form one loop.
+ */
+export function rectWalls(x0: number, y0: number, w: number, d: number, thicknessUm = DEFAULT_WALL_THICKNESS, heightUm = DEFAULT_CEILING): Wall[] {
+  const h = thicknessUm / 2;
+  const nw = { x: x0 - h, y: y0 - h };
+  const ne = { x: x0 + w + h, y: y0 - h };
+  const se = { x: x0 + w + h, y: y0 + d + h };
+  const sw = { x: x0 - h, y: y0 + d + h };
+  const mk = (a: { x: number; y: number }, b: { x: number; y: number }): Wall => ({ id: uid('wall'), a: { x: Math.round(a.x), y: Math.round(a.y) }, b: { x: Math.round(b.x), y: Math.round(b.y) }, thicknessUm, heightUm });
+  return [mk(nw, ne), mk(ne, se), mk(se, sw), mk(sw, nw)];
+}
+
+export function newRoomInfo(name: string, seed: { x: number; y: number }, ceilingUm = DEFAULT_CEILING): RoomInfo {
+  return { id: uid('room'), name, seed: { x: Math.round(seed.x), y: Math.round(seed.y) }, ceilingUm, floorFinish: 'oak-floor', wallColor: 'warm-white' };
+}
+
+export function emptyPlan(): Plan {
+  return { walls: [], rooms: [], source: 'site_measured', defaultWallThicknessUm: DEFAULT_WALL_THICKNESS, defaultCeilingUm: DEFAULT_CEILING };
+}
+
+export function newOpening(kind: 'door' | 'window', wallId: string, offsetUm: number, side: WallSideSign): Opening {
   return kind === 'door'
-    ? { id: uid('door'), kind, wall: 'S', offsetUm: mm(200), widthUm: mm(900), heightUm: mm(2100), sillUm: 0, hinge: 'start' }
-    : { id: uid('win'), kind, wall: 'E', offsetUm: mm(800), widthUm: mm(1500), heightUm: mm(1350), sillUm: mm(900), hinge: 'start' };
+    ? { id: uid('door'), kind, wallId, offsetUm: Math.round(offsetUm), widthUm: mm(900), heightUm: mm(2100), sillUm: 0, hinge: 'start', side }
+    : { id: uid('win'), kind, wallId, offsetUm: Math.round(offsetUm), widthUm: mm(1500), heightUm: mm(1350), sillUm: mm(900), hinge: 'start', side };
+}
+
+/** A plan with one rectangular room, its inside corner at the origin. */
+export function singleRoomPlan(name: string, w: number, d: number): { plan: Plan; walls: Wall[] } {
+  const walls = rectWalls(0, 0, w, d);
+  return { plan: { ...emptyPlan(), walls, rooms: [newRoomInfo(name, { x: w / 2, y: d / 2 })] }, walls };
 }
 
 export function sampleProject(): Project {
@@ -70,6 +101,13 @@ export function sampleProject(): Project {
   const nightstand = newDecor('side-table', mm(3600) - mm(200), mm(975));
   nightstand.rotDeg = 90;
   furniture.push(nightstand);
+  const { plan, walls } = singleRoomPlan('Master bedroom', mm(3600), mm(3200));
+  const [, , south, west] = walls;
+  const h = DEFAULT_WALL_THICKNESS / 2;
+  // South wall runs east→west and west wall south→north (see rectWalls); the room is on side +1 of both.
+  const door = newOpening('door', south.id, mm(3600) + h - mm(150) - mm(900), 1);
+  door.hinge = 'end';
+  const win = { ...newOpening('window', west.id, mm(3200) + h - mm(1200) - mm(1200), 1), widthUm: mm(1200) };
   return {
     schemaVersion: SCHEMA_VERSION,
     id: uid('prj'),
@@ -77,11 +115,8 @@ export function sampleProject(): Project {
     client: 'Mehta family',
     createdAt: now,
     updatedAt: now,
-    room: { name: 'Master bedroom', widthUm: mm(3600), depthUm: mm(3200), ceilingUm: mm(2800), wallThicknessUm: mm(230), source: 'site_measured', floorFinish: 'oak-floor', wallColor: 'warm-white' },
-    openings: [
-      { id: uid('door'), kind: 'door', wall: 'S', offsetUm: mm(150), widthUm: mm(900), heightUm: mm(2100), sillUm: 0, hinge: 'start' },
-      { id: uid('win'), kind: 'window', wall: 'W', offsetUm: mm(1200), widthUm: mm(1200), heightUm: mm(1350), sillUm: mm(900), hinge: 'start' },
-    ],
+    plan,
+    openings: [door, win],
     furniture,
     rulePack: DEFAULT_RULE_PACK,
     revisions: [],
@@ -89,12 +124,26 @@ export function sampleProject(): Project {
 }
 
 export function blankProject(name: string, client: string): Project {
-  const p = sampleProject();
-  return { ...p, id: uid('prj'), name, client, furniture: [], openings: [{ ...newOpening('door') }], room: { ...p.room, name: 'Room 1' } };
+  const now = new Date().toISOString();
+  const { plan, walls } = singleRoomPlan('Room 1', mm(3600), mm(3200));
+  const h = DEFAULT_WALL_THICKNESS / 2;
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    id: uid('prj'),
+    name,
+    client,
+    createdAt: now,
+    updatedAt: now,
+    plan,
+    openings: [newOpening('door', walls[2].id, h + mm(200), 1)],
+    furniture: [],
+    rulePack: DEFAULT_RULE_PACK,
+    revisions: [],
+  };
 }
 
 export function coreOf(p: Project): ProjectCore {
-  return { room: p.room, openings: p.openings, furniture: p.furniture, rulePack: p.rulePack };
+  return { plan: p.plan, openings: p.openings, furniture: p.furniture, rulePack: p.rulePack };
 }
 
 /** Stable SHA-256 of a project core, used to fingerprint issued revisions. */

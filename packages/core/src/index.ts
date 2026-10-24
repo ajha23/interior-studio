@@ -9,3 +9,4 @@ export * from './furniture';
 export * from './furniture/schedule';
 export * from './geometry';
 export * from './validation';
+export * from './persistence/sceneMigrations';

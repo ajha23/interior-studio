@@ -1,21 +1,14 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { FINISHES, FLOOR_FINISHES, WALL_COLORS } from '@studio/core';
 import type { Command } from '@studio/core';
 import { uid } from '@studio/core';
 import { useStudio } from './store';
-import { isParametric, type FurnitureItem, type Opening, type Provenance, type TvModuleType, type WallSide, type WardrobeModuleType } from '@studio/core';
-import { fmtMm, mm, type Um } from '@studio/core';
+import { isParametric, type DetectedRoom, type FurnitureItem, type Opening, type Plan, type Provenance, type TvModuleType, type Wall, type WardrobeModuleType } from '@studio/core';
+import { fmtMm, mm } from '@studio/core';
 import { envelope, resolveParametric } from '@studio/core';
-import { normDeg, wallGaps } from '@studio/core';
+import { endpointsAt, nearestWall, normDeg, sideOf, wallGaps, wallGeom, wallIndexLabel, wallLength, wallPoint } from '@studio/core';
 import { DegField, IntField, MmField, SelectField, TextField } from './fields';
-import { useValidation } from './hooks';
-
-const WALLS: { value: WallSide; label: string }[] = [
-  { value: 'N', label: 'North (top)' },
-  { value: 'E', label: 'East (right)' },
-  { value: 'S', label: 'South (bottom)' },
-  { value: 'W', label: 'West (left)' },
-];
+import { useRooms, useValidation } from './hooks';
 
 function Issues({ ids }: { ids: string[] }) {
   const results = useValidation().filter((r) => r.itemIds.some((i) => ids.includes(i)));
@@ -32,54 +25,125 @@ function Issues({ ids }: { ids: string[] }) {
   );
 }
 
-function RoomProps() {
-  const room = useStudio((s) => s.project.room);
+function PlanSettings() {
+  const plan = useStudio((s) => s.project.plan);
   const dispatch = useStudio((s) => s.dispatch);
-  const set = (patch: Partial<typeof room>, label = 'Edit room') => dispatch({ type: 'room.update', patch }, label);
+  return (
+    <div className="section">
+      <h3>Plan settings</h3>
+      <SelectField<Provenance>
+        label="Measurements"
+        value={plan.source}
+        options={[
+          { value: 'site_measured', label: 'Site measured' },
+          { value: 'drawing', label: 'Supplied drawing' },
+          { value: 'estimate', label: 'Estimate' },
+        ]}
+        onChange={(source) => dispatch({ type: 'plan.update', patch: { source } }, 'Change measurement source')}
+      />
+      <MmField label="New wall thickness" value={plan.defaultWallThicknessUm} min={75} max={600} onCommit={(v) => dispatch({ type: 'plan.update', patch: { defaultWallThicknessUm: v } })} />
+      <MmField label="New wall height" value={plan.defaultCeilingUm} min={2000} max={6000} onCommit={(v) => dispatch({ type: 'plan.update', patch: { defaultCeilingUm: v } })} />
+    </div>
+  );
+}
+
+function RoomProps({ room }: { room: DetectedRoom }) {
+  const dispatch = useStudio((s) => s.dispatch);
+  const plan = useStudio((s) => s.project.plan);
+  const info = room.info;
+  // Editing an automatic room stores its properties for the first time.
+  const set = (patch: Partial<typeof info>, label = 'Edit room') => dispatch({ type: 'room.upsert', info: { ...info, ...patch, id: room.auto ? uid('room') : info.id } }, label);
+  const areaM2 = room.areaUm2 / 1e12;
   return (
     <>
       <div className="section">
         <div className="prop-head">
-          <strong>{room.name}</strong>
-          <span className={`provenance ${room.source === 'estimate' ? 'estimate' : ''}`}>{room.source === 'site_measured' ? 'Site measured' : room.source === 'drawing' ? 'From drawing' : 'Estimate'}</span>
+          <strong>{info.name}</strong>
+          <span className={`provenance ${plan.source === 'estimate' ? 'estimate' : ''}`}>{plan.source === 'site_measured' ? 'Site measured' : plan.source === 'drawing' ? 'From drawing' : 'Estimate'}</span>
         </div>
       </div>
       <div className="section">
-        <h3>Measurements</h3>
-        <TextField label="Room name" value={room.name} onCommit={(name) => set({ name })} />
-        <MmField label="Width (W→E)" value={room.widthUm} min={1000} max={20000} onCommit={(v) => set({ widthUm: v }, 'Change room width')} testId="room-width" />
-        <MmField label="Depth (N→S)" value={room.depthUm} min={1000} max={20000} onCommit={(v) => set({ depthUm: v }, 'Change room depth')} />
-        <MmField label="Ceiling height" value={room.ceilingUm} min={2000} max={6000} onCommit={(v) => set({ ceilingUm: v }, 'Change ceiling')} />
-        <MmField label="Wall thickness" value={room.wallThicknessUm} min={75} max={600} onCommit={(v) => set({ wallThicknessUm: v })} />
-        <SelectField<Provenance>
-          label="Source"
-          value={room.source}
-          options={[
-            { value: 'site_measured', label: 'Site measured' },
-            { value: 'drawing', label: 'Supplied drawing' },
-            { value: 'estimate', label: 'Estimate' },
-          ]}
-          onChange={(source) => set({ source }, 'Change measurement source')}
-        />
-        <div className="field-hint">Inside face to inside face. Area {((room.widthUm / 1e6) * (room.depthUm / 1e6)).toFixed(2)} m².</div>
+        <h3>Room</h3>
+        <TextField label="Room name" value={info.name} onCommit={(name) => set({ name }, 'Rename room')} />
+        <MmField label="Ceiling height" value={info.ceilingUm} min={2000} max={6000} onCommit={(v) => set({ ceilingUm: v }, 'Change ceiling')} />
+        <div className="field-hint">
+          Clear floor {areaM2.toFixed(2)} m² · perimeter {fmtMm(room.perimeterUm)} mm · {room.wallIds.length} walls. Change the size by dragging walls in the plan.
+        </div>
       </div>
       <div className="section">
         <h3>Floor</h3>
         <div className="finish-grid">
           {FLOOR_FINISHES.map((f) => (
-            <button key={f.id} className={`finish ${room.floorFinish === f.id ? 'on' : ''}`} style={{ background: f.color }} title={f.name} onClick={() => set({ floorFinish: f.id }, 'Change floor')} />
+            <button key={f.id} className={`finish ${info.floorFinish === f.id ? 'on' : ''}`} style={{ background: f.color }} title={f.name} onClick={() => set({ floorFinish: f.id }, 'Change floor')} />
           ))}
         </div>
-        <div className="finish-name">{FLOOR_FINISHES.find((f) => f.id === room.floorFinish)?.name}</div>
+        <div className="finish-name">{FLOOR_FINISHES.find((f) => f.id === info.floorFinish)?.name}</div>
       </div>
       <div className="section">
         <h3>Walls</h3>
         <div className="finish-grid">
           {WALL_COLORS.map((f) => (
-            <button key={f.id} className={`finish ${room.wallColor === f.id ? 'on' : ''}`} style={{ background: f.color }} title={f.name} onClick={() => set({ wallColor: f.id }, 'Change wall colour')} />
+            <button key={f.id} className={`finish ${info.wallColor === f.id ? 'on' : ''}`} style={{ background: f.color }} title={f.name} onClick={() => set({ wallColor: f.id }, 'Change wall colour')} />
           ))}
         </div>
-        <div className="finish-name">{WALL_COLORS.find((f) => f.id === room.wallColor)?.name}</div>
+        <div className="finish-name">{WALL_COLORS.find((f) => f.id === info.wallColor)?.name}</div>
+      </div>
+      <div className="section">
+        <h3>Checks</h3>
+        <Issues ids={[room.id]} />
+      </div>
+      <PlanSettings />
+    </>
+  );
+}
+
+/** Commands that change a wall's length from its start, carrying any wall ends attached to its far end. */
+function resizeWall(plan: Plan, w: Wall, len: number): Command[] {
+  const g = wallGeom(w);
+  const nb = { x: Math.round(w.a.x + g.u.x * len), y: Math.round(w.a.y + g.u.y * len) };
+  const cmds: Command[] = [];
+  for (const e of endpointsAt(plan, w.b)) cmds.push({ type: 'wall.update', id: e.wallId, patch: { [e.end]: nb } });
+  return cmds;
+}
+
+function WallProps({ w }: { w: Wall }) {
+  const dispatch = useStudio((s) => s.dispatch);
+  const select = useStudio((s) => s.select);
+  const plan = useStudio((s) => s.project.plan);
+  const allOpenings = useStudio((s) => s.project.openings);
+  const openings = useMemo(() => allOpenings.filter((o) => o.wallId === w.id), [allOpenings, w.id]);
+  const set = (patch: Partial<Wall>, label = 'Edit wall') => dispatch({ type: 'wall.update', id: w.id, patch }, label);
+  const len = wallLength(w);
+  const ang = normDeg((Math.atan2(w.b.y - w.a.y, w.b.x - w.a.x) * 180) / Math.PI);
+  return (
+    <>
+      <div className="section">
+        <div className="prop-head">
+          <strong>{wallIndexLabel(plan, w.id).replace(/^w/, 'W')}</strong>
+          <span className="kind">{openings.length ? `${openings.length} opening${openings.length > 1 ? 's' : ''}` : 'Solid wall'}</span>
+        </div>
+      </div>
+      <div className="section">
+        <h3>Size</h3>
+        <MmField label="Length (centreline)" value={Math.round(len)} min={100} max={50000} onCommit={(v) => dispatch({ type: 'batch', label: 'Change wall length', commands: resizeWall(plan, w, v) })} hint="Grows from the start end; walls joined at the far end follow." />
+        <MmField label="Thickness" value={w.thicknessUm} min={50} max={600} onCommit={(v) => set({ thicknessUm: v }, 'Change wall thickness')} />
+        <MmField label="Height" value={w.heightUm} min={1000} max={6000} onCommit={(v) => set({ heightUm: v }, 'Change wall height')} />
+        <div className="field-hint">Direction {ang.toFixed(1)}° · start ({fmtMm(w.a.x)}, {fmtMm(w.a.y)})</div>
+      </div>
+      <div className="section">
+        <h3>Checks</h3>
+        <Issues ids={[w.id]} />
+      </div>
+      <div className="section btn-row">
+        <button
+          className="btn danger"
+          onClick={() => {
+            dispatch({ type: 'batch', label: 'Delete wall', commands: [...openings.map((o): Command => ({ type: 'opening.remove', id: o.id })), { type: 'wall.remove', id: w.id }] });
+            select(null);
+          }}
+        >
+          Delete wall{openings.length ? ` and its ${openings.length} opening${openings.length > 1 ? 's' : ''}` : ''}
+        </button>
       </div>
     </>
   );
@@ -88,32 +152,38 @@ function RoomProps() {
 function OpeningProps({ o }: { o: Opening }) {
   const dispatch = useStudio((s) => s.dispatch);
   const select = useStudio((s) => s.select);
-  const set = (patch: Partial<Opening>) => dispatch({ type: 'opening.update', id: o.id, patch });
+  const plan = useStudio((s) => s.project.plan);
+  const set = (patch: Partial<Opening>, label?: string) => dispatch({ type: 'opening.update', id: o.id, patch }, label);
+  const wall = plan.walls.find((w) => w.id === o.wallId);
+  const len = wall ? wallLength(wall) : 0;
   return (
     <>
       <div className="section">
         <div className="prop-head">
           <strong>{o.kind === 'door' ? 'Door' : 'Window'}</strong>
-          <span className="kind">on {WALLS.find((w) => w.value === o.wall)?.label} wall</span>
+          <span className="kind">on {wallIndexLabel(plan, o.wallId)} ({fmtMm(len)} mm)</span>
         </div>
       </div>
       <div className="section">
         <h3>Placement</h3>
-        <SelectField<WallSide> label="Wall" value={o.wall} options={WALLS} onChange={(wall) => set({ wall })} />
-        <MmField label="Offset from wall start" value={o.offsetUm} min={0} max={20000} onCommit={(v) => set({ offsetUm: v })} hint="N/S walls from the west end; E/W walls from the north end." />
+        <SelectField<string>
+          label="Wall"
+          value={o.wallId}
+          options={plan.walls.map((w) => ({ value: w.id, label: `${wallIndexLabel(plan, w.id).replace(/^w/, 'W')} · ${fmtMm(wallLength(w))} mm` }))}
+          onChange={(wallId) => {
+            const nw = plan.walls.find((w) => w.id === wallId)!;
+            set({ wallId, offsetUm: Math.max(0, Math.min(o.offsetUm, wallLength(nw) - o.widthUm)) }, 'Move to another wall');
+          }}
+        />
+        <MmField label="Offset from wall start" value={o.offsetUm} min={0} max={50000} onCommit={(v) => set({ offsetUm: v })} hint="Measured along the wall centreline. Drag it in the plan to slide." />
         <MmField label="Width" value={o.widthUm} min={300} max={6000} onCommit={(v) => set({ widthUm: v })} />
         <MmField label="Height" value={o.heightUm} min={300} max={6000} onCommit={(v) => set({ heightUm: v })} />
         {o.kind === 'window' && <MmField label="Sill height" value={o.sillUm} min={0} max={3000} onCommit={(v) => set({ sillUm: v })} />}
         {o.kind === 'door' && (
-          <SelectField<'start' | 'end'>
-            label="Hinge side"
-            value={o.hinge}
-            options={[
-              { value: 'start', label: 'Start jamb' },
-              { value: 'end', label: 'End jamb' },
-            ]}
-            onChange={(hinge) => set({ hinge })}
-          />
+          <div className="btn-row" style={{ marginTop: 6 }}>
+            <button className="btn" onClick={() => set({ hinge: o.hinge === 'start' ? 'end' : 'start' }, 'Flip hinge')}>Flip hinge</button>
+            <button className="btn" onClick={() => set({ side: o.side === 1 ? -1 : 1 }, 'Flip swing')}>Flip swing side</button>
+          </div>
         )}
       </div>
       <div className="section">
@@ -175,16 +245,18 @@ function ModulesEditor<T extends string>({ modules, options, onChange, max }: { 
   );
 }
 
-/** Commands that place a piece flush against a wall with its back to the wall. */
-function againstWall(f: FurnitureItem, wall: WallSide, roomW: Um, roomD: Um): Command {
+/** Turn a piece so its back is flush against the nearest wall face, keeping its position along that wall. */
+function againstNearestWall(f: FurnitureItem, plan: Plan): Command | null {
+  const hit = nearestWall(plan, { x: f.xUm, y: f.yUm }, mm(5000));
+  if (!hit) return null;
   const env = envelope(f);
-  const rot = { N: 0, E: 90, S: 180, W: 270 }[wall];
-  const half = env.depthUm / 2;
-  const halfW = env.widthUm / 2;
-  const clampX = (x: number) => Math.min(Math.max(x, halfW), roomW - halfW);
-  const clampY = (y: number) => Math.min(Math.max(y, halfW), roomD - halfW);
-  const pos = wall === 'N' ? { xUm: clampX(f.xUm), yUm: half } : wall === 'S' ? { xUm: clampX(f.xUm), yUm: roomD - half } : wall === 'W' ? { xUm: half, yUm: clampY(f.yUm) } : { xUm: roomW - half, yUm: clampY(f.yUm) };
-  return { type: 'furniture.update', id: f.id, patch: { ...pos, rotDeg: rot } };
+  const side = sideOf(hit.geom, { x: f.xUm, y: f.yUm });
+  const n = { x: hit.geom.n.x * side, y: hit.geom.n.y * side }; // into the room
+  // rot 0 → back faces −y; back direction for rot θ is (sin θ, −cos θ) and must equal −n.
+  const rot = normDeg((Math.atan2(-n.x, n.y) * 180) / Math.PI);
+  const along = Math.min(Math.max(hit.along, env.widthUm / 2), hit.geom.len - env.widthUm / 2);
+  const c = wallPoint(hit.geom, along, side * (hit.wall.thicknessUm / 2 + env.depthUm / 2));
+  return { type: 'furniture.update', id: f.id, patch: { xUm: Math.round(c.x), yUm: Math.round(c.y), rotDeg: Math.round(rot * 1000) / 1000 } };
 }
 
 function FurnitureProps({ f }: { f: FurnitureItem }) {
@@ -201,7 +273,7 @@ function FurnitureProps({ f }: { f: FurnitureItem }) {
     const newW = params.widthUm as number | undefined;
     if (newW !== undefined && Math.round(f.rotDeg) % 90 === 0) {
       // Keep whichever end is against a wall fixed; otherwise grow about the centre.
-      const g = wallGaps(f, project.room);
+      const g = wallGaps(f, project.plan);
       const a = (f.rotDeg * Math.PI) / 180;
       const ax = { x: Math.round(Math.cos(a)), y: Math.round(Math.sin(a)) }; // local +x (width) direction in plan
       const delta = (newW - f.params.widthUm) / 2;
@@ -243,13 +315,16 @@ function FurnitureProps({ f }: { f: FurnitureItem }) {
           <button className="btn" onClick={() => update({ rotDeg: normDeg(f.rotDeg - 90) }, 'Rotate')}>⟲ 90°</button>
           <button className="btn" onClick={() => update({ rotDeg: normDeg(f.rotDeg + 90) }, 'Rotate')}>⟳ 90°</button>
         </div>
-        <div className="field-hint" style={{ marginTop: 8 }}>Back against wall:</div>
-        <div className="btn-row" style={{ marginTop: 4 }}>
-          {(['N', 'E', 'S', 'W'] as WallSide[]).map((w) => (
-            <button key={w} className="btn" onClick={() => dispatch(againstWall(f, w, project.room.widthUm, project.room.depthUm), `Place on ${w} wall`)}>
-              {w}
-            </button>
-          ))}
+        <div className="btn-row" style={{ marginTop: 6 }}>
+          <button
+            className="btn"
+            onClick={() => {
+              const cmd = againstNearestWall(f, project.plan);
+              if (cmd) dispatch(cmd, 'Back against wall');
+            }}
+          >
+            Back against nearest wall
+          </button>
         </div>
       </div>
 
@@ -378,7 +453,15 @@ function FurnitureProps({ f }: { f: FurnitureItem }) {
 export function Properties() {
   const project = useStudio((s) => s.project);
   const selection = useStudio((s) => s.selection);
-  if (selection?.kind === 'room') return <RoomProps />;
+  const rooms = useRooms();
+  if (selection?.kind === 'room') {
+    const r = rooms.find((x) => x.id === selection.id);
+    if (r) return <RoomProps room={r} />;
+  }
+  if (selection?.kind === 'wall') {
+    const w = project.plan.walls.find((x) => x.id === selection.id);
+    if (w) return <WallProps w={w} />;
+  }
   if (selection?.kind === 'opening') {
     const o = project.openings.find((x) => x.id === selection.id);
     if (o) return <OpeningProps o={o} />;
@@ -390,14 +473,17 @@ export function Properties() {
   return (
     <div className="empty">
       <strong style={{ color: 'var(--ink)' }}>Nothing selected</strong>
-      <p>Click a piece in the plan or 3D view, or click the floor to edit the room.</p>
+      <p>Click a piece, wall or room in the plan. Use the Wall and Room tools above the plan to draw.</p>
       <p>
         <span className="kbd">⌘/Ctrl Z</span> undo · <span className="kbd">⇧⌘Z</span> redo
         <br />
         <span className="kbd">←↑→↓</span> nudge 10 mm (<span className="kbd">⇧</span> 100 mm)
         <br />
         <span className="kbd">R</span> rotate 90° · <span className="kbd">Del</span> delete
+        <br />
+        <span className="kbd">W</span> wall · <span className="kbd">M</span> room · <span className="kbd">D</span> door · <span className="kbd">N</span> window · <span className="kbd">Esc</span> stop
       </p>
+      <PlanSettings />
     </div>
   );
 }

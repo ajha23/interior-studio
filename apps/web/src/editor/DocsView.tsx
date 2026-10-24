@@ -4,8 +4,8 @@ import { isParametric, type Project, type RevisionStatus, type TvUnitItem, type 
 import { fmtMm, plainMm } from '@studio/core';
 import { buildSchedule, scheduleCsv } from '@studio/core';
 import { Elevation } from './Elevation';
-import { useValidation } from './hooks';
-import { PlanDrawing } from './PlanView';
+import { useRooms, useValidation } from './hooks';
+import { PlanDrawing, planBounds } from './PlanView';
 
 function download(name: string, text: string, type = 'text/csv') {
   const url = URL.createObjectURL(new Blob([text], { type }));
@@ -183,12 +183,16 @@ export function DocsView() {
   const [status, setStatus] = useState<RevisionStatus>('design-approved');
   const errors = results.filter((r) => r.severity === 'error');
   const parametric = project.furniture.filter(isParametric);
-  const room = project.room;
-  const T = room.wallThicknessUm / 1000;
-  const pad = 700;
-  const vbW = room.widthUm / 1000 + 2 * T + 2 * pad;
-  const vbH = room.depthUm / 1000 + 2 * T + 2 * pad;
+  const rooms = useRooms();
+  const plan = project.plan;
+  const b = planBounds(plan);
+  const pad = 900;
+  const vbX = b.minX / 1000 - pad;
+  const vbY = b.minY / 1000 - pad;
+  const vbW = (b.maxX - b.minX) / 1000 + 2 * pad;
+  const vbH = (b.maxY - b.minY) / 1000 + 2 * pad;
   const fs = Math.max(vbW, vbH) / 70;
+  const totalArea = rooms.reduce((sum, r) => sum + r.areaUm2, 0) / 1e12;
   const blocked = status === 'released' && errors.length > 0;
 
   return (
@@ -215,13 +219,13 @@ export function DocsView() {
 
       <section className="sheet">
         <div className="sheet-title">
-          <h3>Floor plan — {room.name}</h3>
+          <h3>Floor plan — {rooms.length === 1 ? rooms[0].info.name : `${rooms.length} rooms`}</h3>
           <span className="sub num">
-            {fmtMm(room.widthUm)} × {fmtMm(room.depthUm)} · ceiling {fmtMm(room.ceilingUm)} · {room.source === 'site_measured' ? 'site measured' : room.source === 'drawing' ? 'from supplied drawing' : 'ESTIMATED — verify on site'}
+            {fmtMm(b.maxX - b.minX)} × {fmtMm(b.maxY - b.minY)} overall · {totalArea.toFixed(2)} m² clear floor · {plan.source === 'site_measured' ? 'site measured' : plan.source === 'drawing' ? 'from supplied drawing' : 'ESTIMATED — verify on site'}
           </span>
         </div>
-        <svg className="drawing-svg" viewBox={`${-T - pad} ${-T - pad} ${vbW} ${vbH}`} style={{ maxHeight: 560 }}>
-          <PlanDrawing project={project} selection={null} fs={fs} interactive={false} />
+        <svg className="drawing-svg" viewBox={`${vbX} ${vbY} ${vbW} ${vbH}`} style={{ maxHeight: 560 }}>
+          <PlanDrawing project={project} rooms={rooms} selection={null} fs={fs} interactive={false} />
         </svg>
         <TitleBlock project={project} drawing="Furnished floor plan" number="IS-A01" rev={rev} />
       </section>
@@ -235,7 +239,7 @@ export function DocsView() {
         <div className="backdrop" onClick={() => setDialog(false)}>
           <div className="dialog" onClick={(e) => e.stopPropagation()}>
             <h2>Issue revision</h2>
-            <p className="sub">Freezes an immutable snapshot of the room, furniture and construction rules with a SHA-256 fingerprint. Later edits show as unissued changes.</p>
+            <p className="sub">Freezes an immutable snapshot of the plan, furniture and construction rules with a SHA-256 fingerprint. Later edits show as unissued changes.</p>
             <div className="field">
               <label>Label</label>
               <div className="inp"><input value={label} onChange={(e) => setLabel(e.target.value)} /></div>

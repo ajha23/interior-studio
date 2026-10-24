@@ -222,3 +222,11 @@ table.sched td.r, table.sched th.r { text-align: right; }
 .editor-root .v-time { margin-left: auto; color: var(--ink-3); font-size: 11px; }
 .editor-root .v-msg { font-weight: 500; }
 .editor-root .v-meta { color: var(--ink-3); font-size: 11px; }
+
+/* Plan drawing tools */
+.editor-root .plan-tools { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 3; display: flex; gap: 2px; padding: 3px; background: rgba(255,255,255,.94); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+.editor-root .plan-tools .btn { height: 26px; border-color: transparent; background: transparent; }
+.editor-root .plan-tools .btn.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+.editor-root .plan-svg.tool-wall, .editor-root .plan-svg.tool-room { cursor: crosshair; }
+.editor-root .plan-svg.tool-door, .editor-root .plan-svg.tool-window { cursor: copy; }
+.editor-root .add-btn.on { border-color: var(--accent); background: var(--accent); color: #fff; }

@@ -1,13 +1,13 @@
 import { useMemo } from 'react';
 import { finishById } from '@studio/core';
-import { coreOf, newDecor, newOpening, newTvUnit, newWardrobe } from '@studio/core';
-import { useStudio } from './store';
+import { coreOf, newDecor, newTvUnit, newWardrobe } from '@studio/core';
+import { useStudio, type Tool } from './store';
 import { isParametric, type DecorKind, type FurnitureItem } from '@studio/core';
 import { fmtMm } from '@studio/core';
 import { envelope } from '@studio/core';
-import { footprint, outsideBy, penetration } from '@studio/core';
+import { footprint, interiorPoint, normDeg, outsideDistance, penetration, sideOf, wallGeom, wallIndexLabel, wallPoint } from '@studio/core';
 import { validateProject } from '@studio/core';
-import { severityById, useValidation } from './hooks';
+import { severityById, useRooms, useValidation } from './hooks';
 
 const DECOR: { kind: DecorKind; label: string }[] = [
   { kind: 'bed', label: 'Bed' },
@@ -23,52 +23,97 @@ const Icon = ({ d }: { d: string }) => (
   </svg>
 );
 
+const DRAW: { t: Tool; label: string; icon: string }[] = [
+  { t: 'wall', label: 'Wall', icon: 'M2 8h12' },
+  { t: 'room', label: 'Room', icon: 'M2 2h12v12H2z' },
+  { t: 'door', label: 'Door', icon: 'M3 14V2h7v12M3 14h10' },
+  { t: 'window', label: 'Window', icon: 'M2 4h12v8H2zM8 4v8' },
+];
+
 export function Sidebar() {
   const project = useStudio((s) => s.project);
   const selection = useStudio((s) => s.selection);
   const dispatch = useStudio((s) => s.dispatch);
   const select = useStudio((s) => s.select);
+  const tool = useStudio((s) => s.tool);
+  const setTool = useStudio((s) => s.setTool);
+  const readOnly = useStudio((s) => s.readOnly);
+  const rooms = useRooms();
   const results = useValidation();
   const sev = useMemo(() => severityById(results), [results]);
-  const { room } = project;
+  const plan = project.plan;
+
+  // New pieces go into the selected room, else the room of the selected piece, else the largest room.
+  const targetRoom = (() => {
+    if (selection?.kind === 'room') return rooms.find((r) => r.id === selection.id) ?? rooms[0];
+    return rooms[0];
+  })();
 
   const addFurniture = (item: FurnitureItem) => {
-    // Try each wall (back to wall, centred then sliding) and pick the first spot with no conflicts;
-    // catalogue pieces try the room centre first.
+    if (!targetRoom) {
+      dispatch({ type: 'furniture.add', item }, `Add ${item.name}`);
+      select({ kind: 'furniture', id: item.id });
+      return;
+    }
     const env = envelope(item);
     const others = project.furniture.map((f) => footprint(f));
     const free = (c: FurnitureItem) =>
-      outsideBy(footprint(c), room) <= 1000 &&
+      outsideDistance(footprint(c), targetRoom.interior) <= 1000 &&
       others.every((o) => penetration(footprint(c), o) === 0) &&
-      !validateProject({ ...coreOf(project), furniture: [...project.furniture, c] }).some((r) => r.itemIds.includes(c.id) && r.code !== 'SHUTTER_NARROW');
+      !validateProject({ ...coreOf(project), furniture: [...project.furniture, c] }, rooms).some((r) => r.itemIds.includes(c.id) && r.code !== 'SHUTTER_NARROW');
+    const centre = interiorPoint(targetRoom.interior);
     const candidates: FurnitureItem[] = [];
-    if (!isParametric(item)) candidates.push({ ...item, xUm: room.widthUm / 2, yUm: room.depthUm / 2 });
-    const d = env.depthUm / 2;
-    const steps = [0.5, 0.25, 0.75, 0.1, 0.9];
-    for (const t of steps) {
-      const x = Math.min(Math.max(room.widthUm * t, env.widthUm / 2), room.widthUm - env.widthUm / 2);
-      const y = Math.min(Math.max(room.depthUm * t, env.widthUm / 2), room.depthUm - env.widthUm / 2);
-      candidates.push({ ...item, rotDeg: 0, xUm: x, yUm: d }, { ...item, rotDeg: 270, xUm: d, yUm: y }, { ...item, rotDeg: 90, xUm: room.widthUm - d, yUm: y }, { ...item, rotDeg: 180, xUm: x, yUm: room.depthUm - d });
+    if (!isParametric(item)) candidates.push({ ...item, xUm: centre.x, yUm: centre.y });
+    // Back against each wall of the room, centred then sliding along it.
+    for (const t of [0.5, 0.25, 0.75, 0.1, 0.9]) {
+      for (const wid of targetRoom.wallIds) {
+        const w = plan.walls.find((x) => x.id === wid);
+        if (!w) continue;
+        const g = wallGeom(w);
+        const side = sideOf(g, centre);
+        const n = { x: g.n.x * side, y: g.n.y * side };
+        const along = Math.min(Math.max(g.len * t, env.widthUm / 2), g.len - env.widthUm / 2);
+        const c = wallPoint(g, along, side * (w.thicknessUm / 2 + env.depthUm / 2));
+        candidates.push({ ...item, xUm: c.x, yUm: c.y, rotDeg: normDeg((Math.atan2(-n.x, n.y) * 180) / Math.PI) });
+      }
     }
-    const placed = candidates.find(free) ?? candidates[0];
-    dispatch({ type: 'furniture.add', item: { ...placed, xUm: Math.round(placed.xUm), yUm: Math.round(placed.yUm) } }, `Add ${item.name}`);
+    const placed = candidates.find(free) ?? candidates[0] ?? item;
+    dispatch({ type: 'furniture.add', item: { ...placed, xUm: Math.round(placed.xUm), yUm: Math.round(placed.yUm), rotDeg: Math.round(placed.rotDeg * 1000) / 1000 } }, `Add ${item.name}`);
     select({ kind: 'furniture', id: item.id });
   };
 
   return (
     <>
       <div className="section">
-        <h3>Room</h3>
-        <div className={`obj ${selection?.kind === 'room' ? 'sel' : ''}`} onClick={() => select({ kind: 'room' })}>
-          <Icon d="M2 2h12v12H2z" />
-          <span>{room.name}</span>
-          <span className="meta num">
-            {fmtMm(room.widthUm)}×{fmtMm(room.depthUm)}
-          </span>
-        </div>
+        <h3>
+          Rooms <span className="num" style={{ fontWeight: 400 }}>{rooms.length}</span>
+        </h3>
+        {rooms.length === 0 && <div className="field-hint">No closed room yet. Draw a room, or draw walls until they close.</div>}
+        <ul className="obj-list">
+          {rooms.map((r) => (
+            <li key={r.id} className={`obj ${selection?.kind === 'room' && selection.id === r.id ? 'sel' : ''}`} onClick={() => select({ kind: 'room', id: r.id })}>
+              <span className={`dot ${sev.get(r.id) ?? ''}`} />
+              <Icon d="M2 2h12v12H2z" />
+              <span>{r.info.name}</span>
+              <span className="meta num">{(r.areaUm2 / 1e12).toFixed(1)} m²</span>
+            </li>
+          ))}
+        </ul>
       </div>
+      {!readOnly && (
+        <div className="section">
+          <h3>Draw</h3>
+          <div className="add-grid">
+            {DRAW.map((d) => (
+              <button key={d.t} className={`add-btn ${tool === d.t ? 'on' : ''}`} aria-pressed={tool === d.t} onClick={() => setTool(tool === d.t ? 'select' : d.t)}>
+                <Icon d={d.icon} /> {d.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="section">
-        <h3>Custom furniture</h3>
+        <h3>Custom furniture{targetRoom ? <span className="num" style={{ fontWeight: 400 }}> → {targetRoom.info.name}</span> : null}</h3>
         <div className="add-grid" style={{ gridTemplateColumns: '1fr' }}>
           <button className="add-btn" onClick={() => addFurniture(newWardrobe())}>
             <Icon d="M2 2h12v12H2zM6 2v12M10 2v12" /> Wardrobe <span className="tag">CUT</span>
@@ -89,33 +134,8 @@ export function Sidebar() {
         </div>
       </div>
       <div className="section">
-        <h3>Openings</h3>
-        <div className="add-grid">
-          <button
-            className="add-btn"
-            onClick={() => {
-              const o = newOpening('door');
-              dispatch({ type: 'opening.add', opening: o });
-              select({ kind: 'opening', id: o.id });
-            }}
-          >
-            <Icon d="M3 14V2h7v12M3 14h10" /> Door
-          </button>
-          <button
-            className="add-btn"
-            onClick={() => {
-              const o = newOpening('window');
-              dispatch({ type: 'opening.add', opening: o });
-              select({ kind: 'opening', id: o.id });
-            }}
-          >
-            <Icon d="M2 4h12v8H2zM8 4v8" /> Window
-          </button>
-        </div>
-      </div>
-      <div className="section">
         <h3>
-          In this room <span className="num" style={{ fontWeight: 400 }}>{project.furniture.length + project.openings.length}</span>
+          In this plan <span className="num" style={{ fontWeight: 400 }}>{project.furniture.length + project.openings.length}</span>
         </h3>
         <ul className="obj-list">
           {project.furniture.map((f) => (
@@ -131,7 +151,7 @@ export function Sidebar() {
               <span className={`dot ${sev.get(o.id) ?? ''}`} />
               <span>{o.kind === 'door' ? 'Door' : 'Window'}</span>
               <span className="meta num">
-                {o.wall} · {fmtMm(o.widthUm)}
+                {wallIndexLabel(plan, o.wallId).replace('wall ', 'W')} · {fmtMm(o.widthUm)}
               </span>
             </li>
           ))}

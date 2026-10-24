@@ -1,4 +1,4 @@
-import type { FurnitureItem, Opening, Project, Room, RulePack } from './types';
+import type { FurnitureItem, Opening, Plan, Project, RoomInfo, RulePack, Wall } from './types';
 
 /**
  * Every mutation is a typed, serializable command. The same commands drive undo/redo,
@@ -6,7 +6,12 @@ import type { FurnitureItem, Opening, Project, Room, RulePack } from './types';
  */
 export type Command =
   | { type: 'project.meta'; patch: { name?: string; client?: string } }
-  | { type: 'room.update'; patch: Partial<Room> }
+  | { type: 'plan.update'; patch: Partial<Omit<Plan, 'walls' | 'rooms'>> }
+  | { type: 'wall.add'; wall: Wall; index?: number }
+  | { type: 'wall.update'; id: string; patch: Partial<Omit<Wall, 'id'>> }
+  | { type: 'wall.remove'; id: string }
+  | { type: 'room.upsert'; info: RoomInfo }
+  | { type: 'room.remove'; id: string }
   | { type: 'rulepack.update'; patch: Partial<RulePack> }
   | { type: 'opening.add'; opening: Opening; index?: number }
   | { type: 'opening.update'; id: string; patch: Partial<Opening> }
@@ -32,9 +37,38 @@ export function applyCommand(p: Project, cmd: Command): [Project, Command] {
       const inv = { type: 'project.meta', patch: pick(p, Object.keys(cmd.patch)) } as Command;
       return [{ ...p, ...cmd.patch }, inv];
     }
-    case 'room.update': {
-      const inv: Command = { type: 'room.update', patch: pick(p.room, Object.keys(cmd.patch)) as Partial<Room> };
-      return [{ ...p, room: { ...p.room, ...cmd.patch } }, inv];
+    case 'plan.update': {
+      const inv: Command = { type: 'plan.update', patch: pick(p.plan, Object.keys(cmd.patch)) as Partial<Plan> };
+      return [{ ...p, plan: { ...p.plan, ...cmd.patch } }, inv];
+    }
+    case 'wall.add': {
+      if (p.plan.walls.some((w) => w.id === cmd.wall.id)) throw new CommandError(`Wall ${cmd.wall.id} already exists`);
+      const walls = [...p.plan.walls];
+      walls.splice(cmd.index ?? walls.length, 0, cmd.wall);
+      return [{ ...p, plan: { ...p.plan, walls } }, { type: 'wall.remove', id: cmd.wall.id }];
+    }
+    case 'wall.update': {
+      const cur = p.plan.walls.find((w) => w.id === cmd.id);
+      if (!cur) throw new CommandError(`Wall ${cmd.id} not found`);
+      const inv: Command = { type: 'wall.update', id: cmd.id, patch: pick(cur, Object.keys(cmd.patch)) as Partial<Wall> };
+      return [{ ...p, plan: { ...p.plan, walls: p.plan.walls.map((w) => (w.id === cmd.id ? { ...w, ...cmd.patch } : w)) } }, inv];
+    }
+    case 'wall.remove': {
+      const index = p.plan.walls.findIndex((w) => w.id === cmd.id);
+      if (index < 0) throw new CommandError(`Wall ${cmd.id} not found`);
+      if (p.openings.some((o) => o.wallId === cmd.id)) throw new CommandError('Remove the doors and windows on this wall first.');
+      return [{ ...p, plan: { ...p.plan, walls: p.plan.walls.filter((_, i) => i !== index) } }, { type: 'wall.add', wall: p.plan.walls[index], index }];
+    }
+    case 'room.upsert': {
+      const index = p.plan.rooms.findIndex((r) => r.id === cmd.info.id);
+      const rooms = index < 0 ? [...p.plan.rooms, cmd.info] : p.plan.rooms.map((r, i) => (i === index ? cmd.info : r));
+      const inv: Command = index < 0 ? { type: 'room.remove', id: cmd.info.id } : { type: 'room.upsert', info: p.plan.rooms[index] };
+      return [{ ...p, plan: { ...p.plan, rooms } }, inv];
+    }
+    case 'room.remove': {
+      const cur = p.plan.rooms.find((r) => r.id === cmd.id);
+      if (!cur) throw new CommandError(`Room ${cmd.id} not found`);
+      return [{ ...p, plan: { ...p.plan, rooms: p.plan.rooms.filter((r) => r.id !== cmd.id) } }, { type: 'room.upsert', info: cur }];
     }
     case 'rulepack.update': {
       const keys = [...Object.keys(cmd.patch), 'version'];
@@ -43,6 +77,7 @@ export function applyCommand(p: Project, cmd: Command): [Project, Command] {
       return [{ ...p, rulePack: { ...p.rulePack, ...cmd.patch, version } }, inv];
     }
     case 'opening.add': {
+      if (!p.plan.walls.some((w) => w.id === cmd.opening.wallId)) throw new CommandError('An opening must sit on a wall.');
       const openings = [...p.openings];
       openings.splice(cmd.index ?? openings.length, 0, cmd.opening);
       return [{ ...p, openings }, { type: 'opening.remove', id: cmd.opening.id }];
@@ -96,7 +131,12 @@ export function applyCommand(p: Project, cmd: Command): [Project, Command] {
 export function describe(cmd: Command): string {
   switch (cmd.type) {
     case 'project.meta': return 'Rename project';
-    case 'room.update': return 'Edit room';
+    case 'plan.update': return 'Edit plan settings';
+    case 'wall.add': return 'Add wall';
+    case 'wall.update': return 'Edit wall';
+    case 'wall.remove': return 'Delete wall';
+    case 'room.upsert': return 'Edit room';
+    case 'room.remove': return 'Reset room';
     case 'rulepack.update': return 'Edit construction rules';
     case 'opening.add': return `Add ${cmd.opening.kind}`;
     case 'opening.update': return 'Edit opening';

@@ -7,7 +7,7 @@ import type { Project, WardrobeParams } from './domain/types';
 import { mm, splitExact, toMm } from './domain/units';
 import { resolveTvUnit, resolveWardrobe } from './furniture';
 import { buildSchedule } from './furniture/schedule';
-import { footprint, penetration } from './geometry';
+import { bbox, detectRooms, footprint, penetration } from './geometry';
 import { validateProject } from './validation';
 
 const base: WardrobeParams = { widthUm: mm(2400), heightUm: mm(2400), depthUm: mm(600), modules: ['hanging', 'drawers', 'shelves'], shelvesPerModule: 4, drawersPerModule: 3, shutterCount: 4 };
@@ -25,9 +25,10 @@ describe('units', () => {
 describe('GEO-01 / GEO-06: exact room dimensions survive save/reload', () => {
   it('3600 × 3200 × 2800 is stored exactly and serializes losslessly', () => {
     const p = sampleProject();
-    expect(p.room.widthUm).toBe(mm(3600));
-    expect(p.room.depthUm).toBe(mm(3200));
-    expect(p.room.ceilingUm).toBe(mm(2800));
+    const [room] = detectRooms(p.plan);
+    const b = bbox(room.interior);
+    expect([b.minX, b.minY, b.maxX, b.maxY]).toEqual([0, 0, mm(3600), mm(3200)]);
+    expect(room.info.ceilingUm).toBe(mm(2800));
     const reloaded = JSON.parse(JSON.stringify(p)) as Project;
     expect(stableStringify(reloaded)).toBe(stableStringify(p));
   });
@@ -133,7 +134,7 @@ describe('validation', () => {
 
   it('wardrobe taller than ceiling is an error', () => {
     const p = sampleProject();
-    const res = validateProject({ ...p, room: { ...p.room, ceilingUm: mm(2300) } });
+    const res = validateProject({ ...p, plan: { ...p.plan, rooms: p.plan.rooms.map((r) => ({ ...r, ceilingUm: mm(2300) })) } });
     expect(res.some((r) => r.code === 'ABOVE_CEILING')).toBe(true);
   });
 });
@@ -145,7 +146,8 @@ describe('GEO-07: commands are exactly reversible', () => {
     const cmdArb = fc.oneof(
       fc.integer({ min: 1000, max: 3000 }).map((w): Command => ({ type: 'furniture.params', id: wid, params: { widthUm: mm(w) } })),
       fc.record({ x: fc.integer({ min: 0, max: 3600 }), y: fc.integer({ min: 0, max: 3200 }) }).map(({ x, y }): Command => ({ type: 'furniture.update', id: wid, patch: { xUm: mm(x), yUm: mm(y) } })),
-      fc.integer({ min: 2000, max: 4000 }).map((h): Command => ({ type: 'room.update', patch: { ceilingUm: mm(h) } })),
+      fc.integer({ min: 2000, max: 4000 }).map((h): Command => ({ type: 'room.upsert', info: { ...start.plan.rooms[0], ceilingUm: mm(h) } })),
+      fc.integer({ min: 100, max: 300 }).map((t): Command => ({ type: 'wall.update', id: start.plan.walls[1].id, patch: { thicknessUm: mm(t) } })),
       fc.integer({ min: 12, max: 25 }).map((t): Command => ({ type: 'rulepack.update', patch: { carcassThicknessUm: mm(t) } })),
       fc.nat().map((n): Command => ({ type: 'furniture.add', item: { ...newDecor('box', mm(500), mm(500)), id: `box-${n}` } })),
     );

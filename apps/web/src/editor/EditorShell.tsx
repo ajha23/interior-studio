@@ -1,8 +1,8 @@
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
-import { mm, normDeg, SCHEMA_VERSION, type Project } from '@studio/core';
+import { migrateScene, mm, normDeg, SCENE_MIGRATIONS, SCHEMA_VERSION, type Command, type Project } from '@studio/core';
 import { useStudio, type ViewMode } from './store';
 import { DocsView } from './DocsView';
-import { useValidation } from './hooks';
+import { useRooms, useValidation } from './hooks';
 import { PlanView } from './PlanView';
 import { Properties } from './Properties';
 import { Sidebar } from './Sidebar';
@@ -131,8 +131,9 @@ function TopBar({ chrome }: { chrome: EditorChrome }) {
               e.target.value = '';
               if (!f) return;
               try {
-                const p = JSON.parse(await f.text()) as Project;
-                if (p.schemaVersion !== SCHEMA_VERSION || !p.room || !Array.isArray(p.furniture)) throw new Error('Not an Interior Studio project file.');
+                const raw = JSON.parse(await f.text()) as { schemaVersion?: number; furniture?: unknown };
+                if (!raw || typeof raw.schemaVersion !== 'number' || raw.schemaVersion > SCHEMA_VERSION || !Array.isArray(raw.furniture)) throw new Error('Not an Interior Studio project file, or saved by a newer version.');
+                const p = migrateScene<Project>(raw, raw.schemaVersion, SCENE_MIGRATIONS);
                 if (confirm(`Replace this design with “${p.name}”? You can undo or restore from history.`)) replaceScene(p, `Import ${f.name}`);
               } catch (err) {
                 alert((err as Error).message);
@@ -152,10 +153,16 @@ function StatusBar() {
   const project = useStudio((s) => s.project);
   const select = useStudio((s) => s.select);
   const lastError = useStudio((s) => s.lastError);
+  const rooms = useRooms();
   const [open, setOpen] = useState(false);
   const errors = results.filter((r) => r.severity === 'error').length;
   const warnings = results.length - errors;
-  const selName = selection?.kind === 'furniture' ? project.furniture.find((f) => f.id === selection.id)?.name : selection?.kind === 'opening' ? 'Opening' : selection?.kind === 'room' ? project.room.name : 'None';
+  const selName =
+    selection?.kind === 'furniture' ? project.furniture.find((f) => f.id === selection.id)?.name
+    : selection?.kind === 'opening' ? 'Opening'
+    : selection?.kind === 'room' ? rooms.find((r) => r.id === selection.id)?.info.name
+    : selection?.kind === 'wall' ? `Wall ${project.plan.walls.findIndex((w) => w.id === selection.id) + 1}`
+    : 'None';
   return (
     <footer className="status">
       <span>Units: mm</span>
@@ -178,8 +185,11 @@ function StatusBar() {
               className={`issue ${r.severity}`}
               onClick={() => {
                 const id = r.itemIds[0];
-                if (id) select(project.furniture.some((f) => f.id === id) ? { kind: 'furniture', id } : { kind: 'opening', id });
-                else select({ kind: 'room' });
+                if (!id) select(null);
+                else if (project.furniture.some((f) => f.id === id)) select({ kind: 'furniture', id });
+                else if (project.openings.some((o) => o.id === id)) select({ kind: 'opening', id });
+                else if (project.plan.walls.some((w) => w.id === id)) select({ kind: 'wall', id });
+                else select({ kind: 'room', id });
                 setOpen(false);
               }}
             >
@@ -229,6 +239,12 @@ function useShortcuts() {
           e.preventDefault();
           s.dispatch({ type: 'furniture.update', id: f.id, patch: { xUm: f.xUm + mv[0], yUm: f.yUm + mv[1] } }, 'Nudge');
         }
+      }
+      if (sel?.kind === 'wall' && (e.key === 'Delete' || e.key === 'Backspace')) {
+        e.preventDefault();
+        const ops = s.project.openings.filter((o) => o.wallId === sel.id);
+        s.dispatch({ type: 'batch', label: 'Delete wall', commands: [...ops.map((o): Command => ({ type: 'opening.remove', id: o.id })), { type: 'wall.remove', id: sel.id }] });
+        s.select(null);
       }
       if (sel?.kind === 'opening' && (e.key === 'Delete' || e.key === 'Backspace')) {
         e.preventDefault();

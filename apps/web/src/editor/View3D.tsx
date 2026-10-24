@@ -4,10 +4,11 @@ import { useMemo, useRef, useState, type ComponentRef } from 'react';
 import * as THREE from 'three';
 import { finishById, FLOOR_FINISHES, WALL_COLORS } from '@studio/core';
 import { useStudio } from './store';
-import { isParametric, type FurnitureItem, type Project, type WallSide } from '@studio/core';
-import { toM, type Um } from '@studio/core';
-import { decorBoxes, envelope, resolveParametric, type ColoredBox } from '@studio/core';
-import { wallPieces } from '@studio/core';
+import { isParametric, type FurnitureItem, type Project } from '@studio/core';
+import { toM } from '@studio/core';
+import { decorBoxes, envelope, interiorPoint, pointInPolygon, resolveParametric, wallGeom, wallPieces, wallPoint, type ColoredBox, type DetectedRoom } from '@studio/core';
+import { useRooms } from './hooks';
+import { planBounds } from './PlanView';
 
 const BACK_COLOR = '#d9c7a4';
 
@@ -51,82 +52,93 @@ function Furniture({ f, project, selected, xray, onSelect }: { f: FurnitureItem;
   );
 }
 
-const SIDES: WallSide[] = ['N', 'E', 'S', 'W'];
-
-function Walls({ project }: { project: Project }) {
-  const { room, openings } = project;
-  const T = room.wallThicknessUm;
-  const color = WALL_COLORS.find((c) => c.id === room.wallColor)?.color ?? '#eee';
+function Walls({ project, rooms }: { project: Project; rooms: DetectedRoom[] }) {
+  const { plan, openings } = project;
   const groups = useRef<Record<string, THREE.Group | null>>({});
   const { camera } = useThree();
-  const cx = toM(room.widthUm) / 2;
-  const cz = toM(room.depthUm) / 2;
+  // Exterior walls have a room on one side only; their outward normal decides the cut-away.
+  const outward = useMemo(() => {
+    const m = new Map<string, { x: number; z: number; mx: number; mz: number }>();
+    for (const w of plan.walls) {
+      const g = wallGeom(w);
+      const probe = (side: 1 | -1) => wallPoint(g, g.len / 2, side * (w.thicknessUm / 2 + 50_000));
+      const inPos = rooms.some((r) => pointInPolygon(probe(1), r.interior));
+      const inNeg = rooms.some((r) => pointInPolygon(probe(-1), r.interior));
+      if (inPos === inNeg) continue; // interior partition or free-standing wall: always shown
+      const sign = inPos ? -1 : 1;
+      const mid = wallPoint(g, g.len / 2);
+      m.set(w.id, { x: g.n.x * sign, z: g.n.y * sign, mx: toM(mid.x), mz: toM(mid.y) });
+    }
+    return m;
+  }, [plan.walls, rooms]);
+  // A wall takes the colour of the first room it bounds.
+  const colorOf = (wallId: string) => {
+    const r = rooms.find((x) => x.wallIds.includes(wallId));
+    return WALL_COLORS.find((c) => c.id === (r?.info.wallColor ?? 'warm-white'))?.color ?? '#eee';
+  };
 
+  // Cut-away: hide exterior walls whose outside face points at the camera, so rooms stay visible.
   useFrame(() => {
-    for (const side of SIDES) {
-      const g = groups.current[side];
+    const p = camera.position;
+    for (const w of plan.walls) {
+      const g = groups.current[w.id];
       if (!g) continue;
-      const p = camera.position;
-      const hide = (side === 'N' && p.z < 0) || (side === 'S' && p.z > toM(room.depthUm)) || (side === 'W' && p.x < 0) || (side === 'E' && p.x > toM(room.widthUm));
-      g.visible = !hide;
+      const o = outward.get(w.id);
+      g.visible = !o || (p.x - o.mx) * o.x + (p.z - o.mz) * o.z <= 0 || p.y > 25;
     }
   });
 
-  const piece = (side: WallSide, a0: Um, a1: Um, z0: Um, z1: Um, key: string) => {
-    const len = toM(a1 - a0);
-    const h = toM(z1 - z0);
-    const t = toM(T);
-    const mid = toM((a0 + a1) / 2);
-    const y = toM((z0 + z1) / 2);
-    let pos: [number, number, number];
-    let size: [number, number, number];
-    if (side === 'N') {
-      pos = [mid, y, -t / 2];
-      size = [len, h, t];
-    } else if (side === 'S') {
-      pos = [mid, y, toM(room.depthUm) + t / 2];
-      size = [len, h, t];
-    } else if (side === 'W') {
-      pos = [-t / 2, y, mid];
-      size = [t, h, len];
-    } else {
-      pos = [toM(room.widthUm) + t / 2, y, mid];
-      size = [t, h, len];
-    }
-    return (
-      <mesh key={key} position={pos} receiveShadow castShadow>
-        <boxGeometry args={size} />
-        <meshStandardMaterial color={color} roughness={0.95} />
-      </mesh>
-    );
-  };
-
   return (
     <>
-      {SIDES.map((side) => (
-        <group key={side} ref={(g) => { groups.current[side] = g; }}>
-          {wallPieces(room, openings, side).map((p, i) => piece(side, p.a0, p.a1, p.z0, p.z1, `${side}${i}`))}
-          {openings
-            .filter((o) => o.wall === side && o.kind === 'window')
-            .map((o) => {
-              const along = toM(o.offsetUm + o.widthUm / 2);
-              const y = toM(o.sillUm + o.heightUm / 2);
-              const horiz = side === 'N' || side === 'S';
-              const at = side === 'N' ? -toM(T) / 2 : side === 'S' ? toM(room.depthUm + T / 2) : side === 'W' ? -toM(T) / 2 : toM(room.widthUm + T / 2);
+      {plan.walls.map((w) => {
+        const g = wallGeom(w);
+        const rotY = -Math.atan2(g.u.y, g.u.x);
+        const color = colorOf(w.id);
+        return (
+          <group key={w.id} ref={(el) => { groups.current[w.id] = el; }}>
+            {wallPieces(plan, w, openings).map((pc, i) => {
+              const mid = wallPoint(g, (pc.a0 + pc.a1) / 2);
               return (
-                <mesh key={o.id} position={horiz ? [along, y, at] : [at, y, along]}>
-                  <boxGeometry args={horiz ? [toM(o.widthUm), toM(o.heightUm), 0.02] : [0.02, toM(o.heightUm), toM(o.widthUm)]} />
-                  <meshStandardMaterial color="#b9d6e3" transparent opacity={0.35} roughness={0.1} />
+                <mesh key={i} position={[toM(mid.x), toM((pc.z0 + pc.z1) / 2), toM(mid.y)]} rotation={[0, rotY, 0]} receiveShadow castShadow>
+                  <boxGeometry args={[toM(pc.a1 - pc.a0), toM(pc.z1 - pc.z0), toM(w.thicknessUm)]} />
+                  <meshStandardMaterial color={color} roughness={0.95} />
                 </mesh>
               );
             })}
-        </group>
+            {openings
+              .filter((o) => o.wallId === w.id && o.kind === 'window')
+              .map((o) => {
+                const mid = wallPoint(g, o.offsetUm + o.widthUm / 2);
+                return (
+                  <mesh key={o.id} position={[toM(mid.x), toM(o.sillUm + o.heightUm / 2), toM(mid.y)]} rotation={[0, rotY, 0]}>
+                    <boxGeometry args={[toM(o.widthUm), toM(o.heightUm), 0.02]} />
+                    <meshStandardMaterial color="#b9d6e3" transparent opacity={0.35} roughness={0.1} />
+                  </mesh>
+                );
+              })}
+          </group>
+        );
+      })}
+      {rooms.map((r) => (
+        <Floor key={r.id} room={r} />
       ))}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[cx, 0, cz]} receiveShadow>
-        <planeGeometry args={[toM(room.widthUm), toM(room.depthUm)]} />
-        <meshStandardMaterial color={FLOOR_FINISHES.find((x) => x.id === room.floorFinish)?.color ?? '#ccc'} roughness={0.8} />
-      </mesh>
     </>
+  );
+}
+
+function Floor({ room }: { room: DetectedRoom }) {
+  const shape = useMemo(() => {
+    const s = new THREE.Shape();
+    room.interior.forEach((v, i) => (i === 0 ? s.moveTo(toM(v.x), -toM(v.y)) : s.lineTo(toM(v.x), -toM(v.y))));
+    s.closePath();
+    return s;
+  }, [room.interior]);
+  const color = FLOOR_FINISHES.find((x) => x.id === room.info.floorFinish)?.color ?? '#ccc';
+  return (
+    <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+      <shapeGeometry args={[shape]} />
+      <meshStandardMaterial color={color} roughness={0.8} />
+    </mesh>
   );
 }
 
@@ -138,16 +150,20 @@ function Scene({ preset, presetNonce, xray }: { preset: Preset; presetNonce: num
   const select = useStudio((s) => s.select);
   const controls = useRef<ComponentRef<typeof OrbitControls>>(null);
   const { camera } = useThree();
-  const W = toM(project.room.widthUm);
-  const D = toM(project.room.depthUm);
-  const H = toM(project.room.ceilingUm);
+  const rooms = useRooms();
+  const bounds = planBounds(project.plan);
+  const X0 = toM(bounds.minX);
+  const Z0 = toM(bounds.minY);
+  const W = toM(bounds.maxX - bounds.minX);
+  const D = toM(bounds.maxY - bounds.minY);
+  const H = toM(Math.max(project.plan.defaultCeilingUm, ...rooms.map((r) => r.info.ceilingUm)));
   const applied = useRef(-1);
 
   useFrame(() => {
     if (applied.current === presetNonce || !controls.current) return;
     applied.current = presetNonce;
-    const target = new THREE.Vector3(W / 2, H * 0.35, D / 2);
-    if (preset === 'top') camera.position.set(W / 2, Math.max(W, D) * 1.6, D / 2 + 0.01);
+    const target = new THREE.Vector3(X0 + W / 2, H * 0.35, Z0 + D / 2);
+    if (preset === 'top') camera.position.set(X0 + W / 2, Math.max(W, D) * 1.6, Z0 + D / 2 + 0.01);
     else if (preset === 'front') {
       const f = selection?.kind === 'furniture' ? project.furniture.find((x) => x.id === selection.id) : null;
       if (f) {
@@ -157,8 +173,8 @@ function Scene({ preset, presetNonce, xray }: { preset: Preset; presetNonce: num
         const dist = Math.max(toM(envelope(f).widthUm), 1.5) * 1.3;
         target.set(fx, toM(envelope(f).heightUm) / 2, fz);
         camera.position.set(fx - Math.sin(a) * dist, toM(envelope(f).heightUm) * 0.55, fz + Math.cos(a) * dist);
-      } else camera.position.set(W / 2, H * 0.5, D * 1.9);
-    } else camera.position.set(W * 1.75, H * 2.1, D * 2.05);
+      } else camera.position.set(X0 + W / 2, H * 0.5, Z0 + D * 1.9);
+    } else camera.position.set(X0 + W * 1.75, H * 2.1, Z0 + D * 2.05);
     controls.current.target.copy(target);
     controls.current.update();
   });
@@ -167,9 +183,12 @@ function Scene({ preset, presetNonce, xray }: { preset: Preset; presetNonce: num
     <>
       <hemisphereLight args={['#fff8ec', '#8a8070', 0.9]} />
       <ambientLight intensity={0.25} />
-      <directionalLight position={[W * 0.2, H * 2.4, D * 1.4]} intensity={1.5} castShadow shadow-mapSize={[2048, 2048]} shadow-camera-left={-6} shadow-camera-right={6} shadow-camera-top={6} shadow-camera-bottom={-6} shadow-bias={-0.0004} />
-      <pointLight position={[W / 2, H - 0.2, D / 2]} intensity={1.2} distance={8} color="#ffe9c7" />
-      <Walls project={project} />
+      <directionalLight position={[X0 + W * 0.2, H * 2.4, Z0 + D * 1.4]} intensity={1.5} castShadow shadow-mapSize={[2048, 2048]} shadow-camera-left={-Math.max(6, W)} shadow-camera-right={Math.max(6, W)} shadow-camera-top={Math.max(6, D)} shadow-camera-bottom={-Math.max(6, D)} shadow-bias={-0.0004} />
+      {rooms.slice(0, 8).map((r) => {
+        const c = interiorPoint(r.interior);
+        return <pointLight key={r.id} position={[toM(c.x), toM(r.info.ceilingUm) - 0.2, toM(c.y)]} intensity={1.2} distance={8} color="#ffe9c7" />;
+      })}
+      <Walls project={project} rooms={rooms} />
       <group onPointerMissed={() => select(null)}>
         {project.furniture.map((f) => (
           <Furniture key={f.id} f={f} project={project} xray={xray} selected={selection?.kind === 'furniture' && selection.id === f.id} onSelect={() => select({ kind: 'furniture', id: f.id })} />

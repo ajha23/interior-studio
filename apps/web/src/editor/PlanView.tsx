@@ -1,13 +1,50 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { finishById, FLOOR_FINISHES } from '@studio/core';
-import { useStudio, type Selection } from './store';
-import { isParametric, type FurnitureItem, type Opening, type Project } from '@studio/core';
-import { fmtMm, mm, type Um } from '@studio/core';
-import { envelope, resolveParametric } from '@studio/core';
-import { bbox, footprint, inwardNormal, localToRoom, openingSegment, snapToWalls, wallGaps, type Vec } from '@studio/core';
-import { severityById, useValidation } from './hooks';
+import {
+  area,
+  bbox,
+  detectRooms,
+  endpointsAt,
+  envelope,
+  finishById,
+  FLOOR_FINISHES,
+  fmtMm,
+  footprint,
+  interiorPoint,
+  isParametric,
+  localToRoom,
+  mm,
+  nearestWall,
+  newOpening,
+  newRoomInfo,
+  openingSpan,
+  orthoLock,
+  rectWalls,
+  resolveParametric,
+  sideOf,
+  snapPoint,
+  snapToWalls,
+  uid,
+  wallBody,
+  wallGaps,
+  wallGeom,
+  wallLength,
+  wallPoint,
+  type Command,
+  type DetectedRoom,
+  type FurnitureItem,
+  type Opening,
+  type Plan,
+  type Project,
+  type Um,
+  type Vec,
+  type Wall,
+} from '@studio/core';
+import { useStudio, type Selection, type Tool } from './store';
+import { severityById, useRooms, useValidation } from './hooks';
 
 const k = (v: Um) => v / 1000; // µm → drawing mm
+const K = (v: Vec): Vec => ({ x: k(v.x), y: k(v.y) });
+const pts = (p: Vec[]) => p.map((v) => `${k(v.x)},${k(v.y)}`).join(' ');
 
 /** Architectural dimension line with tick marks; `fs` is font size in drawing units. */
 export function Dim({ a, b, label, fs, color = '#3b413e', side = -1 }: { a: Vec; b: Vec; label: string; fs: number; color?: string; side?: 1 | -1 }) {
@@ -37,55 +74,55 @@ export function Dim({ a, b, label, fs, color = '#3b413e', side = -1 }: { a: Vec;
   );
 }
 
-function OpeningShape({ project, o, selected, fs }: { project: Project; o: Opening; selected: boolean; fs: number }) {
-  const room = project.room;
-  const T = k(room.wallThicknessUm);
-  const [s0, e0] = openingSegment(room, o);
-  const s = { x: k(s0.x), y: k(s0.y) };
-  const e = { x: k(e0.x), y: k(e0.y) };
-  const n = inwardNormal(o.wall);
-  const out = { x: -n.x * T, y: -n.y * T };
-  const color = selected ? 'var(--accent)' : '#2b302d';
-  const gap = <polygon points={`${s.x},${s.y} ${e.x},${e.y} ${e.x + out.x},${e.y + out.y} ${s.x + out.x},${s.y + out.y}`} fill="var(--plan-floor)" stroke="none" />;
+function OpeningShape({ plan, o, selected, fs, ghost = false }: { plan: Plan; o: Opening; selected: boolean; fs: number; ghost?: boolean }) {
+  const sp = openingSpan(plan, o);
+  if (!sp) return null;
+  const t = sp.wall.thicknessUm / 2;
+  const P = (along: number, off: number) => K(wallPoint(sp.g, along, off));
+  const a0 = o.offsetUm;
+  const a1 = o.offsetUm + o.widthUm;
+  const cut = [P(a0, t), P(a1, t), P(a1, -t), P(a0, -t)];
+  const cutPts = cut.map((v) => `${v.x},${v.y}`).join(' ');
+  const color = ghost ? 'var(--accent-2)' : selected ? 'var(--accent)' : '#2b302d';
+  const gap = <polygon points={cutPts} fill="var(--plan-floor)" stroke="none" />;
   if (o.kind === 'window') {
-    const lines = [0.2, 0.5, 0.8].map((f) => (
-      <line key={f} x1={s.x + out.x * f} y1={s.y + out.y * f} x2={e.x + out.x * f} y2={e.y + out.y * f} stroke={color} strokeWidth={f === 0.5 ? fs * 0.12 : fs * 0.07} />
-    ));
+    const lines = [-0.6, 0, 0.6].map((f) => {
+      const p = P(a0, f * t);
+      const q = P(a1, f * t);
+      return <line key={f} x1={p.x} y1={p.y} x2={q.x} y2={q.y} stroke={color} strokeWidth={f === 0 ? fs * 0.12 : fs * 0.07} />;
+    });
     return (
-      <g data-oid={o.id} style={{ cursor: 'pointer' }}>
+      <g data-oid={ghost ? undefined : o.id} style={{ cursor: 'pointer' }} opacity={ghost ? 0.7 : 1}>
         {gap}
-        <polygon points={`${s.x},${s.y} ${e.x},${e.y} ${e.x + out.x},${e.y + out.y} ${s.x + out.x},${s.y + out.y}`} fill={selected ? 'rgba(36,71,61,.12)' : 'transparent'} stroke={color} strokeWidth={fs * 0.06} />
+        <polygon points={cutPts} fill={selected ? 'rgba(36,71,61,.12)' : 'transparent'} stroke={color} strokeWidth={fs * 0.06} />
         {lines}
       </g>
     );
   }
-  const hinge = o.hinge === 'start' ? s : e;
-  const free = o.hinge === 'start' ? e : s;
+  const face = o.side * t;
+  const hingeAlong = o.hinge === 'start' ? a0 : a1;
+  const freeAlong = o.hinge === 'start' ? a1 : a0;
+  const hinge = P(hingeAlong, face);
+  const free = P(freeAlong, face);
   const w = k(o.widthUm);
-  const leafEnd = { x: hinge.x + n.x * w, y: hinge.y + n.y * w };
-  const sweep = (() => {
-    const v1 = { x: free.x - hinge.x, y: free.y - hinge.y };
-    const v2 = { x: leafEnd.x - hinge.x, y: leafEnd.y - hinge.y };
-    return v1.x * v2.y - v1.y * v2.x > 0 ? 1 : 0;
-  })();
+  const leafEnd = P(hingeAlong, face + o.side * o.widthUm);
+  const v1 = { x: free.x - hinge.x, y: free.y - hinge.y };
+  const v2 = { x: leafEnd.x - hinge.x, y: leafEnd.y - hinge.y };
+  const sweep = v1.x * v2.y - v1.y * v2.x > 0 ? 1 : 0;
   return (
-    <g data-oid={o.id} style={{ cursor: 'pointer' }}>
+    <g data-oid={ghost ? undefined : o.id} style={{ cursor: 'pointer' }} opacity={ghost ? 0.7 : 1}>
       {gap}
       <path d={`M${free.x},${free.y} A${w},${w} 0 0 ${sweep} ${leafEnd.x},${leafEnd.y}`} fill={selected ? 'rgba(36,71,61,.08)' : 'none'} stroke={color} strokeWidth={fs * 0.06} strokeDasharray={`${fs * 0.4} ${fs * 0.3}`} />
       <line x1={hinge.x} y1={hinge.y} x2={leafEnd.x} y2={leafEnd.y} stroke={color} strokeWidth={fs * 0.16} />
-      <polygon points={`${s.x},${s.y} ${e.x},${e.y} ${e.x + out.x},${e.y + out.y} ${s.x + out.x},${s.y + out.y}`} fill="transparent" stroke={selected ? color : 'none'} strokeWidth={fs * 0.08} />
+      <polygon points={cutPts} fill="transparent" stroke={selected || ghost ? color : 'none'} strokeWidth={fs * 0.08} />
     </g>
   );
 }
 
 function FurnitureShape({ project, f, selected, severity, fs }: { project: Project; f: FurnitureItem; selected: boolean; severity?: 'error' | 'warning'; fs: number }) {
   const poly = footprint(f);
-  const pts = poly.map((v) => `${k(v.x)},${k(v.y)}`).join(' ');
   const env = envelope(f);
-  const P = (lx: Um, ly: Um) => {
-    const v = localToRoom(f, lx, ly);
-    return { x: k(v.x), y: k(v.y) };
-  };
+  const P = (lx: Um, ly: Um) => K(localToRoom(f, lx, ly));
   const ln = (a: Vec, b: Vec, key: string, extra?: Record<string, unknown>) => <line key={key} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#3b413e" strokeWidth={fs * 0.05} {...extra} />;
   const details: ReactNode[] = [];
   let fill = '#e8e2d6';
@@ -123,7 +160,7 @@ function FurnitureShape({ project, f, selected, severity, fs }: { project: Proje
   const stroke = severity === 'error' ? 'var(--error)' : selected ? 'var(--accent)' : severity === 'warning' ? 'var(--warn)' : '#2b302d';
   return (
     <g data-fid={f.id} style={{ cursor: 'move' }}>
-      <polygon points={pts} fill={fill} fillOpacity={0.55} stroke={stroke} strokeWidth={selected ? fs * 0.2 : fs * 0.1} />
+      <polygon points={pts(poly)} fill={fill} fillOpacity={0.55} stroke={stroke} strokeWidth={selected ? fs * 0.2 : fs * 0.1} />
       {details}
       <text x={c.x} y={c.y - fs * 0.15} fontSize={fs * 1.05} textAnchor="middle" fill="#1f2522" fontWeight={600} pointerEvents="none" paintOrder="stroke" stroke="rgba(255,253,248,.85)" strokeWidth={fs * 0.3}>
         {f.name}
@@ -135,44 +172,95 @@ function FurnitureShape({ project, f, selected, severity, fs }: { project: Proje
   );
 }
 
-export function PlanDrawing({ project, selection, override, fs, interactive = true }: { project: Project; selection: Selection; override?: FurnitureItem | null; fs: number; interactive?: boolean }) {
+/** Plan extent (wall bodies), in µm. */
+export function planBounds(plan: Plan) {
+  if (!plan.walls.length) return { minX: 0, minY: 0, maxX: mm(4000), maxY: mm(3000) };
+  return bbox(plan.walls.flatMap((w) => wallBody(w, plan)));
+}
+
+export interface PlanPreview {
+  /** Wall being drawn, from → to (µm). */
+  wall?: { from: Vec; to: Vec; thickness: Um };
+  /** Rectangle being dragged with the room tool (clear floor). */
+  rect?: { a: Vec; b: Vec };
+  /** Door/window being placed. */
+  opening?: Opening;
+  /** Snap target marker. */
+  snap?: Vec | null;
+}
+
+export function PlanDrawing({
+  project,
+  plan,
+  rooms,
+  selection,
+  override,
+  preview,
+  fs,
+  interactive = true,
+}: {
+  project: Project;
+  plan?: Plan;
+  rooms?: DetectedRoom[];
+  selection: Selection;
+  override?: FurnitureItem | null;
+  preview?: PlanPreview;
+  fs: number;
+  interactive?: boolean;
+}) {
   const results = useValidation();
   const sev = useMemo(() => severityById(results), [results]);
-  const room = project.room;
-  const W = k(room.widthUm);
-  const D = k(room.depthUm);
-  const T = k(room.wallThicknessUm);
-  const floor = FLOOR_FINISHES.find((x) => x.id === room.floorFinish)?.color ?? '#eee';
+  const pl = plan ?? project.plan;
+  const rs = useMemo(() => rooms ?? detectRooms(pl), [rooms, pl]);
   const items = project.furniture.map((f) => (override && f.id === override.id ? override : f));
   const sel = selection?.kind === 'furniture' ? items.find((f) => f.id === selection.id) : null;
   const selOpening = selection?.kind === 'opening' ? project.openings.find((o) => o.id === selection.id) : null;
+  const selWall = selection?.kind === 'wall' ? pl.walls.find((w) => w.id === selection.id) : null;
+  const selRoom = selection?.kind === 'room' ? rs.find((r) => r.id === selection.id) : null;
+  const b = planBounds(pl);
   const dimOff = fs * 3.2;
+  const accent = 'var(--accent)';
 
-  const gapDims: ReactNode[] = [];
+  const extraDims: ReactNode[] = [];
   if (sel && Math.round(sel.rotDeg) % 90 === 0) {
-    const g = wallGaps(sel, room);
-    const b = { minX: k(g.box.minX), maxX: k(g.box.maxX), minY: k(g.box.minY), maxY: k(g.box.maxY) };
-    const cy = (b.minY + b.maxY) / 2;
-    const cx = (b.minX + b.maxX) / 2;
-    const col = 'var(--accent)';
-    if (g.west > mm(1)) gapDims.push(<Dim key="w" a={{ x: 0, y: cy }} b={{ x: b.minX, y: cy }} label={fmtMm(g.west)} fs={fs} color={col} />);
-    if (g.east > mm(1)) gapDims.push(<Dim key="e" a={{ x: b.maxX, y: cy }} b={{ x: W, y: cy }} label={fmtMm(g.east)} fs={fs} color={col} />);
-    if (g.north > mm(1)) gapDims.push(<Dim key="n" a={{ x: cx, y: 0 }} b={{ x: cx, y: b.minY }} label={fmtMm(g.north)} fs={fs} color={col} />);
-    if (g.south > mm(1)) gapDims.push(<Dim key="s" a={{ x: cx, y: b.maxY }} b={{ x: cx, y: D }} label={fmtMm(g.south)} fs={fs} color={col} />);
+    const g = wallGaps(sel, pl);
+    const bx = { minX: k(g.box.minX), maxX: k(g.box.maxX), minY: k(g.box.minY), maxY: k(g.box.maxY) };
+    const cy = (bx.minY + bx.maxY) / 2;
+    const cx = (bx.minX + bx.maxX) / 2;
+    if (g.to.west !== undefined && g.west > mm(1) && g.west < mm(6000)) extraDims.push(<Dim key="w" a={{ x: k(g.to.west), y: cy }} b={{ x: bx.minX, y: cy }} label={fmtMm(g.west)} fs={fs} color={accent} />);
+    if (g.to.east !== undefined && g.east > mm(1) && g.east < mm(6000)) extraDims.push(<Dim key="e" a={{ x: bx.maxX, y: cy }} b={{ x: k(g.to.east), y: cy }} label={fmtMm(g.east)} fs={fs} color={accent} />);
+    if (g.to.north !== undefined && g.north > mm(1) && g.north < mm(6000)) extraDims.push(<Dim key="n" a={{ x: cx, y: k(g.to.north) }} b={{ x: cx, y: bx.minY }} label={fmtMm(g.north)} fs={fs} color={accent} />);
+    if (g.to.south !== undefined && g.south > mm(1) && g.south < mm(6000)) extraDims.push(<Dim key="s" a={{ x: cx, y: bx.maxY }} b={{ x: cx, y: k(g.to.south) }} label={fmtMm(g.south)} fs={fs} color={accent} />);
+  }
+  if (selWall) {
+    const g = wallGeom(selWall);
+    const off = selWall.thicknessUm / 2 + mm(fs * 1.8);
+    extraDims.push(<Dim key="wl" a={K(wallPoint(g, 0, off))} b={K(wallPoint(g, g.len, off))} label={fmtMm(g.len)} fs={fs} color={accent} />);
   }
   if (selOpening) {
-    const [s0] = openingSegment(room, selOpening);
-    const start = selOpening.wall === 'N' || selOpening.wall === 'S' ? { x: 0, y: k(s0.y) } : { x: k(s0.x), y: 0 };
-    const n = inwardNormal(selOpening.wall);
-    const shift = { x: n.x * fs * 1.6, y: n.y * fs * 1.6 };
-    const a = { x: start.x + shift.x, y: start.y + shift.y };
-    const b = { x: k(s0.x) + shift.x, y: k(s0.y) + shift.y };
-    if (selOpening.offsetUm > 0) gapDims.push(<Dim key="o" a={a} b={b} label={fmtMm(selOpening.offsetUm)} fs={fs} color="var(--accent)" side={1} />);
+    const sp = openingSpan(pl, selOpening);
+    if (sp) {
+      const off = -selOpening.side * (sp.wall.thicknessUm / 2 + mm(fs * 1.6));
+      if (selOpening.offsetUm > 0) extraDims.push(<Dim key="o" a={K(wallPoint(sp.g, 0, off))} b={K(wallPoint(sp.g, selOpening.offsetUm, off))} label={fmtMm(selOpening.offsetUm)} fs={fs} color={accent} />);
+      const rest = sp.g.len - selOpening.offsetUm - selOpening.widthUm;
+      if (rest > 0) extraDims.push(<Dim key="o2" a={K(wallPoint(sp.g, selOpening.offsetUm + selOpening.widthUm, off))} b={K(wallPoint(sp.g, sp.g.len, off))} label={fmtMm(rest)} fs={fs} color={accent} />);
+    }
   }
 
   const gridLines: ReactNode[] = [];
-  for (let x = 500; x < W; x += 500) gridLines.push(<line key={`gx${x}`} x1={x} y1={0} x2={x} y2={D} />);
-  for (let y = 500; y < D; y += 500) gridLines.push(<line key={`gy${y}`} x1={0} y1={y} x2={W} y2={y} />);
+  const gx0 = Math.floor(k(b.minX) / 500) * 500;
+  const gy0 = Math.floor(k(b.minY) / 500) * 500;
+  for (let x = gx0; x <= k(b.maxX); x += 500) gridLines.push(<line key={`gx${x}`} x1={x} y1={k(b.minY)} x2={x} y2={k(b.maxY)} />);
+  for (let y = gy0; y <= k(b.maxY); y += 500) gridLines.push(<line key={`gy${y}`} x1={k(b.minX)} y1={y} x2={k(b.maxX)} y2={y} />);
+
+  // Junction handles for the selected wall and walls meeting it.
+  const handles: ReactNode[] = [];
+  if (selWall && interactive) {
+    for (const end of ['a', 'b'] as const) {
+      const p = K(selWall[end]);
+      handles.push(<circle key={end} data-end={`${selWall.id}:${end}`} cx={p.x} cy={p.y} r={fs * 0.7} fill="#fff" stroke={accent} strokeWidth={fs * 0.15} style={{ cursor: 'grab' }} />);
+    }
+  }
 
   return (
     <g>
@@ -181,22 +269,70 @@ export function PlanDrawing({ project, selection, override, fs, interactive = tr
           <line x1="0" y1="0" x2="0" y2={fs * 0.9} stroke="#5c625e" strokeWidth={fs * 0.12} />
         </pattern>
       </defs>
-      <rect x={-T} y={-T} width={W + 2 * T} height={D + 2 * T} fill="url(#hatch)" stroke="var(--plan-wall)" strokeWidth={fs * 0.12} />
-      <rect data-room="1" x={0} y={0} width={W} height={D} fill="var(--plan-floor)" stroke="var(--plan-wall)" strokeWidth={fs * 0.12} />
-      <rect x={0} y={0} width={W} height={D} fill={floor} fillOpacity={0.18} pointerEvents="none" />
-      <g stroke="#cfc8bb" strokeWidth={fs * 0.04} pointerEvents="none">{gridLines}</g>
+      {rs.map((r) => {
+        const floor = FLOOR_FINISHES.find((x) => x.id === r.info.floorFinish)?.color ?? '#eee';
+        return (
+          <g key={r.id}>
+            <polygon data-room={r.id} points={pts(r.interior)} fill="var(--plan-floor)" stroke="none" />
+            <polygon points={pts(r.interior)} fill={floor} fillOpacity={selRoom?.id === r.id ? 0.35 : 0.18} stroke={selRoom?.id === r.id ? accent : 'none'} strokeWidth={fs * 0.15} pointerEvents="none" />
+          </g>
+        );
+      })}
+      <g stroke="#d8d1c4" strokeWidth={fs * 0.04} pointerEvents="none">{gridLines}</g>
+      {pl.walls.map((w) => {
+        const sevW = sev.get(w.id);
+        const isSel = selWall?.id === w.id;
+        return <polygon key={w.id} data-wid={w.id} points={pts(wallBody(w, pl))} fill="url(#hatch)" stroke={isSel ? accent : sevW === 'error' ? 'var(--error)' : 'var(--plan-wall)'} strokeWidth={isSel ? fs * 0.22 : fs * 0.1} style={{ cursor: interactive ? 'pointer' : undefined }} />;
+      })}
       {project.openings.map((o) => (
-        <OpeningShape key={o.id} project={project} o={o} selected={selOpening?.id === o.id} fs={fs} />
+        <OpeningShape key={o.id} plan={pl} o={o} selected={selOpening?.id === o.id} fs={fs} />
       ))}
+      {preview?.opening && <OpeningShape plan={pl} o={preview.opening} selected={false} fs={fs} ghost />}
+      {rs.map((r) => {
+        const c = K(interiorPoint(r.interior));
+        return (
+          <g key={`l${r.id}`} pointerEvents="none">
+            <text x={c.x} y={c.y} fontSize={fs * 1.2} textAnchor="middle" fill="#6a706c" fontWeight={600} paintOrder="stroke" stroke="rgba(255,253,248,.8)" strokeWidth={fs * 0.3}>
+              {r.info.name}
+            </text>
+            <text x={c.x} y={c.y + fs * 1.4} fontSize={fs * 0.95} textAnchor="middle" fill="#7c837f" fontFamily="IBM Plex Mono, monospace" paintOrder="stroke" stroke="rgba(255,253,248,.8)" strokeWidth={fs * 0.3}>
+              {(area(r.interior) / 1e12).toFixed(2)} m²
+            </text>
+          </g>
+        );
+      })}
       {items.map((f) => (
         <FurnitureShape key={f.id} project={project} f={f} selected={sel?.id === f.id} severity={sev.get(f.id)} fs={fs} />
       ))}
-      <Dim a={{ x: 0, y: -T - dimOff }} b={{ x: W, y: -T - dimOff }} label={fmtMm(room.widthUm)} fs={fs * 1.1} />
-      <Dim a={{ x: -T - dimOff, y: D }} b={{ x: -T - dimOff, y: 0 }} label={fmtMm(room.depthUm)} fs={fs * 1.1} />
-      {gapDims}
+      {pl.walls.length > 0 && (
+        <>
+          <Dim a={{ x: k(b.minX), y: k(b.minY) - dimOff }} b={{ x: k(b.maxX), y: k(b.minY) - dimOff }} label={fmtMm(b.maxX - b.minX)} fs={fs * 1.1} />
+          <Dim a={{ x: k(b.minX) - dimOff, y: k(b.maxY) }} b={{ x: k(b.minX) - dimOff, y: k(b.minY) }} label={fmtMm(b.maxY - b.minY)} fs={fs * 1.1} />
+        </>
+      )}
+      {extraDims}
+      {handles}
+      {preview?.wall && (
+        <g pointerEvents="none">
+          <line x1={k(preview.wall.from.x)} y1={k(preview.wall.from.y)} x2={k(preview.wall.to.x)} y2={k(preview.wall.to.y)} stroke={accent} strokeWidth={k(preview.wall.thickness)} strokeOpacity={0.35} strokeLinecap="square" />
+          <line x1={k(preview.wall.from.x)} y1={k(preview.wall.from.y)} x2={k(preview.wall.to.x)} y2={k(preview.wall.to.y)} stroke={accent} strokeWidth={fs * 0.1} strokeDasharray={`${fs * 0.5} ${fs * 0.3}`} />
+          {Math.hypot(preview.wall.to.x - preview.wall.from.x, preview.wall.to.y - preview.wall.from.y) > mm(50) && (
+            <Dim a={K(preview.wall.from)} b={K(preview.wall.to)} label={fmtMm(Math.hypot(preview.wall.to.x - preview.wall.from.x, preview.wall.to.y - preview.wall.from.y))} fs={fs} color={accent} />
+          )}
+        </g>
+      )}
+      {preview?.rect && (
+        <g pointerEvents="none">
+          <rect x={k(Math.min(preview.rect.a.x, preview.rect.b.x))} y={k(Math.min(preview.rect.a.y, preview.rect.b.y))} width={k(Math.abs(preview.rect.b.x - preview.rect.a.x))} height={k(Math.abs(preview.rect.b.y - preview.rect.a.y))} fill="rgba(36,71,61,.08)" stroke={accent} strokeWidth={fs * 0.12} strokeDasharray={`${fs * 0.5} ${fs * 0.3}`} />
+          <text x={k((preview.rect.a.x + preview.rect.b.x) / 2)} y={k((preview.rect.a.y + preview.rect.b.y) / 2)} fontSize={fs * 1.1} textAnchor="middle" fill={accent} fontFamily="IBM Plex Mono, monospace" paintOrder="stroke" stroke="var(--paper)" strokeWidth={fs * 0.3}>
+            {fmtMm(Math.abs(preview.rect.b.x - preview.rect.a.x))} × {fmtMm(Math.abs(preview.rect.b.y - preview.rect.a.y))}
+          </text>
+        </g>
+      )}
+      {preview?.snap && <circle cx={k(preview.snap.x)} cy={k(preview.snap.y)} r={fs * 0.55} fill="none" stroke={accent} strokeWidth={fs * 0.15} pointerEvents="none" />}
       {!interactive && (
-        <text x={W + T} y={D + T + dimOff} fontSize={fs} textAnchor="end" fill="#4b524e">
-          Ceiling {fmtMm(room.ceilingUm)} · Walls {fmtMm(room.wallThicknessUm)} · all dimensions mm
+        <text x={k(b.maxX)} y={k(b.maxY) + dimOff} fontSize={fs} textAnchor="end" fill="#4b524e">
+          Walls {fmtMm(pl.defaultWallThicknessUm)} typ. · all dimensions mm
         </text>
       )}
     </g>
@@ -210,24 +346,87 @@ interface VB {
   h: number;
 }
 
+type Drag =
+  | { mode: 'pan'; start: Vec; origin: Vec; moved: boolean; screen: Vec; target: Selection }
+  | { mode: 'move'; id: string; start: Vec; origin: Vec; moved: boolean; screen: Vec }
+  | { mode: 'junction'; ends: { wallId: string; end: 'a' | 'b' }[]; moved: boolean; screen: Vec }
+  | { mode: 'wall'; id: string; start: Vec; moved: boolean; screen: Vec }
+  | { mode: 'opening'; id: string; moved: boolean; screen: Vec }
+  | { mode: 'rect'; a: Vec; moved: boolean; screen: Vec };
+
+const TOOL_HINT: Record<Tool, string> = {
+  select: 'Click to select · drag to move · drag a wall end to reshape',
+  wall: 'Click to start a wall, click again to place it · Shift frees the angle · Esc or double-click to finish',
+  room: 'Drag to draw a room (clear inside size)',
+  door: 'Click a wall to place a door · click the other side of the wall to flip the swing',
+  window: 'Click a wall to place a window',
+};
+
+function movePlanEnds(plan: Plan, ends: { wallId: string; end: 'a' | 'b' }[], to: Vec): Plan {
+  return { ...plan, walls: plan.walls.map((w) => ends.reduce((acc, e) => (e.wallId === w.id ? { ...acc, [e.end]: { x: Math.round(to.x), y: Math.round(to.y) } } : acc), w)) };
+}
+
+/** Walls whose end touches `w` (corners and T-junctions) — they stretch when `w` moves. */
+function attachedEnds(plan: Plan, w: Wall): { wallId: string; end: 'a' | 'b' }[] {
+  const g = wallGeom(w);
+  const out: { wallId: string; end: 'a' | 'b' }[] = [];
+  for (const o of plan.walls) {
+    if (o.id === w.id) continue;
+    for (const end of ['a', 'b'] as const) {
+      const p = o[end];
+      const rx = p.x - w.a.x;
+      const ry = p.y - w.a.y;
+      const along = rx * g.u.x + ry * g.u.y;
+      const off = rx * g.n.x + ry * g.n.y;
+      if (Math.abs(off) <= mm(1) && along >= -mm(1) && along <= g.len + mm(1)) out.push({ wallId: o.id, end });
+    }
+  }
+  return out;
+}
+
+function wallUpdates(before: Plan, after: Plan): Command[] {
+  const out: Command[] = [];
+  for (const w of after.walls) {
+    const old = before.walls.find((x) => x.id === w.id);
+    if (!old) continue;
+    const patch: Partial<Wall> = {};
+    if (old.a.x !== w.a.x || old.a.y !== w.a.y) patch.a = w.a;
+    if (old.b.x !== w.b.x || old.b.y !== w.b.y) patch.b = w.b;
+    if (Object.keys(patch).length) out.push({ type: 'wall.update', id: w.id, patch });
+  }
+  return out;
+}
+
 export function PlanView() {
   const project = useStudio((s) => s.project);
   const selection = useStudio((s) => s.selection);
   const select = useStudio((s) => s.select);
   const dispatch = useStudio((s) => s.dispatch);
+  const tool = useStudio((s) => s.tool);
+  const setTool = useStudio((s) => s.setTool);
+  const readOnly = useStudio((s) => s.readOnly);
+  const rooms = useRooms();
   const wrap = useRef<HTMLDivElement>(null);
   const svg = useRef<SVGSVGElement>(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
   const [vb, setVb] = useState<VB | null>(null);
   const [override, setOverride] = useState<FurnitureItem | null>(null);
+  const [draftPlan, setDraftPlan] = useState<Plan | null>(null);
+  const [draftOpening, setDraftOpening] = useState<Opening | null>(null);
+  const [preview, setPreview] = useState<PlanPreview>({});
+  const [chain, setChain] = useState<Vec | null>(null); // wall tool: start of the next segment
   const [panning, setPanning] = useState(false);
-  const drag = useRef<{ mode: 'move' | 'pan'; id?: string; start: Vec; origin: Vec; moved: boolean; target: 'room' | 'none' | 'item'; screen: Vec } | null>(null);
+  const drag = useRef<Drag | null>(null);
+  const plan = draftPlan ?? project.plan;
+  const draftRooms = useMemo(() => (draftPlan ? detectRooms(draftPlan) : rooms), [draftPlan, rooms]);
 
+  const planRef = useRef(project.plan);
+  planRef.current = project.plan;
   const fit = useCallback(() => {
-    const T = k(project.room.wallThicknessUm);
-    const pad = 900;
-    const W = k(project.room.widthUm) + 2 * T + pad * 2;
-    const D = k(project.room.depthUm) + 2 * T + pad * 2;
+    const b = planBounds(planRef.current);
+    const pad = 1200;
+    const W = k(b.maxX - b.minX) + pad * 2;
+    const D = k(b.maxY - b.minY) + pad * 2;
     const aspect = size.w / Math.max(1, size.h);
     let w = W;
     let h = W / aspect;
@@ -235,10 +434,11 @@ export function PlanView() {
       h = D;
       w = D * aspect;
     }
-    const cx = k(project.room.widthUm) / 2;
-    const cy = k(project.room.depthUm) / 2;
+    const cx = k(b.minX + b.maxX) / 2;
+    const cy = k(b.minY + b.maxY) / 2;
     setVb({ x: cx - w / 2, y: cy - h / 2, w, h });
-  }, [project.room.widthUm, project.room.depthUm, project.room.wallThicknessUm, size.w, size.h]);
+    // Auto-fit only when the canvas resizes or a different project loads — not on every edit.
+  }, [size.w, size.h, project.id]);
 
   useLayoutEffect(() => {
     const el = wrap.current;
@@ -253,9 +453,34 @@ export function PlanView() {
     fit();
   }, [fit]);
 
+  // Leaving a drawing tool clears its in-progress state.
+  useEffect(() => {
+    setChain(null);
+    setPreview({});
+  }, [tool]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement;
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA')) return;
+      if (e.key === 'Escape') {
+        if (chain) setChain(null);
+        else if (tool !== 'select') setTool('select');
+        setPreview({});
+      }
+      const shortcuts: Record<string, Tool> = { w: 'wall', m: 'room', d: 'door', n: 'window', v: 'select' };
+      const t = shortcuts[e.key.toLowerCase()];
+      if (t && !e.metaKey && !e.ctrlKey && !readOnly) setTool(t);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [chain, tool, setTool, readOnly]);
+
   const view = vb ?? { x: -1000, y: -1000, w: 6000, h: 5000 };
   const pxPerMm = size.w / view.w;
   const fs = 11 / pxPerMm;
+  const snapTol = mm(Math.max(80, 14 / pxPerMm));
+  const grid = mm(pxPerMm > 0.4 ? 10 : 50);
 
   const toWorld = (cx: number, cy: number): Vec => {
     const el = svg.current!;
@@ -265,52 +490,180 @@ export function PlanView() {
     const m = el.getScreenCTM();
     if (!m) return { x: 0, y: 0 };
     const p = pt.matrixTransform(m.inverse());
-    return { x: p.x, y: p.y };
+    return { x: mm(p.x), y: mm(p.y) }; // µm
+  };
+
+  /** Candidate door/window centred on the cursor along the nearest wall. */
+  const openingAt = (p: Vec, kind: 'door' | 'window'): Opening | null => {
+    const hit = nearestWall(project.plan, p, mm(400));
+    if (!hit) return null;
+    const proto = newOpening(kind, hit.wall.id, 0, sideOf(hit.geom, p));
+    const len = wallLength(hit.wall);
+    const width = Math.min(proto.widthUm, Math.max(mm(300), len - mm(100)));
+    const offset = Math.round(Math.min(Math.max(hit.along - width / 2, 0), len - width) / mm(10)) * mm(10);
+    return { ...proto, widthUm: width, offsetUm: offset };
+  };
+
+  const commitWall = (from: Vec, to: Vec) => {
+    if (Math.hypot(to.x - from.x, to.y - from.y) < mm(100)) return false;
+    const wall: Wall = { id: uid('wall'), a: { x: Math.round(from.x), y: Math.round(from.y) }, b: { x: Math.round(to.x), y: Math.round(to.y) }, thicknessUm: project.plan.defaultWallThicknessUm, heightUm: project.plan.defaultCeilingUm };
+    dispatch({ type: 'wall.add', wall }, 'Draw wall');
+    return true;
   };
 
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0 && e.button !== 1) return;
     const t = e.target as Element;
+    const w = toWorld(e.clientX, e.clientY);
+    const screen = { x: e.clientX, y: e.clientY };
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+
+    if (e.button === 1) {
+      drag.current = { mode: 'pan', start: screen, origin: { x: view.x, y: view.y }, moved: false, screen, target: null };
+      return;
+    }
+    if (!readOnly && tool === 'wall') {
+      const s = snapPoint(project.plan, w, snapTol, grid);
+      if (!chain) {
+        setChain(s.p);
+        return;
+      }
+      const end = e.shiftKey || s.snapped ? s.p : orthoLock(chain, s.p);
+      // Landing on an existing wall end closes the run; otherwise keep drawing from here.
+      const closes = s.snapped && endpointsAt(project.plan, s.p).length > 0;
+      if (commitWall(chain, end)) {
+        if (closes) {
+          setChain(null);
+          setPreview({});
+        } else setChain(end);
+      }
+      return;
+    }
+    if (!readOnly && tool === 'room') {
+      const s = snapPoint(project.plan, w, snapTol, grid);
+      drag.current = { mode: 'rect', a: s.p, moved: false, screen };
+      return;
+    }
+    if (!readOnly && (tool === 'door' || tool === 'window')) {
+      const o = openingAt(w, tool);
+      if (o) {
+        dispatch({ type: 'opening.add', opening: o }, `Add ${tool}`);
+        select({ kind: 'opening', id: o.id });
+        setTool('select');
+      }
+      return;
+    }
+
+    // Select tool
+    const endEl = t.closest('[data-end]');
     const fEl = t.closest('[data-fid]');
     const oEl = t.closest('[data-oid]');
-    const w = toWorld(e.clientX, e.clientY);
-    (e.currentTarget as Element).setPointerCapture(e.pointerId);
-    if (fEl && e.button === 0) {
+    const wEl = t.closest('[data-wid]');
+    const rEl = t.closest('[data-room]');
+    if (endEl && !readOnly) {
+      const [wallId, end] = endEl.getAttribute('data-end')!.split(':') as [string, 'a' | 'b'];
+      const wall = project.plan.walls.find((x) => x.id === wallId)!;
+      drag.current = { mode: 'junction', ends: endpointsAt(project.plan, wall[end]), moved: false, screen };
+      return;
+    }
+    if (fEl) {
       const id = fEl.getAttribute('data-fid')!;
       const f = project.furniture.find((x) => x.id === id)!;
       select({ kind: 'furniture', id });
-      drag.current = { mode: 'move', id, start: w, origin: { x: f.xUm, y: f.yUm }, moved: false, target: 'item', screen: { x: e.clientX, y: e.clientY } };
+      drag.current = readOnly ? null : { mode: 'move', id, start: w, origin: { x: f.xUm, y: f.yUm }, moved: false, screen };
       return;
     }
-    if (oEl && e.button === 0) {
-      select({ kind: 'opening', id: oEl.getAttribute('data-oid')! });
-      drag.current = null;
+    if (oEl) {
+      const id = oEl.getAttribute('data-oid')!;
+      select({ kind: 'opening', id });
+      drag.current = readOnly ? null : { mode: 'opening', id, moved: false, screen };
       return;
     }
-    drag.current = { mode: 'pan', start: { x: e.clientX, y: e.clientY }, origin: { x: view.x, y: view.y }, moved: false, target: t.closest('[data-room]') ? 'room' : 'none', screen: { x: e.clientX, y: e.clientY } };
+    if (wEl) {
+      const id = wEl.getAttribute('data-wid')!;
+      select({ kind: 'wall', id });
+      drag.current = readOnly ? null : { mode: 'wall', id, start: w, moved: false, screen };
+      return;
+    }
+    drag.current = { mode: 'pan', start: screen, origin: { x: view.x, y: view.y }, moved: false, screen, target: rEl ? { kind: 'room', id: rEl.getAttribute('data-room')! } : null };
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
+    const w = toWorld(e.clientX, e.clientY);
+    // Hover previews for drawing tools.
+    if (!drag.current && !readOnly) {
+      if (tool === 'wall') {
+        const s = snapPoint(project.plan, w, snapTol, grid);
+        const to = chain && !e.shiftKey && !s.snapped ? orthoLock(chain, s.p) : s.p;
+        setPreview({ wall: chain ? { from: chain, to, thickness: project.plan.defaultWallThicknessUm } : undefined, snap: s.snapped ? s.p : null });
+      } else if (tool === 'door' || tool === 'window') {
+        setPreview({ opening: openingAt(w, tool) ?? undefined });
+      } else if (tool === 'room') {
+        const s = snapPoint(project.plan, w, snapTol, grid);
+        setPreview({ snap: s.snapped ? s.p : null });
+      }
+    }
     const d = drag.current;
     if (!d) return;
     if (Math.hypot(e.clientX - d.screen.x, e.clientY - d.screen.y) > 3) d.moved = true;
     if (!d.moved) return;
-    if (d.mode === 'pan') {
-      setPanning(true);
-      const dx = (e.clientX - d.start.x) / pxPerMm;
-      const dy = (e.clientY - d.start.y) / pxPerMm;
-      setVb({ ...view, x: d.origin.x - dx, y: d.origin.y - dy });
-      return;
+    switch (d.mode) {
+      case 'pan': {
+        setPanning(true);
+        const dx = (e.clientX - d.start.x) / pxPerMm;
+        const dy = (e.clientY - d.start.y) / pxPerMm;
+        setVb({ ...view, x: d.origin.x - dx, y: d.origin.y - dy });
+        return;
+      }
+      case 'move': {
+        const f = project.furniture.find((x) => x.id === d.id);
+        if (!f) return;
+        let cand: FurnitureItem = { ...f, xUm: Math.round(d.origin.x + w.x - d.start.x), yUm: Math.round(d.origin.y + w.y - d.start.y) };
+        if (!e.shiftKey) {
+          const snapped = snapToWalls(cand, project.plan, mm(Math.max(60, 12 / pxPerMm)), mm(10));
+          cand = { ...cand, xUm: snapped.x, yUm: snapped.y };
+        }
+        setOverride(cand);
+        return;
+      }
+      case 'junction': {
+        const exclude = new Set(d.ends.map((x) => x.wallId));
+        const s = snapPoint(project.plan, w, snapTol, grid, exclude);
+        setDraftPlan(movePlanEnds(project.plan, d.ends, s.p));
+        setPreview({ snap: s.snapped ? s.p : null });
+        return;
+      }
+      case 'wall': {
+        const wall = project.plan.walls.find((x) => x.id === d.id);
+        if (!wall) return;
+        const g = wallGeom(wall);
+        const raw = (w.x - d.start.x) * g.n.x + (w.y - d.start.y) * g.n.y;
+        const off = e.shiftKey ? raw : Math.round(raw / grid) * grid;
+        const shift = (p: Vec) => ({ x: Math.round(p.x + g.n.x * off), y: Math.round(p.y + g.n.y * off) });
+        let next: Plan = { ...project.plan, walls: project.plan.walls.map((x) => (x.id === wall.id ? { ...x, a: shift(x.a), b: shift(x.b) } : x)) };
+        for (const att of attachedEnds(project.plan, wall)) {
+          const o = project.plan.walls.find((x) => x.id === att.wallId)!;
+          next = movePlanEnds(next, [att], shift(o[att.end]));
+        }
+        setDraftPlan(next);
+        return;
+      }
+      case 'opening': {
+        const o = project.openings.find((x) => x.id === d.id);
+        const wall = o && project.plan.walls.find((x) => x.id === o.wallId);
+        if (!o || !wall) return;
+        const g = wallGeom(wall);
+        const along = (w.x - wall.a.x) * g.u.x + (w.y - wall.a.y) * g.u.y;
+        const offset = Math.round(Math.min(Math.max(along - o.widthUm / 2, 0), g.len - o.widthUm) / mm(10)) * mm(10);
+        setDraftOpening({ ...o, offsetUm: offset });
+        return;
+      }
+      case 'rect': {
+        const s = snapPoint(project.plan, w, snapTol, grid);
+        setPreview({ rect: { a: d.a, b: s.p }, snap: s.snapped ? s.p : null });
+        return;
+      }
     }
-    const w = toWorld(e.clientX, e.clientY);
-    const f = project.furniture.find((x) => x.id === d.id);
-    if (!f) return;
-    let cand: FurnitureItem = { ...f, xUm: Math.round(d.origin.x + mm(w.x - d.start.x)), yUm: Math.round(d.origin.y + mm(w.y - d.start.y)) };
-    if (!e.shiftKey) {
-      const snapped = snapToWalls(cand, project.room, mm(Math.max(60, 12 / pxPerMm)), mm(10));
-      cand = { ...cand, xUm: snapped.x, yUm: snapped.y };
-    }
-    setOverride(cand);
   };
 
   const onPointerUp = () => {
@@ -322,42 +675,98 @@ export function PlanView() {
       const f = project.furniture.find((x) => x.id === d.id);
       if (f && (f.xUm !== override.xUm || f.yUm !== override.yUm)) dispatch({ type: 'furniture.update', id: f.id, patch: { xUm: override.xUm, yUm: override.yUm } }, `Move ${f.name}`);
     }
-    if (d.mode === 'pan' && !d.moved) select(d.target === 'room' ? { kind: 'room' } : null);
+    if ((d.mode === 'junction' || d.mode === 'wall') && d.moved && draftPlan) {
+      const cmds = wallUpdates(project.plan, draftPlan);
+      if (cmds.length) dispatch({ type: 'batch', label: d.mode === 'junction' ? 'Move wall corner' : 'Move wall', commands: cmds });
+    }
+    if (d.mode === 'opening' && d.moved && draftOpening) {
+      const o = project.openings.find((x) => x.id === d.id);
+      if (o && o.offsetUm !== draftOpening.offsetUm) dispatch({ type: 'opening.update', id: o.id, patch: { offsetUm: draftOpening.offsetUm } }, `Move ${o.kind}`);
+    }
+    if (d.mode === 'rect') {
+      const r = preview.rect;
+      if (r && Math.abs(r.b.x - r.a.x) >= mm(600) && Math.abs(r.b.y - r.a.y) >= mm(600)) {
+        const x0 = Math.min(r.a.x, r.b.x);
+        const y0 = Math.min(r.a.y, r.b.y);
+        const wDim = Math.abs(r.b.x - r.a.x);
+        const dDim = Math.abs(r.b.y - r.a.y);
+        const walls = rectWalls(x0, y0, wDim, dDim, project.plan.defaultWallThicknessUm, project.plan.defaultCeilingUm);
+        const names = new Set(rooms.map((r) => r.info.name));
+        let n = rooms.length + 1;
+        while (names.has(`Room ${n}`)) n++;
+        const info = newRoomInfo(`Room ${n}`, { x: x0 + wDim / 2, y: y0 + dDim / 2 }, project.plan.defaultCeilingUm);
+        dispatch({ type: 'batch', label: 'Draw room', commands: [...walls.map((wall): Command => ({ type: 'wall.add', wall })), { type: 'room.upsert', info }] });
+        select({ kind: 'room', id: info.id });
+        setTool('select');
+      }
+      setPreview({});
+    }
+    if (d.mode === 'pan' && !d.moved) select(d.target);
     setOverride(null);
+    setDraftPlan(null);
+    setDraftOpening(null);
+    if (d.mode === 'junction') setPreview({});
+  };
+
+  const onDoubleClick = () => {
+    if (tool === 'wall') {
+      setChain(null);
+      setPreview({});
+    }
   };
 
   const onWheel = (e: React.WheelEvent) => {
     const w = toWorld(e.clientX, e.clientY);
+    const wx = k(w.x);
+    const wy = k(w.y);
     const factor = Math.exp(e.deltaY * 0.0015);
-    const nw = Math.min(40000, Math.max(400, view.w * factor));
+    const nw = Math.min(80000, Math.max(400, view.w * factor));
     const s = nw / view.w;
-    setVb({ x: w.x - (w.x - view.x) * s, y: w.y - (w.y - view.y) * s, w: nw, h: view.h * s });
+    setVb({ x: wx - (wx - view.x) * s, y: wy - (wy - view.y) * s, w: nw, h: view.h * s });
   };
 
   const selItem = selection?.kind === 'furniture' ? project.furniture.find((f) => f.id === selection.id) : null;
-  const bb = override ? bbox(footprint(override)) : null;
+  const drawProject = draftOpening ? { ...project, openings: project.openings.map((o) => (o.id === draftOpening.id ? draftOpening : o)) } : project;
+  const tools: { t: Tool; label: string; key: string }[] = [
+    { t: 'select', label: 'Select', key: 'V' },
+    { t: 'wall', label: 'Wall', key: 'W' },
+    { t: 'room', label: 'Room', key: 'M' },
+    { t: 'door', label: 'Door', key: 'D' },
+    { t: 'window', label: 'Window', key: 'N' },
+  ];
 
   return (
     <div className="view" ref={wrap}>
       <div className="view-label">Plan · mm</div>
+      {!readOnly && (
+        <div className="plan-tools" role="toolbar" aria-label="Plan tools">
+          {tools.map((x) => (
+            <button key={x.t} className={`btn ${tool === x.t ? 'on' : ''}`} onClick={() => setTool(x.t)} title={`${x.label} (${x.key})`} aria-pressed={tool === x.t}>
+              {x.label}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="view-tools">
         <button className="btn" onClick={fit} title="Zoom to fit">Fit</button>
       </div>
       <svg
         ref={svg}
-        className={`plan-svg ${panning ? 'panning' : ''}`}
+        className={`plan-svg ${panning ? 'panning' : ''} tool-${tool}`}
         viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`}
         preserveAspectRatio="xMidYMid meet"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
+        onPointerLeave={() => !drag.current && setPreview((p) => ({ ...p, opening: undefined, snap: null }))}
+        onDoubleClick={onDoubleClick}
         onWheel={onWheel}
       >
-        <PlanDrawing project={project} selection={selection} override={override} fs={fs} />
+        <PlanDrawing project={drawProject} plan={plan} rooms={draftRooms} selection={selection} override={override} preview={preview} fs={fs} />
       </svg>
       <div className="zoom-ind">
-        {override && bb ? `x ${fmtMm(override.xUm)} · y ${fmtMm(override.yUm)} · hold Shift to disable snap` : selItem ? `${selItem.name} · drag to move · arrows nudge 10 mm` : `1 px = ${(1 / pxPerMm).toFixed(1)} mm`}
+        {override ? `x ${fmtMm(override.xUm)} · y ${fmtMm(override.yUm)} · hold Shift to disable snap` : tool !== 'select' ? TOOL_HINT[tool] : selItem ? `${selItem.name} · drag to move · arrows nudge 10 mm` : selection?.kind === 'wall' ? 'Drag the wall to move it · drag an end to reshape · Del deletes' : `${TOOL_HINT.select} · 1 px = ${(1 / pxPerMm).toFixed(1)} mm`}
       </div>
     </div>
   );
