@@ -2,7 +2,7 @@ import { OrbitControls } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
 import * as THREE from 'three';
-import { finishById, libraryPrims, wallFaceFinish, type LibraryItem, type WallSideSign } from '@studio/core';
+import { catalogById, finishById, libraryPrims, lightingOf, LIGHTING_PRESETS, wallFaceFinish, type Lighting, type LightingPreset, type LibraryItem, type WallSideSign } from '@studio/core';
 import { threeMaterial } from '../materials/three';
 import { paintCommand, type PaintTarget } from './paint';
 import { ModelMesh } from './ModelMesh';
@@ -16,22 +16,64 @@ import { planBounds } from './PlanView';
 
 const BACK_COLOR = '#d9c7a4';
 
+const glowCache = new Map<string, THREE.MeshStandardMaterial>();
+function glowMaterial(color: string, emissive: number): THREE.MeshStandardMaterial {
+  const key = `${color}|${emissive}`;
+  let m = glowCache.get(key);
+  if (!m) {
+    m = new THREE.MeshStandardMaterial({ color: '#fff6e8', emissive: color, emissiveIntensity: emissive, roughness: 0.6 });
+    glowCache.set(key, m);
+  }
+  return m;
+}
+
+/** Keeps the renderer's exposure in step with the project's lighting. */
+function ExposureSync({ value }: { value: number }) {
+  const gl = useThree((s) => s.gl);
+  useEffect(() => {
+    gl.toneMappingExposure = value;
+  }, [gl, value]);
+  return null;
+}
+
 const UNIT_BOX = new THREE.BoxGeometry(1, 1, 1);
 const UNIT_CYL = new THREE.CylinderGeometry(0.5, 0.5, 1, 28);
 const UNIT_SPHERE = new THREE.SphereGeometry(0.5, 24, 16);
 const UNIT_CONE = new THREE.CylinderGeometry(0.12, 0.5, 1, 28, 1, true);
 
 /** Catalogue piece: unit primitives scaled to each part, materials shared across the scene. */
+/** Parts of a light fitting that glow: shades and glass. */
+const GLOW_KEYS = new Set(['shade', 'glow']);
+
 function LibraryParts({ f }: { f: LibraryItem }) {
   const prims = useMemo(() => libraryPrims(f), [f]);
+  const lighting = lightingOf({ lighting: useStudio((s) => s.project.lighting) });
   const W = f.params.widthUm;
   const D = f.params.depthUm;
   const z0 = f.params.elevationUm;
+  const def = catalogById(f.ref);
+  const isFixture = Boolean(def && def.category === 'lighting' && def.id !== 'ceiling-fan');
+  const on = isFixture && lighting.fixturesOn;
+  const fx = LIGHTING_PRESETS[lighting.preset].fixture;
+  const glowPrim = on ? (prims.find((p) => GLOW_KEYS.has(p.key)) ?? prims[prims.length - 1]) : null;
   return (
     <>
+      {glowPrim && (
+        <pointLight
+          position={[toM(glowPrim.x + glowPrim.w / 2 - W / 2), toM(z0 + glowPrim.z + glowPrim.h * 0.4), toM(glowPrim.y + glowPrim.d / 2 - D / 2)]}
+          color={fx.color}
+          intensity={fx.intensity}
+          distance={7}
+          decay={2}
+          userData={{ fixture: true }}
+        />
+      )}
       {prims.map((p) => {
         const geo = p.shape === 'cylinder' ? UNIT_CYL : p.shape === 'sphere' ? UNIT_SPHERE : p.shape === 'cone' ? UNIT_CONE : UNIT_BOX;
-        const mat = threeMaterial(p.material.id, 'surface', { uMm: Math.max(p.w, p.d) / 1000, vMm: p.h / 1000, plain: p.material.pattern !== 'fabric' && p.material.pattern !== 'planks' });
+        const mat =
+          on && GLOW_KEYS.has(p.key)
+            ? glowMaterial(fx.color, fx.emissive)
+            : threeMaterial(p.material.id, 'surface', { uMm: Math.max(p.w, p.d) / 1000, vMm: p.h / 1000, plain: p.material.pattern !== 'fabric' && p.material.pattern !== 'planks' });
         return (
           <mesh key={p.key} geometry={geo} material={mat} castShadow receiveShadow position={[toM(p.x + p.w / 2 - W / 2), toM(z0 + p.z + p.h / 2), toM(p.y + p.d / 2 - D / 2)]} scale={[toM(p.w), toM(p.h), toM(p.d)]} userData={{ part: p.tone === 'accent' ? 'accent' : 'main' }} />
         );
@@ -220,6 +262,13 @@ function Scene({ preset, presetNonce, xray }: { preset: Preset; presetNonce: num
   const D = toM(bounds.maxY - bounds.minY);
   const H = toM(Math.max(project.plan.defaultCeilingUm, ...rooms.map((r) => r.info.ceilingUm)));
   const applied = useRef(-1);
+  const lighting = lightingOf(project);
+  const spec = LIGHTING_PRESETS[lighting.preset];
+  // Sun from the chosen compass direction (plan north is −z in 3D) at the preset's elevation.
+  const az = (lighting.sunAzimuthDeg * Math.PI) / 180;
+  const el = ((spec.sun?.elevationDeg ?? 60) * Math.PI) / 180;
+  const R = Math.max(W, D, 6) * 1.6;
+  const sunPos: [number, number, number] = [X0 + W / 2 + Math.sin(az) * Math.cos(el) * R, Math.sin(el) * R, Z0 + D / 2 - Math.cos(az) * Math.cos(el) * R];
 
   useFrame(() => {
     if (applied.current === presetNonce || !controls.current) return;
@@ -243,12 +292,13 @@ function Scene({ preset, presetNonce, xray }: { preset: Preset; presetNonce: num
 
   return (
     <>
-      <hemisphereLight args={['#fff8ec', '#8a8070', 0.9]} />
-      <ambientLight intensity={0.25} />
-      <directionalLight position={[X0 + W * 0.2, H * 2.4, Z0 + D * 1.4]} intensity={1.5} castShadow shadow-mapSize={[2048, 2048]} shadow-camera-left={-Math.max(6, W)} shadow-camera-right={Math.max(6, W)} shadow-camera-top={Math.max(6, D)} shadow-camera-bottom={-Math.max(6, D)} shadow-bias={-0.0004} />
+      <ExposureSync value={spec.exposure * Math.pow(2, lighting.exposure)} />
+      <hemisphereLight args={[spec.preview.sky, spec.preview.ground, spec.preview.hemi]} />
+      <ambientLight intensity={spec.preview.ambient} />
+      <directionalLight position={sunPos} color={spec.sun?.color ?? '#dfe6ff'} intensity={spec.sun ? spec.sun.intensity * 1.1 : 0.25} castShadow shadow-mapSize={[2048, 2048]} shadow-camera-left={-Math.max(6, W)} shadow-camera-right={Math.max(6, W)} shadow-camera-top={Math.max(6, D)} shadow-camera-bottom={-Math.max(6, D)} shadow-bias={-0.0004} />
       {rooms.slice(0, 8).map((r) => {
         const c = interiorPoint(r.interior);
-        return <pointLight key={r.id} position={[toM(c.x), toM(r.info.ceilingUm) - 0.2, toM(c.y)]} intensity={1.2} distance={8} color="#ffe9c7" />;
+        return <pointLight key={r.id} position={[toM(c.x), toM(r.info.ceilingUm) - 0.2, toM(c.y)]} intensity={spec.interior.intensity * 0.45} distance={8} color={spec.interior.color} />;
       })}
       <group
         onClick={(e) => {
@@ -281,10 +331,64 @@ function Scene({ preset, presetNonce, xray }: { preset: Preset; presetNonce: num
   );
 }
 
+const PRESET_ORDER: LightingPreset[] = ['daylight', 'golden', 'overcast', 'evening', 'night'];
+
+/** Lighting popover: preset, exposure, sun direction and light fittings. Stored on the project. */
+function LightingControl() {
+  const lighting = lightingOf({ lighting: useStudio((s) => s.project.lighting) });
+  const readOnly = useStudio((s) => s.readOnly);
+  const dispatch = useStudio((s) => s.dispatch);
+  const [open, setOpen] = useState(false);
+  const set = (patch: Partial<Lighting>, label = 'Change lighting') => dispatch({ type: 'lighting.update', patch }, label);
+  const spec = LIGHTING_PRESETS[lighting.preset];
+  if (readOnly) return null;
+  return (
+    <div className="light-ctl">
+      <button className={`btn ${open ? 'on' : ''}`} onClick={() => setOpen((o) => !o)} aria-expanded={open} title="Lighting for the 3D view, renders and share links">
+        {spec.label}
+      </button>
+      {open && (
+        <div className="light-pop" role="dialog" aria-label="Lighting">
+          <div className="light-presets">
+            {PRESET_ORDER.map((p) => (
+              <button key={p} className={`light-preset ${lighting.preset === p ? 'on' : ''}`} onClick={() => set({ preset: p }, `Lighting: ${LIGHTING_PRESETS[p].label}`)}>
+                <span className="light-sw" style={{ background: `linear-gradient(${LIGHTING_PRESETS[p].preview.background[0]}, ${LIGHTING_PRESETS[p].preview.background[1]})` }} />
+                <span>{LIGHTING_PRESETS[p].label}</span>
+              </button>
+            ))}
+          </div>
+          <p className="light-hint">{spec.hint}</p>
+          <label className="light-row">
+            <span>Exposure</span>
+            <input type="range" min={-2} max={2} step={0.25} value={lighting.exposure} onChange={(e) => set({ exposure: Number(e.target.value) }, 'Change exposure')} />
+            <span className="num">{lighting.exposure > 0 ? '+' : ''}{lighting.exposure.toFixed(2)}</span>
+          </label>
+          {spec.sun && (
+            <label className="light-row">
+              <span>Sun from</span>
+              <input type="range" min={0} max={345} step={15} value={lighting.sunAzimuthDeg} onChange={(e) => set({ sunAzimuthDeg: Number(e.target.value) }, 'Move sun')} />
+              <span className="num">{compass(lighting.sunAzimuthDeg)}</span>
+            </label>
+          )}
+          <label className="light-check">
+            <input type="checkbox" checked={lighting.fixturesOn} onChange={(e) => set({ fixturesOn: e.target.checked }, e.target.checked ? 'Lights on' : 'Lights off')} />
+            Light fittings on (pendants, lamps, sconces)
+          </label>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function compass(deg: number): string {
+  return ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(deg / 45) % 8];
+}
+
 export function View3D() {
   const [preset, setPreset] = useState<Preset>('corner');
   const [nonce, setNonce] = useState(0);
   const [xray, setXray] = useState(false);
+  const bg = useStudio((s) => LIGHTING_PRESETS[lightingOf(s.project).preset].preview.background);
   const go = (p: Preset) => {
     setPreset(p);
     setNonce((n) => n + 1);
@@ -299,8 +403,9 @@ export function View3D() {
         <button className="btn" onClick={() => go('corner')}>Corner</button>
         <button className="btn" onClick={() => go('front')}>Front</button>
         <button className="btn" onClick={() => go('top')}>Top</button>
+        <LightingControl />
       </div>
-      <div className="three-wrap">
+      <div className="three-wrap" style={{ background: `linear-gradient(${bg[0]}, ${bg[1]})` }}>
         <Canvas shadows dpr={[1, 2]} camera={{ fov: 45, near: 0.05, far: 100, position: [5, 4, 5] }} gl={{ preserveDrawingBuffer: true, antialias: true }}>
           <Scene preset={preset} presetNonce={nonce} xray={xray} />
         </Canvas>

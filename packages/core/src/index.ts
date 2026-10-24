@@ -2,6 +2,7 @@ export * from './persistence/canonical';
 export * from './persistence/migrate';
 export * from './domain/units';
 export * from './domain/types';
+export * from './domain/lighting';
 export * from './domain/catalog';
 export * from './domain/commands';
 export * from './domain/factory';

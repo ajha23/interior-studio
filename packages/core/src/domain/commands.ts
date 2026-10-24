@@ -1,4 +1,5 @@
 import type { FurnitureItem, Opening, Plan, Project, RoomInfo, RulePack, Wall } from './types';
+import { lightingOf, type Lighting } from './lighting';
 
 /**
  * Every mutation is a typed, serializable command. The same commands drive undo/redo,
@@ -6,6 +7,7 @@ import type { FurnitureItem, Opening, Plan, Project, RoomInfo, RulePack, Wall } 
  */
 export type Command =
   | { type: 'project.meta'; patch: { name?: string; client?: string } }
+  | { type: 'lighting.update'; patch: Partial<Lighting> }
   | { type: 'plan.update'; patch: Partial<Omit<Plan, 'walls' | 'rooms'>> }
   | { type: 'wall.add'; wall: Wall; index?: number }
   | { type: 'wall.update'; id: string; patch: Partial<Omit<Wall, 'id'>> }
@@ -36,6 +38,11 @@ export function applyCommand(p: Project, cmd: Command): [Project, Command] {
     case 'project.meta': {
       const inv = { type: 'project.meta', patch: pick(p, Object.keys(cmd.patch)) } as Command;
       return [{ ...p, ...cmd.patch }, inv];
+    }
+    case 'lighting.update': {
+      const cur = lightingOf(p);
+      const inv: Command = { type: 'lighting.update', patch: pick(cur, Object.keys(cmd.patch)) as Partial<Lighting> };
+      return [{ ...p, lighting: { ...cur, ...cmd.patch } }, inv];
     }
     case 'plan.update': {
       const inv: Command = { type: 'plan.update', patch: pick(p.plan, Object.keys(cmd.patch)) as Partial<Plan> };
@@ -131,6 +138,7 @@ export function applyCommand(p: Project, cmd: Command): [Project, Command] {
 export function describe(cmd: Command): string {
   switch (cmd.type) {
     case 'project.meta': return 'Rename project';
+    case 'lighting.update': return 'Change lighting';
     case 'plan.update': return 'Edit plan settings';
     case 'wall.add': return 'Add wall';
     case 'wall.update': return 'Edit wall';

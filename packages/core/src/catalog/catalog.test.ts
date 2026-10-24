@@ -7,6 +7,7 @@ import { envelope } from '../furniture';
 import { migrateScene } from '../persistence/migrate';
 import { SCENE_MIGRATIONS } from '../persistence/sceneMigrations';
 import { sampleProject } from '../domain/factory';
+import { SCHEMA_VERSION } from '../domain/types';
 import { validateProject } from '../validation';
 import { mm } from '../domain/units';
 
@@ -68,7 +69,7 @@ describe('catalogue', () => {
     const p = sampleProject();
     const v2 = { ...p, schemaVersion: 2 };
     const out = migrateScene(v2, 2, SCENE_MIGRATIONS) as typeof p;
-    expect(out.schemaVersion).toBe(3);
+    expect(out.schemaVersion).toBe(SCHEMA_VERSION);
     expect(out.plan).toEqual(p.plan);
     expect(out.furniture).toEqual(p.furniture);
   });

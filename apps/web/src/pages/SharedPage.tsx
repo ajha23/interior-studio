@@ -10,6 +10,7 @@ import { PlanView } from '../editor/PlanView';
 import { FullPageMessage } from '../ui/FullPageMessage';
 import '../editor/editor.css';
 
+const PanoViewer = lazy(() => import('../render/PanoViewer').then((m) => ({ default: m.PanoViewer })));
 const View3D = lazy(() => import('../editor/View3D').then((m) => ({ default: m.View3D })));
 
 type Tab = '3d' | 'plan' | 'renders';
@@ -106,8 +107,9 @@ function Presentation({ d }: { d: SharedDesign }) {
         {tab === 'renders' && (
           <div className="share-renders">
             {d.renders.map((r, i) => (
-              <figure key={r.url} onClick={() => setLightbox(i)}>
-                <img src={r.url} alt={r.caption || `Render ${i + 1}`} loading="lazy" style={{ aspectRatio: `${r.width} / ${r.height}` }} />
+              <figure key={r.url} onClick={() => setLightbox(i)} className={r.kind === 'panorama' ? 'is-pano' : ''}>
+                <img src={r.url} alt={r.caption || `Render ${i + 1}`} loading="lazy" style={{ aspectRatio: r.kind === 'panorama' ? '2 / 1' : `${r.width} / ${r.height}` }} />
+                {r.kind === 'panorama' && <span className="pano-badge">360° · tap to look around</span>}
                 {r.caption && <figcaption>{r.caption}</figcaption>}
               </figure>
             ))}
@@ -115,7 +117,18 @@ function Presentation({ d }: { d: SharedDesign }) {
         )}
         <RoomSummary />
       </main>
-      {lightbox !== null && d.renders[lightbox] && (
+      {lightbox !== null && d.renders[lightbox]?.kind === 'panorama' && (
+        <div className="lightbox pano-box" role="dialog" aria-label="360° view">
+          <div className="pano-box-head">
+            <span>{d.renders[lightbox].caption || '360° view'} — drag to look around</span>
+            <button className="btn" onClick={() => setLightbox(null)}>Close</button>
+          </div>
+          <Suspense fallback={<div className="pano" />}>
+            <PanoViewer url={d.renders[lightbox].url} />
+          </Suspense>
+        </div>
+      )}
+      {lightbox !== null && d.renders[lightbox] && d.renders[lightbox].kind !== 'panorama' && (
         <div className="lightbox" role="dialog" aria-label="Render" onClick={() => setLightbox(null)}>
           <img src={d.renders[lightbox].url} alt={d.renders[lightbox].caption || 'Render'} />
           {d.renders[lightbox].caption && <p>{d.renders[lightbox].caption}</p>}

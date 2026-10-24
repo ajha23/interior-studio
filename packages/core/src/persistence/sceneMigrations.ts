@@ -80,5 +80,7 @@ export const SCENE_MIGRATIONS: MigrationRegistry = {
     1: projectV1toV2,
     // v3 adds catalogue/model furniture kinds and optional wall face finishes: purely additive.
     2: (scene) => ({ ...(scene as Record<string, unknown>), schemaVersion: 3 }),
+    // v4 adds optional project lighting: purely additive.
+    3: (scene) => ({ ...(scene as Record<string, unknown>), schemaVersion: 4 }),
   },
 };

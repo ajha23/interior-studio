@@ -62,7 +62,7 @@ export interface SharedDesign {
   schemaVersion: number;
   scene: unknown;
   showPlan: boolean;
-  renders: { url: string; width: number; height: number; caption: string; createdAt: string }[];
+  renders: { url: string; width: number; height: number; caption: string; kind?: 'still' | 'panorama'; createdAt: string }[];
   models: Record<string, string>;
 }
 

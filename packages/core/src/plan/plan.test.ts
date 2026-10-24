@@ -1,3 +1,4 @@
+import { SCHEMA_VERSION } from './../domain/types';
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import { applyCommand, CommandError } from '../domain/commands';
@@ -149,7 +150,7 @@ describe('scene migration v1 → v2', () => {
 
   it('keeps the room, every opening position and the furniture exactly', () => {
     const p = migrateScene<Project>(v1, 1, SCENE_MIGRATIONS);
-    expect(p.schemaVersion).toBe(3);
+    expect(p.schemaVersion).toBe(SCHEMA_VERSION);
     expect((p as unknown as { room?: unknown }).room).toBeUndefined();
     const [room] = detectRooms(p.plan);
     expect(room.info.name).toBe('Master bedroom');

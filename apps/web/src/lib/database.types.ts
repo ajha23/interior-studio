@@ -67,6 +67,7 @@ export type Database = {
           caption: string
           height: number
           id: string
+          kind: string
           mood: string
           org_id: string
           project_id: string
@@ -81,6 +82,7 @@ export type Database = {
           caption?: string
           height: number
           id?: string
+          kind?: string
           mood?: string
           org_id: string
           project_id: string
@@ -95,6 +97,7 @@ export type Database = {
           caption?: string
           height?: number
           id?: string
+          kind?: string
           mood?: string
           org_id?: string
           project_id?: string

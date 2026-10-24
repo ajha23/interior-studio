@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { WebGLPathTracer } from 'three-gpu-pathtracer';
+import { EquirectCamera, WebGLPathTracer } from 'three-gpu-pathtracer';
+import { LIGHTING_PRESETS, type Lighting, type LightingSpec } from '@studio/core';
 
 export interface RenderRoomLight {
   /** Ceiling centre in metres (three.js world: x, y up, z). */
@@ -16,22 +17,25 @@ export interface RenderOptions {
   height: number;
   samples: number;
   rooms: RenderRoomLight[];
-  /** 'day' adds a sun and bright sky through the windows; 'evening' relies on interior lights. */
-  mood: 'day' | 'evening';
+  lighting: Lighting;
+  /** Centre of the plan in metres, for placing the sun. */
+  centre: { x: number; z: number };
+  /** A 360° equirectangular panorama from this eye point (metres) instead of the camera view. */
+  panorama?: { x: number; y: number; z: number };
+  format?: 'png' | 'jpeg';
+  /** Ceilings to close the rooms (panoramas look up). Polygons in metres (x, z). */
+  ceilings?: { poly: { x: number; z: number }[]; height: number }[];
   onProgress?: (stage: 'preparing' | 'tracing', fraction: number) => void;
   signal?: AbortSignal;
 }
 
 /** Equirectangular sky gradient used as the environment light. */
-function skyTexture(mood: RenderOptions['mood']): THREE.DataTexture {
+function skyTexture(spec: LightingSpec): THREE.DataTexture {
   const W = 256;
   const H = 128;
   const data = new Float32Array(W * H * 4);
-  const zenith = mood === 'day' ? [0.55, 0.72, 1.0] : [0.08, 0.1, 0.18];
-  const horizon = mood === 'day' ? [1.0, 0.96, 0.9] : [0.35, 0.25, 0.22];
-  const ground = mood === 'day' ? [0.42, 0.38, 0.33] : [0.06, 0.05, 0.05];
-  // Rooms are open-topped in the editor, so the sky reaches in from above: keep it gentle.
-  const gain = mood === 'day' ? 0.55 : 0.12;
+  // Rooms are open-topped in the editor, so the sky reaches in from above: presets keep it gentle.
+  const { zenith, horizon, ground, gain } = spec.sky;
   for (let y = 0; y < H; y++) {
     const v = 1 - y / (H - 1); // 1 = up
     for (let x = 0; x < W; x++) {
@@ -58,11 +62,12 @@ function skyTexture(mood: RenderOptions['mood']): THREE.DataTexture {
 }
 
 /** Copy of the live scene with only renderable meshes: no helpers, outlines or hidden (cut-away) walls. */
-function renderableCopy(src: THREE.Scene): THREE.Scene {
+function renderableCopy(src: THREE.Scene, includeCutaway = false): THREE.Scene {
   src.updateMatrixWorld(true);
   const out = new THREE.Scene();
   const visible = (o: THREE.Object3D) => {
-    for (let p: THREE.Object3D | null = o; p; p = p.parent) if (!p.visible) return false;
+    // Walls hidden by the editor's cut-away carry a wallId; a panorama needs every wall.
+    for (let p: THREE.Object3D | null = o; p; p = p.parent) if (!p.visible && !(includeCutaway && isCutawayWall(p))) return false;
     return true;
   };
   src.traverse((o) => {
@@ -118,11 +123,15 @@ function forTracing(mat: THREE.Material): THREE.Material {
   return g;
 }
 
+function isCutawayWall(o: THREE.Object3D): boolean {
+  return o.children.some((c) => (c.userData as { wallId?: string }).wallId !== undefined);
+}
+
 const nextFrame = () => new Promise<void>((r) => setTimeout(r, 0));
 
 /**
  * Progressive GPU path tracing of the current 3D view. Runs on its own WebGL context so the
- * editor stays responsive; resolves with a PNG.
+ * editor stays responsive; resolves with a PNG (or JPEG for large and panoramic images).
  */
 export async function renderPathTraced(source: { scene: THREE.Scene; camera: THREE.PerspectiveCamera }, opts: RenderOptions): Promise<Blob> {
   const { width, height, samples, signal } = opts;
@@ -133,35 +142,68 @@ export async function renderPathTraced(source: { scene: THREE.Scene; camera: THR
   renderer.setPixelRatio(1);
   renderer.setSize(width, height, false);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = opts.mood === 'day' ? 0.9 : 1.2;
+  const spec = LIGHTING_PRESETS[opts.lighting.preset];
+  renderer.toneMappingExposure = spec.exposure * Math.pow(2, opts.lighting.exposure);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
-  const scene = renderableCopy(source.scene);
-  const sky = skyTexture(opts.mood);
+  const scene = renderableCopy(source.scene, Boolean(opts.panorama));
+  const sky = skyTexture(spec);
   scene.environment = sky;
-  scene.background = new THREE.Color(opts.mood === 'day' ? '#f2efe8' : '#1c1f26');
+  // Panoramas look out of the windows at the sky; stills keep a plain studio backdrop.
+  scene.background = opts.panorama ? sky : new THREE.Color(spec.preview.background[1]);
   scene.environmentIntensity = 1;
+  // The editor shows rooms open-topped; a panorama from inside needs a ceiling overhead.
+  const ceilingMat = new THREE.MeshStandardMaterial({ color: '#f4f1ea', roughness: 0.9, side: THREE.DoubleSide });
+  for (const c of opts.ceilings ?? []) {
+    const shape = new THREE.Shape(c.poly.map((p) => new THREE.Vector2(p.x, -p.z)));
+    const mesh = new THREE.Mesh(new THREE.ShapeGeometry(shape), ceilingMat);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.position.y = c.height;
+    mesh.updateMatrixWorld(true);
+    scene.add(mesh);
+  }
+  // Light fittings switched on in the editor carry over as real lights (their shades are emissive).
+  if (opts.lighting.fixturesOn) {
+    source.scene.traverse((o) => {
+      const l = o as THREE.PointLight;
+      if (!l.isPointLight || !(l.userData as { fixture?: boolean }).fixture) return;
+      const copy = new THREE.PointLight(l.color, l.intensity * 1.4, l.distance, 2);
+      l.getWorldPosition(copy.position);
+      scene.add(copy);
+    });
+  }
 
   // Soft ceiling panels per room stand in for the fittings a designer would specify.
   for (const r of opts.rooms) {
     const w = Math.max(0.4, Math.min(1.4, r.w * 0.35));
     const d = Math.max(0.4, Math.min(1.4, r.d * 0.35));
-    const light = new THREE.RectAreaLight(opts.mood === 'day' ? '#fff4e6' : '#ffd9a8', opts.mood === 'day' ? 2.5 : 6, w, d);
+    const light = new THREE.RectAreaLight(spec.interior.color, spec.interior.intensity, w, d);
     light.position.set(r.x, r.ceiling - 0.02, r.z);
     light.lookAt(r.x, 0, r.z);
     scene.add(light);
   }
-  if (opts.mood === 'day') {
-    const sun = new THREE.DirectionalLight('#fff1dc', 1.4);
-    const c = opts.rooms[0] ?? { x: 0, z: 0 };
-    sun.position.set(c.x - 6, 9, c.z + 8);
+  if (spec.sun) {
+    const sun = new THREE.DirectionalLight(spec.sun.color, spec.sun.intensity);
+    const az = (opts.lighting.sunAzimuthDeg * Math.PI) / 180;
+    const el = (spec.sun.elevationDeg * Math.PI) / 180;
+    const c = opts.centre;
+    sun.position.set(c.x + Math.sin(az) * Math.cos(el) * 12, Math.sin(el) * 12, c.z - Math.cos(az) * Math.cos(el) * 12);
     sun.target.position.set(c.x, 0, c.z);
     scene.add(sun, sun.target);
   }
 
-  const camera = source.camera.clone();
-  camera.aspect = width / height;
-  camera.updateProjectionMatrix();
+  let camera: THREE.Camera;
+  if (opts.panorama) {
+    const eq = new EquirectCamera();
+    eq.position.set(opts.panorama.x, opts.panorama.y, opts.panorama.z);
+    eq.updateMatrixWorld();
+    camera = eq;
+  } else {
+    const persp = source.camera.clone();
+    persp.aspect = width / height;
+    persp.updateProjectionMatrix();
+    camera = persp;
+  }
 
   const pt = new WebGLPathTracer(renderer);
   pt.renderDelay = 0;
@@ -192,7 +234,8 @@ export async function renderPathTraced(source: { scene: THREE.Scene; camera: THR
       }
     }
     opts.onProgress?.('tracing', 1);
-    const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/png'));
+    const jpeg = opts.format === 'jpeg';
+    const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, jpeg ? 'image/jpeg' : 'image/png', jpeg ? 0.92 : undefined));
     if (!blob) throw new Error('Could not encode the image.');
     return blob;
   } finally {

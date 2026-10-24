@@ -50,13 +50,13 @@ Deno.serve(async (req) => {
   // Issued revisions carry full snapshots; clients only need the live design.
   const scene = { ...(version.scene as Record<string, unknown>), revisions: [] };
 
-  let renders: { url: string; width: number; height: number; caption: string; createdAt: string }[] = [];
+  let renders: { url: string; width: number; height: number; caption: string; kind: string; createdAt: string }[] = [];
   if (link.show_renders) {
-    const { data: rows } = await db.from('renders').select('storage_path, width, height, caption, created_at').eq('project_id', project.id).order('created_at', { ascending: false }).limit(40);
+    const { data: rows } = await db.from('renders').select('storage_path, width, height, caption, kind, created_at').eq('project_id', project.id).order('created_at', { ascending: false }).limit(40);
     if (rows?.length) {
       const { data: signed } = await db.storage.from('renders').createSignedUrls(rows.map((r) => r.storage_path), SIGNED_TTL_S);
       const urlOf = new Map((signed ?? []).map((s) => [s.path, s.signedUrl]));
-      renders = rows.filter((r) => urlOf.get(r.storage_path)).map((r) => ({ url: urlOf.get(r.storage_path)!, width: r.width, height: r.height, caption: r.caption, createdAt: r.created_at }));
+      renders = rows.filter((r) => urlOf.get(r.storage_path)).map((r) => ({ url: urlOf.get(r.storage_path)!, width: r.width, height: r.height, caption: r.caption, kind: r.kind, createdAt: r.created_at }));
     }
   }
 

@@ -1,6 +1,7 @@
 import type { Um } from './units';
+import type { Lighting } from './lighting';
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 /** Where a dimension came from — an estimate must never be presented as a verified measurement. */
 export type Provenance = 'site_measured' | 'drawing' | 'estimate';
@@ -210,4 +211,6 @@ export interface Project extends ProjectCore {
   createdAt: string;
   updatedAt: string;
   revisions: Revision[];
+  /** Presentation only (not part of revision hashes). Missing = default daylight. */
+  lighting?: Lighting;
 }

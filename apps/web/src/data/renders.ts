@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../auth/AuthProvider';
+import { LIGHTING_PRESETS, type LightingPreset } from '@studio/core';
 
 export interface SavedRender {
   id: string;
@@ -9,7 +10,8 @@ export interface SavedRender {
   width: number;
   height: number;
   samples: number;
-  mood: 'day' | 'evening';
+  mood: LightingPreset;
+  kind: 'still' | 'panorama';
   caption: string;
   versionNo: number;
   createdAt: string;
@@ -33,7 +35,8 @@ export function useRenders(projectId: string) {
         width: r.width,
         height: r.height,
         samples: r.samples,
-        mood: r.mood === 'evening' ? 'evening' : 'day',
+        mood: (r.mood in LIGHTING_PRESETS ? r.mood : 'daylight') as LightingPreset,
+        kind: r.kind === 'panorama' ? 'panorama' : 'still',
         caption: r.caption,
         versionNo: r.version_no,
         createdAt: r.created_at,
@@ -46,11 +49,12 @@ export function useSaveRender(projectId: string) {
   const { activeOrg } = useAuth();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (r: { blob: Blob; width: number; height: number; samples: number; mood: 'day' | 'evening'; caption: string; versionNo: number }) => {
+    mutationFn: async (r: { blob: Blob; width: number; height: number; samples: number; mood: LightingPreset; kind: 'still' | 'panorama'; caption: string; versionNo: number }) => {
       if (!activeOrg) throw new Error('No studio selected.');
       const id = crypto.randomUUID();
-      const path = `${activeOrg.orgId}/${projectId}/${id}.png`;
-      const up = await supabase.storage.from(BUCKET).upload(path, r.blob, { contentType: 'image/png', upsert: false });
+      const jpeg = r.blob.type === 'image/jpeg';
+      const path = `${activeOrg.orgId}/${projectId}/${id}.${jpeg ? 'jpg' : 'png'}`;
+      const up = await supabase.storage.from(BUCKET).upload(path, r.blob, { contentType: r.blob.type || 'image/png', upsert: false });
       if (up.error) throw up.error;
       const { error } = await supabase.from('renders').insert({
         id,
@@ -62,6 +66,7 @@ export function useSaveRender(projectId: string) {
         height: r.height,
         samples: r.samples,
         mood: r.mood,
+        kind: r.kind,
         caption: r.caption.slice(0, 200),
       });
       if (error) {

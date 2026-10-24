@@ -339,3 +339,25 @@ table.sched td.r, table.sched th.r { text-align: right; }
 .editor-root .tpl-meta { display: grid; gap: 1px; font-size: 11.5px; color: var(--ink-2); }
 .editor-root .tpl-meta strong { font-size: 12.5px; color: var(--ink); }
 .editor-root .tpl-meta .num { font-size: 10.5px; color: var(--ink-3); }
+.editor-root .light-ctl { position: relative; }
+.editor-root .light-pop { position: absolute; top: 32px; right: 0; width: 280px; padding: 12px; display: grid; gap: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.14); z-index: 5; }
+.editor-root .light-presets { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+.editor-root .light-preset { display: grid; gap: 4px; justify-items: center; padding: 4px 2px; border: 1px solid transparent; border-radius: 6px; background: none; cursor: pointer; font: inherit; font-size: 10.5px; color: var(--ink-2); }
+.editor-root .light-preset.on { border-color: var(--accent); color: var(--accent); background: var(--accent-tint); }
+.editor-root .light-sw { width: 34px; height: 24px; border-radius: 4px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.12); }
+.editor-root .light-hint { margin: 0; font-size: 11.5px; color: var(--ink-3); }
+.editor-root .light-row { display: grid; grid-template-columns: 64px 1fr 38px; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-2); }
+.editor-root .light-row .num { font-size: 11px; text-align: right; }
+.editor-root .light-check { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--ink-2); }
+.editor-root .render-lighting { display: grid; gap: 4px; }
+.editor-root .render-thumb { position: relative; padding: 0; border: 0; background: none; cursor: zoom-in; display: block; width: 100%; }
+.editor-root .render-thumb img { width: 100%; display: block; border-radius: var(--radius); object-fit: cover; }
+.editor-root .pano-badge, .share-root .pano-badge { position: absolute; left: 8px; top: 8px; padding: 2px 7px; border-radius: 99px; background: rgba(20,24,22,.75); color: #fff; font-size: 11px; font-weight: 600; letter-spacing: .02em; }
+.editor-root .pano-modal { position: fixed; inset: 24px; z-index: 60; display: grid; grid-template-rows: auto 1fr; background: #111; border-radius: 10px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,.4); }
+.editor-root .pano-modal-head { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: var(--panel); }
+.pano { width: 100%; height: 100%; min-height: 240px; cursor: grab; outline: none; touch-action: none; background: #111; }
+.pano:active { cursor: grabbing; }
+.pano canvas { width: 100% !important; height: 100% !important; display: block; }
+.share-root .share-renders figure { position: relative; }
+.share-root .lightbox.pano-box { cursor: default; grid-template-rows: auto 1fr; align-content: stretch; place-items: stretch; padding: 16px; }
+.share-root .pano-box-head { display: flex; justify-content: space-between; align-items: center; color: #eee; font-size: 13px; }
