@@ -20,10 +20,12 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
   webServer: {
-    command: `npx vite --port ${PORT} --strictPort`,
+    // E2E_PROD=1 tests the production bundle (vite build + preview) instead of the dev server.
+    command: process.env.E2E_PROD ? `npx vite build && npx vite preview --port ${PORT} --strictPort` : `npx vite --port ${PORT} --strictPort`,
     cwd: 'apps/web',
     port: PORT,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: !process.env.CI && !process.env.E2E_PROD,
+    timeout: 180_000,
     env: {
       VITE_SUPABASE_URL: 'http://mock.supabase.test',
       VITE_SUPABASE_PUBLISHABLE_KEY: 'test-publishable-key',
