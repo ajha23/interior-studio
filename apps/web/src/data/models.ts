@@ -1,3 +1,4 @@
+import type { Json } from '../lib/database.types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type * as THREEtypes from 'three';
 import { supabase } from '../lib/supabase';
@@ -120,13 +121,15 @@ export interface UploadInput {
   /** Scale so the largest side is this many mm (AI models have no real units). */
   fitMaxMm?: number;
   source?: 'ai';
+  /** The recipe an AI model was built from, kept for refining or rebuilding later. */
+  recipe?: unknown;
 }
 
 export function useUploadModel() {
   const { activeOrg } = useAuth();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ files, name, category, unit, fitMaxMm, source }: UploadInput): Promise<{ id: string; report: ConvertReport | null; info: { widthUm: number; depthUm: number; heightUm: number } }> => {
+    mutationFn: async ({ files, name, category, unit, fitMaxMm, source, recipe }: UploadInput): Promise<{ id: string; report: ConvertReport | null; info: { widthUm: number; depthUm: number; heightUm: number } }> => {
       if (!activeOrg) throw new Error('No studio selected.');
       if (!files.length) throw new Error('Choose a file.');
       // GLB files are stored as-is (they may use compression extensions a re-export would drop);
@@ -166,6 +169,7 @@ export function useUploadModel() {
         height_um: info.heightUm,
         bytes: glb.size,
         source_format: source ?? report?.source ?? 'glb',
+        ...(recipe ? { recipe: JSON.parse(JSON.stringify(recipe)) as Json } : {}),
       });
       if (error) {
         await supabase.storage.from(BUCKET).remove([`${base}.glb`, ...(thumbPath ? [thumbPath] : [])]);

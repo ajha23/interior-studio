@@ -1,107 +1,125 @@
-// AI modeler: a photo (or a text description, via a generated product image) becomes a textured
-// 3D model through fal.ai's image-to-3D queue. The browser polls `status` and, when the GLB is
-// ready, imports it into the studio library through the normal conversion pipeline.
-import { admin, caller, debit, geminiImage, handle, HttpError, json, loadImage, refund, requireEditor, type ImageIn } from '../_shared/ai.ts';
+// AI modeler (Gemini only): a photo or a description becomes a furniture "recipe" — shaped parts
+// with real millimetre sizes and studio materials — that the browser builds with three.js (and a
+// Blender worker can build later). The recipe is untrusted JSON: the app sanitises it before use.
+import { admin, caller, debit, handle, HttpError, json, loadImage, refund, requireEditor, type ImageIn } from '../_shared/ai.ts';
 
-const COST_3D = 10;
-const COST_TEXT_IMAGE = 2;
-const ENDPOINT = Deno.env.get('FAL_3D_ENDPOINT') || 'fal-ai/trellis-2';
-const TIMEOUT_MS = 25 * 60 * 1000;
+const COST = 2;
+const MATERIALS =
+  'oak-light (light oak), walnut (walnut), teak (teak), white-matte (white lacquer), ivory (ivory satin), graphite (dark grey suede), sage (sage green), terracotta (terracotta), ' +
+  'fabric-beige (beige linen), fabric-grey (grey boucle), fabric-teal (teal velvet), fabric-mustard (mustard velvet), leather-tan (tan leather), cane (natural cane/rattan), ' +
+  'metal-black (matte black metal), metal-brass (brushed brass), steel (brushed steel), glass (clear glass), ceramic-white (white ceramic), marble (white marble), ' +
+  'granite-black (black granite), wood-fluted (fluted oak), plant-green (foliage), terracotta-pot (terracotta clay)';
 
-function falKey(): string {
-  const k = Deno.env.get('FAL_KEY');
-  if (!k) throw new HttpError(503, 'not_configured', 'The AI modeler is not set up yet: add the FAL_KEY secret in Supabase.');
-  return k;
+const SYSTEM = `You are a furniture modeller. You describe a single piece of furniture or decor as a JSON "recipe" of simple shaped parts that a 3D engine will build exactly.
+
+Coordinate frame, all in millimetres: x = width (left to right, centred on 0), y = height up from the floor (floor is y = 0), z = depth (back to front, centred on 0, +z is the FRONT that faces the viewer). "position" is the CENTRE of each part's bounding box. Rotations are degrees [rx, ry, rz], applied in that order.
+
+Shapes (use the simplest that fits; prefer fewer, well-proportioned parts — typically 4 to 40):
+- {"shape":"box","size":[w,h,d]}
+- {"shape":"roundedBox","size":[w,h,d],"radius":r}  cushions, mattresses, padded or softened blocks
+- {"shape":"cylinder","radiusTop":r1,"radiusBottom":r2,"height":h}  legs (tapered if r1≠r2), rods, posts; axis is vertical
+- {"shape":"sphere","radius":r}
+- {"shape":"torus","radius":R,"tube":t}  rings and round handles; lies flat (horizontal)
+- {"shape":"lathe","profile":[[radius,y],...]}  turned legs, vases, lamp bases, bowls; profile from bottom to top, y measured from the part's own base
+- {"shape":"extrude","outline":[[x,y],...],"holes":[[[x,y],...]],"depth":d,"bevel":b}  flat shaped panels: arched headboards, curved chair backs, cabriole legs, carved aprons, jaali (use holes). Outline is in the part's own x-y plane, coordinates relative to the part position, then extruded along z by depth. Rotate with ry=90 to face sideways.
+- {"shape":"tube","path":[[x,y,z],...],"radius":r,"closed":false}  bent metal frames, rails, cane loops; path points relative to the part position (usually position [0,0,0] and absolute path points)
+
+Any part may add "repeat":{"count":n,"offset":[dx,dy,dz]} for evenly spaced copies (legs: use two repeats or list each leg; slats, shelves, flutes, drawers).
+
+Materials: declare slots in "materials" mapping a slot name to one of these ids ONLY: ${MATERIALS}. Each part uses one slot name in "material".
+
+Rules: real Indian furniture proportions (seat height ~450, table ~750, counter ~900, bed ~450 to mattress top); parts must touch or overlap slightly so the piece is solid; nothing below y=0; the overall "size" {w,d,h} must match the parts' extent. Leave out tiny details under 5 mm. If unsure, choose the most typical design and say so in "notes".
+
+Return ONLY JSON: {"name":string,"category":one of living|bedroom|dining|kitchen|bath|storage|office|kids|lighting|decor,"size":{"w":mm,"d":mm,"h":mm},"materials":{slot:id},"parts":[...],"notes":string}`;
+
+function b64(bytes: Uint8Array): string {
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(s);
 }
 
-async function fal(url: string, init: RequestInit = {}) {
-  const res = await fetch(url, { ...init, headers: { Authorization: `Key ${falKey()}`, 'Content-Type': 'application/json', ...(init.headers ?? {}) } });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok && res.status !== 202) throw new HttpError(502, 'provider_error', `3D service error (${res.status}): ${body?.detail ?? body?.error ?? 'unknown'}`);
-  return body;
+async function geminiJson(parts: unknown[]): Promise<{ data: unknown; model: string }> {
+  const key = Deno.env.get('GEMINI_API_KEY');
+  if (!key) throw new HttpError(503, 'not_configured', 'The AI modeler is not set up yet: add the GEMINI_API_KEY secret in Supabase.');
+  const models = [Deno.env.get('GEMINI_TEXT_MODEL') || 'gemini-3.6-flash', 'gemini-2.5-flash'];
+  let last = '';
+  for (const model of models) {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: SYSTEM }] },
+        contents: [{ role: 'user', parts }],
+        generationConfig: { responseMimeType: 'application/json', temperature: 0.35, maxOutputTokens: 16384 },
+      }),
+    });
+    const out = await res.json().catch(() => ({}));
+    if (res.status === 404) {
+      last = `model ${model} not available`;
+      continue; // try the fallback model
+    }
+    if (!res.ok) throw new HttpError(502, 'provider_error', `Gemini error (${res.status}): ${out?.error?.message ?? 'unknown'}`);
+    const text = (out?.candidates?.[0]?.content?.parts ?? []).map((p: { text?: string }) => p.text ?? '').join('');
+    try {
+      return { data: JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, '')), model };
+    } catch {
+      throw new HttpError(422, 'bad_recipe', 'The model did not return a readable description. Try again or simplify the request.');
+    }
+  }
+  throw new HttpError(502, 'provider_error', `No Gemini model available (${last}). Set GEMINI_TEXT_MODEL.`);
 }
 
 Deno.serve(
   handle(async (req) => {
     const db = admin();
     const user = await caller(req, db);
-    const body = (await req.json().catch(() => ({}))) as { action?: 'start' | 'status'; orgId?: string; projectId?: string; name?: string; category?: string; image?: ImageIn; prompt?: string; jobId?: string };
-
-    if (body.action === 'status') {
-      const { data: job } = await db.from('ai_jobs').select('*').eq('id', body.jobId ?? '').maybeSingle();
-      if (!job || job.kind !== 'model') throw new HttpError(404, 'job_not_found');
-      const { data: member } = await db.from('org_members').select('role').eq('org_id', job.org_id).eq('user_id', user.id).maybeSingle();
-      if (!member) throw new HttpError(404, 'job_not_found');
-      const sign = async () => (job.output_path ? (await db.storage.from('ai').createSignedUrl(job.output_path, 3600)).data?.signedUrl ?? null : null);
-      if (job.status !== 'running') return json({ status: job.status, error: job.error, glbUrl: await sign(), name: job.input?.name, category: job.input?.category, sizeMm: job.input?.sizeMm });
-
-      const fail = async (msg: string) => {
-        await refund(db, job.org_id, job.cost_credits, job.id);
-        await db.from('ai_jobs').update({ status: 'failed', error: msg.slice(0, 500), finished_at: new Date().toISOString() }).eq('id', job.id);
-        return json({ status: 'failed', error: msg });
-      };
-      if (Date.now() - new Date(job.created_at).getTime() > TIMEOUT_MS) return fail('Timed out waiting for the 3D service.');
-      const st = await fal(job.input.statusUrl);
-      if (st.status === 'IN_QUEUE' || st.status === 'IN_PROGRESS') return json({ status: 'running', stage: st.status === 'IN_QUEUE' ? 'queued' : 'generating', position: st.queue_position ?? null });
-      if (st.status !== 'COMPLETED') return fail(`3D service status: ${st.status ?? 'unknown'}`);
-      const result = await fal(job.input.responseUrl);
-      const glbUrl = result?.model_glb?.url ?? result?.model_mesh?.url ?? result?.glb?.url;
-      if (!glbUrl) return fail('The 3D service returned no model.');
-      const glb = await fetch(glbUrl);
-      if (!glb.ok) return fail(`Could not download the model (${glb.status}).`);
-      const bytes = new Uint8Array(await glb.arrayBuffer());
-      const path = `${job.org_id}/ai3d-${job.id}.glb`;
-      const up = await db.storage.from('ai').upload(path, bytes, { contentType: 'model/gltf-binary', upsert: true });
-      if (up.error) return fail(up.error.message);
-      await db.from('ai_jobs').update({ status: 'succeeded', output_path: path, finished_at: new Date().toISOString() }).eq('id', job.id);
-      const { data: signed } = await db.storage.from('ai').createSignedUrl(path, 3600);
-      return json({ status: 'succeeded', glbUrl: signed?.signedUrl ?? null, name: job.input?.name, category: job.input?.category, sizeMm: job.input?.sizeMm });
-    }
-
-    if (body.action !== 'start') throw new HttpError(400, 'bad_action');
+    const body = (await req.json().catch(() => ({}))) as {
+      action?: 'design' | 'refine';
+      orgId?: string;
+      projectId?: string;
+      image?: ImageIn;
+      prompt?: string;
+      sizeHint?: { w?: number; d?: number; h?: number };
+      recipe?: unknown;
+      instruction?: string;
+    };
     const orgId = String(body.orgId ?? '');
     await requireEditor(db, orgId, user.id);
-    falKey(); // fail fast before charging anything
-    const name = String(body.name ?? '').trim().slice(0, 120) || 'AI model';
-    const category = String(body.category ?? 'decor').slice(0, 40);
-    const prompt = String(body.prompt ?? '').trim().slice(0, 600);
-    const sizeMm = Math.max(50, Math.min(6000, Math.round(Number((body as { sizeMm?: number }).sizeMm) || 0))) || null;
-    if (!body.image && !prompt) throw new HttpError(400, 'input_required', 'Give a photo or a description.');
-    const cost = COST_3D + (body.image ? 0 : COST_TEXT_IMAGE);
+    const action = body.action === 'refine' ? 'refine' : 'design';
+    const prompt = String(body.prompt ?? '').trim().slice(0, 800);
+    const instruction = String(body.instruction ?? '').trim().slice(0, 800);
+    if (action === 'design' && !body.image && !prompt) throw new HttpError(400, 'input_required', 'Give a photo or a description.');
+    if (action === 'refine' && (!body.recipe || !instruction)) throw new HttpError(400, 'input_required', 'Describe what to change.');
+    const hint = body.sizeHint && [body.sizeHint.w, body.sizeHint.d, body.sizeHint.h].some((v) => Number(v) > 0)
+      ? ` Target overall size (mm): ${['w', 'd', 'h'].map((k) => `${k}=${Number((body.sizeHint as Record<string, number>)[k]) || 'any'}`).join(', ')}.`
+      : '';
 
     const { data: job, error: jobErr } = await db
       .from('ai_jobs')
-      .insert({ org_id: orgId, project_id: body.projectId ?? null, kind: 'model', op: body.image ? 'image_to_3d' : 'text_to_3d', provider: 'fal', cost_credits: cost, created_by: user.id, input: { name, category, prompt, sizeMm } })
-      .select('id, input')
+      .insert({ org_id: orgId, project_id: body.projectId ?? null, kind: 'model', op: action === 'refine' ? 'refine_3d' : body.image ? 'image_to_3d' : 'text_to_3d', provider: 'gemini', cost_credits: COST, created_by: user.id, input: { prompt, instruction } })
+      .select('id')
       .single();
     if (jobErr) throw jobErr;
-    await debit(db, orgId, cost, job.id, user.id, body.image ? 'AI 3D from photo' : 'AI 3D from text');
+    await debit(db, orgId, COST, job.id, user.id, action === 'refine' ? 'AI 3D refine' : 'AI 3D model');
 
     try {
-      let srcPath: string;
-      if (body.image) {
-        const src = await loadImage(db, orgId, body.image);
-        srcPath = `${orgId}/ai3d-${job.id}-src.${src.mime.includes('png') ? 'png' : 'jpg'}`;
-        const up = await db.storage.from('ai').upload(srcPath, src.bytes, { contentType: src.mime, upsert: true });
-        if (up.error) throw up.error;
+      const parts: unknown[] = [];
+      if (action === 'refine') {
+        parts.push({ text: `Here is the current recipe:\n${JSON.stringify(body.recipe).slice(0, 60000)}\n\nChange it as follows and return the complete updated recipe: ${instruction}.${hint}` });
       } else {
-        const img = await geminiImage(
-          `Studio product photograph of a single ${prompt}. The whole object is visible and centred, three-quarter front view from slightly above, on a plain seamless white background, soft even lighting, no shadows on the background, no other objects, no text.`,
-          [],
-          '1:1',
-        );
-        srcPath = `${orgId}/ai3d-${job.id}-src.png`;
-        const up = await db.storage.from('ai').upload(srcPath, img.bytes, { contentType: img.mime, upsert: true });
-        if (up.error) throw up.error;
+        if (body.image) {
+          const img = await loadImage(db, orgId, body.image);
+          parts.push({ inline_data: { mime_type: img.mime, data: b64(img.bytes) } });
+          parts.push({ text: `Model the main piece of furniture in this photo as a recipe. Ignore the room and other objects.${prompt ? ` Notes from the designer: ${prompt}.` : ''}${hint}` });
+        } else {
+          parts.push({ text: `Model this piece as a recipe: ${prompt}.${hint}` });
+        }
       }
-      const { data: signed } = await db.storage.from('ai').createSignedUrl(srcPath, 3600);
-      if (!signed?.signedUrl) throw new Error('Could not share the source image with the 3D service.');
-      const sub = await fal(`https://queue.fal.run/${ENDPOINT}`, { method: 'POST', body: JSON.stringify({ image_url: signed.signedUrl, texture_size: 2048, decimation_target: 150000 }) });
-      if (!sub?.status_url || !sub?.response_url) throw new Error('The 3D service did not accept the job.');
-      await db.from('ai_jobs').update({ input: { ...job.input, source: `ai/${srcPath}`, requestId: sub.request_id, statusUrl: sub.status_url, responseUrl: sub.response_url, endpoint: ENDPOINT } }).eq('id', job.id);
-      return json({ jobId: job.id, status: 'running' });
+      const { data, model } = await geminiJson(parts);
+      await db.from('ai_jobs').update({ status: 'succeeded', finished_at: new Date().toISOString(), input: { prompt, instruction, model } }).eq('id', job.id);
+      return json({ jobId: job.id, recipe: data, model });
     } catch (e) {
-      await refund(db, orgId, cost, job.id);
+      await refund(db, orgId, COST, job.id);
       await db.from('ai_jobs').update({ status: 'failed', error: (e as Error).message.slice(0, 500), finished_at: new Date().toISOString() }).eq('id', job.id);
       throw e;
     }

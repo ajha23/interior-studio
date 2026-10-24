@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../auth/AuthProvider';
 
-export const AI_COST = { image: 2, model: 10, textModelExtra: 2 } as const;
+export const AI_COST = { image: 2, model: 2 } as const;
 
 export type AiImageOp = 'enhance' | 'restyle' | 'style_transfer' | 'clear_room' | 'sketch_to_render' | 'edit';
 export interface AiImageRef {
@@ -64,22 +64,23 @@ export function useAiImage(projectId: string) {
   });
 }
 
-export interface AiModelStatus {
-  status: 'running' | 'succeeded' | 'failed';
-  stage?: 'queued' | 'generating';
-  error?: string | null;
-  glbUrl?: string | null;
-  name?: string;
-  category?: string;
-  sizeMm?: number | null;
+export interface AiRecipeResult {
+  jobId: string;
+  /** Untrusted JSON from the model: run it through sanitizeRecipe before use. */
+  recipe: unknown;
+  model: string;
 }
 
-export function startAiModel(input: { orgId: string; projectId?: string; name: string; category: string; sizeMm: number; image?: AiImageRef; prompt?: string }) {
-  return invoke<{ jobId: string }>('ai-model', { action: 'start', ...input });
+type SizeHint = { w?: number; d?: number; h?: number };
+
+/** Gemini designs a furniture recipe from a photo and/or a description. */
+export function designAiModel(input: { orgId: string; projectId?: string; image?: AiImageRef; prompt?: string; sizeHint?: SizeHint }) {
+  return invoke<AiRecipeResult>('ai-model', { action: 'design', ...input });
 }
 
-export function aiModelStatus(jobId: string) {
-  return invoke<AiModelStatus>('ai-model', { action: 'status', jobId });
+/** Gemini changes an existing recipe ("make the legs tapered brass"). */
+export function refineAiModel(input: { orgId: string; projectId?: string; recipe: unknown; instruction: string; sizeHint?: SizeHint }) {
+  return invoke<AiRecipeResult>('ai-model', { action: 'refine', ...input });
 }
 
 export function useAiSettings() {

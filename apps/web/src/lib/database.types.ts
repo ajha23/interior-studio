@@ -370,6 +370,7 @@ export type Database = {
           id: string
           name: string
           org_id: string
+          recipe: Json | null
           storage_path: string
           thumb_path: string | null
           width_um: number
@@ -385,6 +386,7 @@ export type Database = {
           id?: string
           name: string
           org_id: string
+          recipe?: Json | null
           storage_path: string
           thumb_path?: string | null
           width_um: number
@@ -400,6 +402,7 @@ export type Database = {
           id?: string
           name?: string
           org_id?: string
+          recipe?: Json | null
           storage_path?: string
           thumb_path?: string | null
           width_um?: number

@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { CATALOG_CATEGORIES, newModelItem, type CatalogCategory } from '@studio/core';
-import { AI_COST, aiModelStatus, startAiModel, uploadAiSource, useAiImage, useCredits, type AiImageOp, type AiImageRef } from '../data/ai';
+import { CATALOG_CATEGORIES, newModelItem, resizeRecipe, sanitizeRecipe, type CatalogCategory, type Recipe } from '@studio/core';
+import { AI_COST, designAiModel, refineAiModel, uploadAiSource, useAiImage, useCredits, type AiImageOp, type AiImageRef } from '../data/ai';
 import { useRenders, type SavedRender } from '../data/renders';
 import { useUploadModel } from '../data/models';
 import { canEdit as roleCanEdit, useAuth } from '../auth/AuthProvider';
 import { errorMessage } from '../lib/supabase';
 import { STYLES } from './TemplatesPanel';
 import { usePlaceFurniture } from './place';
+import { RecipePreview } from '../recipe/RecipePreview';
 import { useStudio } from './store';
 
 const OPS: { id: AiImageOp; label: string; hint: string }[] = [
@@ -159,100 +160,177 @@ function BeforeAfter({ before, after }: { before: string | null; after: string }
   );
 }
 
+type Dims = { w: number; d: number; h: number };
+const CATEGORY_IDS = new Set(CATALOG_CATEGORIES.map((c) => c.id as string));
+
+/** Sanitise a model answer and make its stated size match what it actually builds. */
+async function toRecipe(raw: unknown): Promise<Recipe> {
+  const r = sanitizeRecipe(raw);
+  const { measureRecipe } = await import('../recipe/build');
+  const built = measureRecipe(r);
+  return { ...r, size: { w: Math.max(1, built.w), d: Math.max(1, built.d), h: Math.max(1, built.h) } };
+}
+
+function DimInput({ label, value, onChange, disabled, placeholder }: { label: string; value: number; onChange: (v: number) => void; disabled?: boolean; placeholder?: string }) {
+  return (
+    <label className="ai-size">
+      <span>{label}</span>
+      <input className="input" type="number" min={20} max={8000} step={10} value={value ? Math.round(value) : ''} placeholder={placeholder} onChange={(e) => onChange(Number(e.target.value))} disabled={disabled} aria-label={`${label} mm`} />
+    </label>
+  );
+}
+
 function ModelTab({ projectId, orgId }: { projectId: string; orgId: string }) {
   const renders = useRenders(projectId);
   const credits = useCredits();
   const upload = useUploadModel();
   const { place } = usePlaceFurniture();
   const readOnly = useStudio((s) => s.readOnly);
-  const [mode, setMode] = useState<'photo' | 'text'>('photo');
+  const [mode, setMode] = useState<'photo' | 'text'>('text');
   const [source, setSource] = useState<Source>(null);
   const [prompt, setPrompt] = useState('');
+  const [hint, setHint] = useState<Dims>({ w: 0, d: 0, h: 0 });
+  const [recipe, setRecipe] = useState<Recipe | null>(null);
+  const [history, setHistory] = useState<Recipe[]>([]);
   const [name, setName] = useState('');
   const [category, setCategory] = useState<CatalogCategory>('decor');
-  const [sizeMm, setSizeMm] = useState(800);
-  const [job, setJob] = useState<{ id: string; stage: string; started: number } | null>(null);
+  const [lockRatio, setLockRatio] = useState(false);
+  const [instruction, setInstruction] = useState('');
+  const [busy, setBusy] = useState<null | 'design' | 'refine' | 'save'>(null);
   const [done, setDone] = useState<{ id: string; name: string; widthUm: number; depthUm: number; heightUm: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const cost = AI_COST.model + (mode === 'text' ? AI_COST.textModelExtra : 0);
-  const short = (credits.data ?? 0) < cost;
-  const cancelled = useRef(false);
-  useEffect(() => () => {
-    cancelled.current = true;
-  }, []);
+  const short = (credits.data ?? 0) < AI_COST.model;
+  const sizeHint = hint.w || hint.d || hint.h ? hint : undefined;
 
-  const go = async () => {
+  const accept = async (raw: unknown, first: boolean) => {
+    const r = await toRecipe(raw);
+    if (recipe) setHistory((h) => [...h.slice(-9), recipe]);
+    setRecipe(r);
+    if (first || !name.trim()) setName(r.name);
+    if (first && CATEGORY_IDS.has(r.category)) setCategory(r.category as CatalogCategory);
+  };
+
+  const run = async (kind: 'design' | 'refine') => {
     setError(null);
     setDone(null);
+    setBusy(kind);
     try {
-      const n = name.trim() || (mode === 'text' ? prompt.trim().slice(0, 60) : 'AI model');
-      const { jobId } = await startAiModel({ orgId, projectId, name: n, category, sizeMm, image: mode === 'photo' ? refOf(source) : undefined, prompt: mode === 'text' ? prompt.trim() : undefined });
-      void credits.refetch();
-      setJob({ id: jobId, stage: 'queued', started: Date.now() });
-      // Generation takes a few minutes; poll every 6 s.
-      for (;;) {
-        await new Promise((r) => setTimeout(r, 6000));
-        if (cancelled.current) return;
-        const st = await aiModelStatus(jobId);
-        if (st.status === 'running') {
-          setJob({ id: jobId, stage: st.stage ?? 'generating', started: Date.now() });
-          continue;
-        }
-        if (st.status === 'failed' || !st.glbUrl) throw new Error(st.error || 'Generation failed. Credits were refunded.');
-        setJob({ id: jobId, stage: 'importing', started: Date.now() });
-        const blob = await (await fetch(st.glbUrl)).blob();
-        const res = await upload.mutateAsync({ files: [new File([blob], `${n}.glb`, { type: 'model/gltf-binary' })], name: n, category, unit: 'auto', fitMaxMm: sizeMm, source: 'ai' });
-        setDone({ id: res.id, name: n, ...res.info });
-        break;
+      if (kind === 'design') {
+        const res = await designAiModel({ orgId, projectId, image: mode === 'photo' ? refOf(source) : undefined, prompt: prompt.trim() || undefined, sizeHint });
+        setHistory([]);
+        await accept(res.recipe, true);
+      } else if (recipe) {
+        const res = await refineAiModel({ orgId, projectId, recipe, instruction: instruction.trim() });
+        await accept(res.recipe, false);
+        setInstruction('');
       }
     } catch (e) {
       setError(errorMessage(e));
-      void credits.refetch();
     } finally {
-      setJob(null);
+      setBusy(null);
+      void credits.refetch();
     }
   };
 
+  const resize = (key: keyof Dims, v: number) => {
+    if (!recipe || !Number.isFinite(v) || v < 20 || v > 8000) return;
+    const k = v / recipe.size[key];
+    const size = lockRatio ? { w: recipe.size.w * k, d: recipe.size.d * k, h: recipe.size.h * k } : { ...recipe.size, [key]: v };
+    setRecipe(resizeRecipe(recipe, size));
+  };
+
+  const save = async () => {
+    if (!recipe) return;
+    setError(null);
+    setBusy('save');
+    try {
+      const { recipeToGlb } = await import('../recipe/build');
+      const n = name.trim() || recipe.name;
+      const glb = await recipeToGlb(recipe);
+      const res = await upload.mutateAsync({ files: [new File([glb], `${n}.glb`, { type: 'model/gltf-binary' })], name: n, category, unit: 'auto', source: 'ai', recipe: { ...recipe, name: n, category } });
+      setDone({ id: res.id, name: n, ...res.info });
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const canDesign = mode === 'photo' ? Boolean(source) : Boolean(prompt.trim());
   return (
     <div className="render-form">
       <div className="chips" role="radiogroup" aria-label="From">
-        <button role="radio" aria-checked={mode === 'photo'} className={`chip ${mode === 'photo' ? 'on' : ''}`} onClick={() => setMode('photo')} disabled={Boolean(job)}>From a photo</button>
-        <button role="radio" aria-checked={mode === 'text'} className={`chip ${mode === 'text' ? 'on' : ''}`} onClick={() => setMode('text')} disabled={Boolean(job)}>From a description</button>
+        <button role="radio" aria-checked={mode === 'text'} className={`chip ${mode === 'text' ? 'on' : ''}`} onClick={() => setMode('text')} disabled={Boolean(busy)}>From a description</button>
+        <button role="radio" aria-checked={mode === 'photo'} className={`chip ${mode === 'photo' ? 'on' : ''}`} onClick={() => setMode('photo')} disabled={Boolean(busy)}>From a photo</button>
       </div>
-      {mode === 'photo' ? (
-        <SourcePicker label="Photo of one piece, whole object visible, plain background works best" value={source} onChange={setSource} renders={renders.data ?? []} orgId={orgId} />
-      ) : (
-        <textarea className="input ai-prompt" rows={3} maxLength={600} placeholder="e.g. Carved teak jhoola with brass chains and mustard cushions" value={prompt} onChange={(e) => setPrompt(e.target.value)} disabled={Boolean(job)} />
-      )}
-      <input className="input" placeholder="Name in the library" value={name} maxLength={120} onChange={(e) => setName(e.target.value)} disabled={Boolean(job)} />
-      <div className="tpl-row">
-        <select className="input" value={category} onChange={(e) => setCategory(e.target.value as CatalogCategory)} aria-label="Category" disabled={Boolean(job)}>
-          {CATALOG_CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
-        </select>
-        <label className="ai-size">
-          <span>Largest side</span>
-          <input className="input" type="number" min={50} max={6000} step={10} value={sizeMm} onChange={(e) => setSizeMm(Number(e.target.value))} disabled={Boolean(job)} />
-          <span>mm</span>
-        </label>
+      {mode === 'photo' && <SourcePicker label="Photo of the piece — the whole object visible works best" value={source} onChange={setSource} renders={renders.data ?? []} orgId={orgId} />}
+      <textarea
+        className="input ai-prompt"
+        rows={mode === 'text' ? 3 : 2}
+        maxLength={800}
+        placeholder={mode === 'text' ? 'e.g. Teak bench with cane seat, tapered legs, 1200 wide' : 'Notes (optional), e.g. the legs are brass, seat is mustard velvet'}
+        value={prompt}
+        onChange={(e) => setPrompt(e.target.value)}
+        disabled={Boolean(busy)}
+      />
+      <div className="tpl-row ai-dims" aria-label="Target size (optional)">
+        <DimInput label="W" value={hint.w} placeholder="auto" onChange={(w) => setHint({ ...hint, w })} disabled={Boolean(busy)} />
+        <DimInput label="D" value={hint.d} placeholder="auto" onChange={(d) => setHint({ ...hint, d })} disabled={Boolean(busy)} />
+        <DimInput label="H" value={hint.h} placeholder="auto" onChange={(h) => setHint({ ...hint, h })} disabled={Boolean(busy)} />
+        <span className="render-hint">mm, optional</span>
       </div>
-      <button className="btn primary" disabled={Boolean(job) || short || (mode === 'photo' ? !source : !prompt.trim())} onClick={() => void go()}>
-        {job ? 'Working…' : `Generate 3D model · ${cost} credits`}
+      <button className="btn primary" disabled={Boolean(busy) || short || !canDesign} onClick={() => void run('design')}>
+        {busy === 'design' ? 'Designing… (10–40 s)' : `${recipe ? 'Start over' : 'Design 3D model'} · ${AI_COST.model} credits`}
       </button>
-      {job && (
-        <div className="render-progress" aria-live="polite">
-          <div className="bar indeterminate"><span /></div>
-          <div className="render-status">
-            <span>{job.stage === 'queued' ? 'Waiting in the queue…' : job.stage === 'importing' ? 'Adding to the studio library…' : 'Sculpting and texturing (2–5 min)…'}</span>
-          </div>
-          <span className="render-hint">You can keep designing; leave this panel open.</span>
-        </div>
-      )}
       {short && <p className="field-hint" style={{ color: 'var(--warn)' }}>Not enough credits. An admin can top up on the Team page.</p>}
       {error && <p className="versions-empty err">{error}</p>}
+
+      {recipe && (
+        <div className="ai-result recipe-result">
+          <RecipePreview recipe={recipe} />
+          {recipe.notes && <span className="render-hint">{recipe.notes}</span>}
+          <div className="tpl-row ai-dims" aria-label="Size">
+            <DimInput label="W" value={recipe.size.w} onChange={(v) => resize('w', v)} disabled={Boolean(busy)} />
+            <DimInput label="D" value={recipe.size.d} onChange={(v) => resize('d', v)} disabled={Boolean(busy)} />
+            <DimInput label="H" value={recipe.size.h} onChange={(v) => resize('h', v)} disabled={Boolean(busy)} />
+            <label className="ai-lock" title="Scale all sides together">
+              <input type="checkbox" checked={lockRatio} onChange={(e) => setLockRatio(e.target.checked)} /> <span>Keep proportions</span>
+            </label>
+          </div>
+          <div className="ai-refine">
+            <input
+              className="input"
+              placeholder="Change something, e.g. make the legs brass and 50 mm taller"
+              value={instruction}
+              maxLength={800}
+              onChange={(e) => setInstruction(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && instruction.trim() && !busy && !short && void run('refine')}
+              disabled={Boolean(busy)}
+            />
+            <button className="btn" disabled={Boolean(busy) || short || !instruction.trim()} onClick={() => void run('refine')}>
+              {busy === 'refine' ? 'Changing…' : `Refine · ${AI_COST.model}`}
+            </button>
+            {history.length > 0 && (
+              <button className="btn" disabled={Boolean(busy)} onClick={() => { setRecipe(history[history.length - 1]); setHistory((h) => h.slice(0, -1)); }} title="Back to the previous version">
+                Undo
+              </button>
+            )}
+          </div>
+          <input className="input" placeholder="Name in the library" value={name} maxLength={120} onChange={(e) => setName(e.target.value)} disabled={Boolean(busy)} />
+          <div className="tpl-row">
+            <select className="input" value={category} onChange={(e) => setCategory(e.target.value as CatalogCategory)} aria-label="Category" disabled={Boolean(busy)}>
+              {CATALOG_CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+            </select>
+            <button className="btn primary" disabled={Boolean(busy)} onClick={() => void save()}>
+              {busy === 'save' ? 'Saving…' : 'Save to Studio models'}
+            </button>
+          </div>
+          <span className="render-hint">Resizing, undo and saving are free; only Design and Refine use credits.</span>
+        </div>
+      )}
       {done && (
         <div className="ai-result">
           <strong>{done.name} added to Studio models</strong>
-          <span className="render-hint">AI models are approximate: check proportions and adjust the size after placing.</span>
           {!readOnly && (
             <button className="btn" onClick={() => place(newModelItem({ id: done.id, name: done.name, widthUm: done.widthUm, depthUm: done.depthUm, heightUm: done.heightUm }, 0, 0))}>
               Place in the design
