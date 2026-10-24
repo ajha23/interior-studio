@@ -15,7 +15,7 @@ permissions:
 
 env:
   PROJECT_ID: interior-studio-512608
-  PROJECT_NUMBER: ''
+  PROJECT_NUMBER: '318334257664'
   REGION: asia-south1
   SERVICE: blender-worker
   SUPABASE_URL: https://pkbctmaiawztzmwqkpgw.supabase.co
