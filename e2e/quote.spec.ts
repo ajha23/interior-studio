@@ -2,6 +2,12 @@ import { expect, test } from '@playwright/test';
 import { blankProject, buildQuote, DEFAULT_PRICE_LIST, formatInr, mm, planRun, singleRoomPlan, wallFace, type Opening, type Project } from '../packages/core/src/index';
 import { MockBackend, PROJECT_ID } from './backend';
 
+async function command(page: import('@playwright/test').Page, text: string) {
+  const input = page.getByRole('textbox', { name: 'Describe a change' });
+  await input.fill(text);
+  await input.press('Enter');
+}
+
 /** A furnished kitchen: base run along wall 1 and wall units either side of the window. */
 function furnishedKitchen(): Project {
   const p = blankProject('E2E Quote kitchen', 'Iyer family');
@@ -105,4 +111,24 @@ test('quote: priced from the scene, rates editable, saved as a numbered snapshot
   await expect(page.locator('.cutlist-sheet')).toContainText('Back / drawer-bottom ply');
   await expect(page.locator('.cutlist-sheet')).toContainText('Worktops — supplied cut to size');
   await page.screenshot({ path: 'test-results/cutlist.png', fullPage: true });
+
+  // Factory order: a real JSON download with the design's units, boards and worktop slab.
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Order JSON' }).click()]);
+  expect(dl.suggestedFilename()).toBe('e2e-quote-kitchen-factory-order.json');
+  const order = JSON.parse(await (await import('node:fs/promises')).readFile((await dl.path())!, 'utf8'));
+  expect(order.schema).toBe('interior-studio.order/1');
+  expect(order.units).toHaveLength(6);
+  expect(order.worktops[0]).toMatchObject({ lengthMm: 3000, joints: 3, cutouts: ['sink'] });
+  expect(order.boards.length).toBeGreaterThan(1);
+  const [xml] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Order XML' }).click()]);
+  expect(xml.suggestedFilename()).toBe('e2e-quote-kitchen-factory-order.xml');
+
+  // One command restyles every unit as a single undoable step.
+  await page.getByRole('tab', { name: 'Split' }).click();
+  await command(page, 'make all the units walnut');
+  await expect(page.getByTestId('cmd-entry').last()).toContainText('Applied fronts Walnut laminate to 6 units');
+  await expect.poll(() => be.latest.scene.furniture.every((f) => (f as { materials: { shutter: string } }).materials.shutter === 'walnut'), { timeout: 10_000 }).toBe(true);
+  await page.getByRole('button', { name: 'Undo' }).first().click();
+  await expect.poll(() => be.latest.scene.furniture.some((f) => (f as { materials: { shutter: string } }).materials.shutter !== 'walnut'), { timeout: 10_000 }).toBe(true);
 });
+

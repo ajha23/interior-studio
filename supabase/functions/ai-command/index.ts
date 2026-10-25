@@ -5,13 +5,14 @@ import { admin, caller, handle, HttpError, json, requireEditor } from '../_share
 
 // Tool names the editor implements. Declarations come from the app (one source of truth), but
 // only these names are forwarded to the model.
-const ALLOWED = new Set(['set_dimension', 'set_parameter', 'set_material', 'rotate', 'move', 'rename', 'delete', 'select', 'add_base_cabinet', 'add_cabinet', 'fill_wall']);
+const ALLOWED = new Set(['set_dimension', 'set_parameter', 'set_material', 'rotate', 'move', 'rename', 'delete', 'select', 'add_base_cabinet', 'add_cabinet', 'fill_wall', 'apply_style']);
 
 const SYSTEM = `You are the command planner inside Interior Studio, a professional interior-design editor for Indian homes. Units are millimetres.
 Turn the designer's request into calls to the provided tools. Rules:
 - Only use the tools. Never invent item ids: use "selected" for the selected piece (context.selectedId), or an id/name from context.furniture.
 - Convert units to millimetres (1 cm = 10 mm, 1 m = 1000 mm, 1 inch = 25.4 mm, 1 ft = 304.8 mm). Standard sizes are fine when the designer names a standard (e.g. a dishwasher slot is 600 mm wide, a sink unit 800–900 mm, a counter height 850 mm).
 - Pass expectKind when the designer names a kind of piece ("base cabinet" = basecabinet, "wall cabinet"/"upper unit" = wallcabinet, "tall unit"/"pantry" = tallcabinet).
+- To restyle everything at once ("make the whole kitchen walnut", "all units in white with a black granite top") use apply_style.
 - For a whole run of kitchen cabinets along a wall use fill_wall; for one unit use add_cabinet.
 - Respect the limits in the tool descriptions; the app rejects anything outside them, so do not guess values you were not given.
 - If the request is ambiguous or needs something the tools cannot do, make no calls and reply with one short sentence saying what you need or cannot do.`;

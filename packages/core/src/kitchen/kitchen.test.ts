@@ -278,3 +278,38 @@ describe('corner tools', () => {
   });
 });
 
+
+describe('apply_style', () => {
+  const run = () => {
+    const p = kitchen();
+    const base = planRun(p, wallFace(p.plan, p.plan.walls[0].id)!, 'base').items;
+    const withBase = { ...p, furniture: base };
+    const wall = planRun(withBase, wallFace(p.plan, p.plan.walls[0].id)!, 'wall').items;
+    return { ...p, furniture: [...base, ...wall] as Project['furniture'] };
+  };
+
+  it('restyles every unit in one undoable step, worktop on base units only', () => {
+    const project = run();
+    const r = planTools({ project, selection: null }, [{ tool: 'apply_style', args: { shutter: 'walnut', worktop: 'white quartz' } }], 'style', (p, c) => applyCommand(p, c)[0]);
+    expect(r.ok).toBe(true);
+    const cmd = (r as { command: Command }).command;
+    const [after, inverse] = applyCommand(project, cmd);
+    for (const f of after.furniture) {
+      const m = (f as KitchenItem).materials as Record<string, string>;
+      expect(m.shutter).toBe('walnut');
+      if (f.kind === 'basecabinet') expect(m.worktop).toBe('quartz-white');
+      else expect(m.worktop).toBeUndefined();
+    }
+    const [back] = applyCommand(after, inverse);
+    expect(back.furniture).toEqual(project.furniture);
+  });
+
+  it('rejects an unknown finish, and the parser routes "all units" phrases to it', () => {
+    const project = run();
+    const bad = planTool({ project, selection: null }, { tool: 'apply_style', args: { shutter: 'unobtainium' } });
+    expect(bad.ok).toBe(false);
+    expect(parseCommand('make all the units walnut')).toEqual([{ tool: 'apply_style', args: { shutter: 'walnut' } }]);
+    expect(parseCommand('change every worktop to white quartz')).toEqual([{ tool: 'apply_style', args: { worktop: 'white quartz' } }]);
+    expect(parseCommand('change the doors to walnut')?.[0].tool).toBe('set_material');
+  });
+});

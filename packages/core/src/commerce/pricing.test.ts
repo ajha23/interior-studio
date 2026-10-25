@@ -82,3 +82,28 @@ describe('workshop cut-list', () => {
     expect(boards.some((b) => b.rows.some((r) => r.part === 'Worktop'))).toBe(false);
   });
 });
+
+describe('factory order export', () => {
+  it('is deterministic, complete and valid XML', async () => {
+    const { buildOrder, orderXml, ORDER_SCHEMA } = await import('./order');
+    const { p } = kitchenProject();
+    const a = buildOrder(p, DEFAULT_PRICE_LIST, { generatedAt: '2026-10-25T00:00:00Z', designVersion: 3 });
+    const b = buildOrder(p, DEFAULT_PRICE_LIST, { generatedAt: '2026-10-25T00:00:00Z', designVersion: 3 });
+    expect(a).toEqual(b);
+    expect(a.schema).toBe(ORDER_SCHEMA);
+    expect(a.units.map((u) => u.name)).toEqual(['Wardrobe', 'Base B1', 'Wall W1']);
+    const base = a.units.find((u) => u.name === 'Base B1')!;
+    expect(base.params.widthMm).toBe(600);
+    expect(base.finishes.worktop).toBe('Black galaxy granite');
+    expect(a.boards.every((x) => x.parts.length > 0 && x.sheets >= 1)).toBe(true);
+    expect(a.worktops).toHaveLength(1);
+    expect(a.bom.some((l) => l.section === 'Hardware')).toBe(true);
+    const xml = orderXml(a);
+    expect(xml.startsWith('<?xml')).toBe(true);
+    expect(xml).toContain('<unit>');
+    expect(xml.match(/<unit>\n/g)!.length).toBe(3);
+    // The root `<order schema=…>` carries an attribute, so it is the one open tag the pattern skips.
+    expect(xml.match(/<(\w+)>/g)!.length + 1).toBe(xml.match(/<\/(\w+)>/g)!.length);
+    expect(xml).not.toContain('undefined');
+  });
+});

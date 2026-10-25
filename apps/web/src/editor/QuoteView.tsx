@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { buildBom, buildCutList, buildQuote, finishById, fmtMm, formatInr, plainMm, FINISHES, sanitizePriceList, worktopRuns, WORKTOP_FINISHES, type PriceList } from '@studio/core';
+import { buildBom, buildCutList, buildOrder, buildQuote, orderFileName, orderXml, finishById, fmtMm, formatInr, plainMm, FINISHES, sanitizePriceList, worktopRuns, WORKTOP_FINISHES, type PriceList } from '@studio/core';
 import { canAdmin, canEdit, useAuth } from '../auth/AuthProvider';
 import { usePriceList, useQuotes, useSavePriceList, useSaveQuote } from '../data/quotes';
 import { errorMessage } from '../lib/supabase';
@@ -7,6 +7,17 @@ import { relativeTime } from '../ui/format';
 import { useStudio } from './store';
 
 type Tab = 'quote' | 'bom' | 'cuts';
+
+function download(name: string, mime: string, text: string) {
+  const url = URL.createObjectURL(new Blob([text], { type: mime }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
 function NumberCell({ value, onChange, disabled, suffix, label }: { value: number; onChange: (v: number) => void; disabled: boolean; suffix?: string; label: string }) {
   const [text, setText] = useState(String(value));
@@ -128,6 +139,12 @@ export function QuoteView() {
           >
             {saveQuote.isPending ? 'Saving…' : 'Save quote'}
           </button>
+        )}
+        {tab !== 'quote' && (
+          <>
+            <button className="btn" onClick={() => download(`${orderFileName(project)}.json`, 'application/json', JSON.stringify(buildOrder(project, pl, { generatedAt: new Date().toISOString(), designVersion: versionNo }), null, 2))}>Order JSON</button>
+            <button className="btn" onClick={() => download(`${orderFileName(project)}.xml`, 'application/xml', orderXml(buildOrder(project, pl, { generatedAt: new Date().toISOString(), designVersion: versionNo })))}>Order XML</button>
+          </>
         )}
         <button className="btn primary" onClick={() => window.print()}>Print / PDF</button>
       </div>

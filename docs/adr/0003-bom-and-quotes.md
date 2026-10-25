@@ -15,3 +15,8 @@
 - Quote totals are reproducible from (scene, rates) in tests and on the server.
 - BOM sheet counts round up globally, so BOM cost ≥ the area-priced materials in the quote; the difference is the offcut risk the margin covers.
 - Sheet nesting (actual cutting layouts) is a later optimisation; the waste factor stands in for it.
+
+## Sprint 6 addendum: factory order export and style presets
+
+- `buildOrder` (core/commerce/order.ts) produces one versioned document (`interior-studio.order/1`): units with finishes, parameters and hardware, per-board cut-list, worktop slabs with cut-outs and joints, and the BOM quantities (no prices — a workshop or ERP gets what to build, not what the studio charges). Sizes are mm. The caller passes the timestamp so the document is deterministic and testable. `orderXml` renders the same object as plain XML. Both download from the BOM and Cut-list tabs.
+- `apply_style` applies shutter/carcass/worktop finishes to every manufactured unit as one undoable batch; worktops go to base cabinets only. It is also an AI tool, and the deterministic parser handles "make all the units walnut".

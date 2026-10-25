@@ -157,6 +157,12 @@ function clause(raw: string): ToolCall[] | null {
     return [{ tool: 'set_dimension', args: { ...base, dimension, valueMm: mmVal } }];
   }
 
+  // Whole-design style: "make all units walnut", "change every door to white", "paint the whole kitchen ivory".
+  if ((m = /\b(?:all|every|each|whole|entire)\b.*?\b(?:units?|cabinets?|doors?|shutters?|fronts?|carcass|worktops?|kitchen|wardrobes?)\b\s+(?:(?:to|in|with|as|into)\s+)?(?:(?:a|an|the)\s+)?(.+?)(?:\s+(?:finish|laminate|colour|color))?$/.exec(s)) && !/\d/.test(m[1])) {
+    const slotAll = SLOT_WORDS.find(([re]) => re.test(s))?.[1] ?? 'shutter';
+    return [{ tool: 'apply_style', args: { [slotAll]: m[1].replace(/^(the|a|an)\s+/, '').trim() } }];
+  }
+
   // Materials: "change the doors to walnut", "make the worktop white quartz", "paint the carcass ivory".
   const slot = SLOT_WORDS.find(([re]) => re.test(s))?.[1];
   if ((m = /\b(?:to|in|with|as|into)\s+(?:a\s+|an\s+)?(.+?)(?:\s+(?:finish|laminate|colour|color))?$/.exec(s)) || (m = /^(?:paint|make|use|finish)\s+(?:the\s+)?(?:\w+\s+){0,3}?(?:doors?|shutters?|fronts?|carcass|body|worktop|countertop)\s+(.+)$/.exec(s))) {

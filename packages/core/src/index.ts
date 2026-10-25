@@ -23,3 +23,4 @@ export * from './kitchen/run';
 export * from './commerce/pricing';
 export * from './kitchen/worktops';
 export * from './commerce/cutlist';
+export * from './commerce/order';

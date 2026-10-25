@@ -29,7 +29,7 @@ export interface ToolContext {
   selection: ToolSelection;
 }
 
-export type ToolName = 'set_dimension' | 'set_parameter' | 'set_material' | 'rotate' | 'move' | 'rename' | 'delete' | 'select' | 'add_base_cabinet' | 'add_cabinet' | 'fill_wall';
+export type ToolName = 'set_dimension' | 'set_parameter' | 'set_material' | 'rotate' | 'move' | 'rename' | 'delete' | 'select' | 'add_base_cabinet' | 'add_cabinet' | 'fill_wall' | 'apply_style';
 
 export interface ToolCall {
   tool: ToolName;
@@ -105,6 +105,11 @@ export const TOOL_SPECS: { name: ToolName; description: string; parameters: Reco
     name: 'fill_wall',
     description: 'Fill a wall with a run of kitchen cabinets of one type (base, wall or tall), skipping doors, windows the units would block, and pieces already on the wall. Wall: "selected" (the selected wall), "behind_selected" (the wall behind the selected piece, default) or a wall number. fit "exact" (default) widens modules to close gaps; "standard" keeps 900/800/600/450/300 widths and leaves fillers.',
     parameters: { type: 'object', properties: { wall: { type: 'string' }, type: { type: 'string', enum: ['base', 'wall', 'tall'] }, fit: { type: 'string', enum: ['exact', 'standard'] }, front: { type: 'string', enum: ['doors', 'drawers'] } }, required: ['type'] },
+  },
+  {
+    name: 'apply_style',
+    description: 'Apply one finish set to ALL kitchen, wardrobe and TV units at once (a style preset): shutter (doors and drawer fronts), carcass, and worktop (base cabinet worktops). Give any of the three; omitted ones are left alone. Use this when the designer says "all", "every", "whole kitchen".',
+    parameters: { type: 'object', properties: { shutter: { type: 'string' }, carcass: { type: 'string' }, worktop: { type: 'string' } } },
   },
   {
     name: 'add_base_cabinet',
@@ -346,6 +351,45 @@ function setMaterial(ctx: ToolContext, args: Record<string, unknown>): ToolResul
   return fail('Studio models keep the materials they were uploaded with.');
 }
 
+function applyStyle(ctx: ToolContext, args: Record<string, unknown>): ToolResult {
+  const wanted = (['shutter', 'carcass', 'worktop'] as const).flatMap((slot) => {
+    const q = str(args[slot]);
+    return q ? [{ slot, q }] : [];
+  });
+  if (!wanted.length) return fail('Name at least one finish to apply: shutter, carcass or worktop.');
+  const chosen: { slot: 'shutter' | 'carcass' | 'worktop'; id: string; name: string }[] = [];
+  for (const { slot, q } of wanted) {
+    const list = slot === 'worktop' ? WORKTOP_FINISHES : FINISHES;
+    const f = findFinish(list, q);
+    if (!f) return fail(`"${q}" isn't a ${slot === 'worktop' ? 'worktop' : 'cabinet'} finish. Choose from: ${list.map((x) => x.name).join(', ')}.`);
+    chosen.push({ slot, id: f.id, name: finishById(f.id).name });
+  }
+  const commands: Command[] = [];
+  const touched = new Set<string>();
+  for (const item of ctx.project.furniture) {
+    if (!isParametric(item)) continue;
+    const mats = { ...(item.materials as Record<string, string>) };
+    let changed = false;
+    for (const c of chosen) {
+      if (c.slot === 'worktop' && item.kind !== 'basecabinet') continue;
+      if (mats[c.slot] !== c.id) {
+        mats[c.slot] = c.id;
+        changed = true;
+      }
+    }
+    if (changed) {
+      commands.push({ type: 'furniture.update', id: item.id, patch: { materials: mats } });
+      touched.add(item.id);
+    }
+  }
+  const what = chosen.map((c) => `${c.slot === 'shutter' ? 'fronts' : c.slot} ${c.name}`).join(', ');
+  if (!commands.length) {
+    const any = ctx.project.furniture.some(isParametric);
+    return { ok: true, command: null, summary: any ? `Every unit already has ${what}.` : 'There are no kitchen or wardrobe units to restyle yet.' };
+  }
+  return { ok: true, command: { type: 'batch', label: 'Apply style to all units', commands }, summary: `Applied ${what} to ${touched.size} unit${touched.size === 1 ? '' : 's'}.` };
+}
+
 function rotate(ctx: ToolContext, args: Record<string, unknown>): ToolResult {
   const r = resolveTarget(ctx, args);
   if ('error' in r) return fail(r.error);
@@ -522,6 +566,7 @@ const HANDLERS: Record<ToolName, (ctx: ToolContext, args: Record<string, unknown
   add_base_cabinet: addBaseCabinet,
   add_cabinet: addCabinet,
   fill_wall: fillWall,
+  apply_style: applyStyle,
 };
 
 export function isToolName(s: string): s is ToolName {
