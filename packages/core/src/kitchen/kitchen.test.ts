@@ -146,3 +146,24 @@ describe('kitchen tools', () => {
     expect(parseCommand('set the wall cabinet mount height to 1500')).toEqual([{ tool: 'set_dimension', args: { target: 'selected', expectKind: 'wallcabinet', dimension: 'mount_height', valueMm: 1500 } }]);
   });
 });
+
+describe('continuous worktops', () => {
+  it('joins edge-to-edge base units into one slab with joints, and splits at gaps', async () => {
+    const { worktopRuns } = await import('./worktops');
+    const p = kitchen();
+    const { items } = planRun(p, wallFace(p.plan, p.plan.walls[0].id)!, 'base');
+    const withTop = items.map((b) => ({ ...b, params: { ...b.params, worktopUm: mm(40) } }));
+    const proj = { ...p, furniture: withTop as Project['furniture'] };
+    const runs = worktopRuns(proj);
+    expect(runs).toHaveLength(1);
+    expect(runs[0].itemIds).toHaveLength(withTop.length);
+    expect(runs[0].lengthUm).toBe(mm(3000));
+    expect(runs[0].joints).toBe(withTop.length - 1);
+    // Drop the middle unit: the run breaks into two slabs.
+    const gapWidth = withTop[1].params.widthUm;
+    const gap = withTop.filter((_, i) => i !== 1);
+    const split = worktopRuns({ ...p, furniture: gap as Project['furniture'] });
+    expect(split).toHaveLength(2);
+    expect(split.reduce((s, r) => s + r.lengthUm, 0)).toBe(mm(3000) - gapWidth);
+  });
+});
