@@ -5,8 +5,8 @@ import { blankProject, newBaseCabinet, newWallCabinet, singleRoomPlan } from '..
 import type { KitchenItem, Opening, Project } from '../domain/types';
 import { mm } from '../domain/units';
 import { DEFAULT_TALL_CABINET, DEFAULT_WALL_CABINET, resolveTallCabinet, resolveWallCabinet } from '../furniture/kitchen';
-import { envelope } from '../furniture';
-import { footprint } from '../geometry/furniture';
+import { envelope, resolveParametric } from '../furniture';
+import { footprint, localToRoom } from '../geometry/furniture';
 import { detectRooms } from '../plan/rooms';
 import { validateProject } from '../validation';
 import { parseCommand } from '../tools/nl';
@@ -14,6 +14,7 @@ import { planTool, planTools } from '../tools/sceneTools';
 import { freeStretches, planRun, splitRun, wallFace } from './run';
 
 const rp = DEFAULT_RULE_PACK;
+const resolveParametricOf = (i: Parameters<typeof resolveParametric>[0]) => resolveParametric(i, rp);
 const errs = (r: { issues: { severity: string; code: string }[] }) => r.issues.filter((i) => i.severity === 'error').map((i) => i.code);
 
 /** 3000 × 2400 kitchen; a window over the counter on the north wall, a door on the east wall. */
@@ -80,7 +81,8 @@ describe('kitchen runs', () => {
     const p = kitchen();
     const face = wallFace(p.plan, p.plan.walls[0].id)!;
     const run = planRun(p, face, 'base');
-    expect(run.items.map((i) => i.params.widthUm)).toEqual([mm(900), mm(900), mm(600), mm(600)]);
+    // The biggest module goes to the inside corner (here the east end, where the east wall is clear).
+    expect(run.items.map((i) => i.params.widthUm)).toEqual([mm(600), mm(600), mm(900), mm(900)]);
     const next = { ...p, furniture: run.items };
     const issues = validateProject(next).filter((r) => r.severity === 'error');
     expect(issues).toEqual([]);
@@ -202,3 +204,77 @@ describe('worktop cut-outs', () => {
     expect(buildBom(back, DEFAULT_PRICE_LIST).lines.some((l) => l.description.startsWith('Worktop cut-outs'))).toBe(false);
   });
 });
+
+describe('blind-corner units', () => {
+  it('puts a blind-corner unit at a clear inside corner, with its blind panel on the corner side', () => {
+    const p = kitchen();
+    const face = wallFace(p.plan, p.plan.walls[0].id)!;
+    const run = planRun(p, face, 'base');
+    expect(run.corners).toBe(1);
+    const corner = run.items.filter((i) => i.name.startsWith('Corner unit'));
+    expect(corner).toHaveLength(1);
+    const c = corner[0];
+    expect(c.kind === 'basecabinet' && c.params.blindUm).toBe(mm(600));
+    expect(errs(resolveParametricOf(c))).toEqual([]);
+    // The blind panel's centre is nearer the east wall than the door's centre.
+    const r = resolveParametricOf(c);
+    const mid = (k: string) => {
+      const part = r.parts.find((x) => x.key === k)!;
+      return localToRoom(c, part.box.x + part.box.w / 2, part.box.y).x;
+    };
+    expect(mid('blind-panel')).toBeGreaterThan(mid('door-1'));
+    // The run that follows on the east wall starts clear of the corner unit's depth: no overlap, no errors.
+    const withRun = { ...p, furniture: run.items };
+    const east = planRun(withRun, wallFace(p.plan, p.plan.walls[1].id)!, 'base');
+    expect(east.items.length).toBeGreaterThan(0);
+    expect(east.corners).toBe(0);
+    const all = { ...p, furniture: [...run.items, ...east.items] };
+    expect(validateProject(all).filter((i) => i.severity === 'error')).toEqual([]);
+  });
+
+  it('rejects an unworkable blind width and drawers on a blind unit', () => {
+    const narrow = newBaseCabinet(0, 0, { widthUm: mm(800), blindUm: mm(600), blindSide: 'right' });
+    expect(errs(resolveParametricOf(narrow))).toContain('BLIND_OPEN');
+    const drawers = newBaseCabinet(0, 0, { widthUm: mm(900), blindUm: mm(600), blindSide: 'right', front: 'drawers' });
+    expect(errs(resolveParametricOf(drawers))).toContain('BLIND_FRONT');
+    const ok = newBaseCabinet(0, 0, { widthUm: mm(900), blindUm: mm(600), blindSide: 'left' });
+    expect(errs(resolveParametricOf(ok))).toEqual([]);
+  });
+
+  it('can be switched off with corners: false', () => {
+    const p = kitchen();
+    const run = planRun(p, wallFace(p.plan, p.plan.walls[0].id)!, 'base', { corners: false });
+    expect(run.corners).toBe(0);
+  });
+});
+
+describe('corner tools', () => {
+  const unit = newBaseCabinet(0, 0, { widthUm: mm(900) });
+  const ctx = (u = unit) => ({ project: { ...kitchen(), furniture: [u] as Project['furniture'] }, selection: { kind: 'furniture' as const, id: u.id } });
+
+  it('makes a unit a blind corner and back, and validates the blind width', () => {
+    const on = planTool(ctx(), { tool: 'set_parameter', args: { parameter: 'corner', value: 'right' } });
+    expect(on.ok).toBe(true);
+    const [next, inverse] = applyCommand(ctx().project, (on as { command: Command }).command);
+    const c = next.furniture[0];
+    expect(c.kind === 'basecabinet' && [c.params.blindUm, c.params.blindSide]).toEqual([mm(600), 'right']);
+    // Width can't leave less than 300 mm of door.
+    const narrow = planTool({ project: next, selection: { kind: 'furniture', id: unit.id } }, { tool: 'set_dimension', args: { dimension: 'width', valueMm: 800 } });
+    expect(narrow.ok).toBe(false);
+    expect(JSON.stringify(narrow)).toMatch(/300 mm of open door/);
+    // Blind width itself is a validated dimension on a corner unit only.
+    expect(planTool({ project: next, selection: { kind: 'furniture', id: unit.id } }, { tool: 'set_dimension', args: { dimension: 'blind', valueMm: 500 } }).ok).toBe(true);
+    expect(planTool(ctx(), { tool: 'set_dimension', args: { dimension: 'blind', valueMm: 500 } }).ok).toBe(false);
+    const back = applyCommand(next, inverse)[0].furniture[0];
+    expect(back.kind === 'basecabinet' && (back.params.blindUm ?? 0)).toBe(0);
+    const off = planTool({ project: next, selection: { kind: 'furniture', id: unit.id } }, { tool: 'set_parameter', args: { parameter: 'corner', value: 'none' } });
+    expect(off.ok).toBe(true);
+  });
+
+  it('fill_wall reports the blind-corner unit in its summary', () => {
+    const p = kitchen();
+    const r = planTool({ project: p, selection: null }, { tool: 'fill_wall', args: { wall: '1', type: 'base' } });
+    expect(r.ok && r.summary).toMatch(/with 1 blind-corner unit/);
+  });
+});
+

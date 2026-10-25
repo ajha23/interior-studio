@@ -48,7 +48,7 @@ export function KitchenDimensions({ f }: { f: KitchenItem }) {
   return (
     <div className="section">
       <h3>Dimensions</h3>
-      {ROWS[f.kind].map((r) => (
+      {[...ROWS[f.kind], ...(f.kind === 'basecabinet' && f.params.blindUm ? [{ dim: 'blind', key: 'blindUm', label: 'Blind width', hint: 'Fixed panel that tucks behind the adjoining run.' }] : [])].map((r) => (
         <MmField
           key={r.key}
           label={r.label}
@@ -76,12 +76,14 @@ export function KitchenConstruction({ f }: { f: KitchenItem }) {
   const setFront = (v: string) => setErr(tool({ tool: 'set_parameter', args: { parameter: 'front', value: v } }, 'Change front'));
   const count = (parameter: string, label: string) => (v: number) => tool({ tool: 'set_parameter', args: { parameter, value: String(v) } }, `Change ${label.toLowerCase()}`);
   const lim = LIMITS[f.kind] as Record<string, { min: number; max: number }>;
+  const setCorner = (v: string) => setErr(tool({ tool: 'set_parameter', args: { parameter: 'corner', value: v } }, 'Change corner'));
   const setCutout = (v: string) => setErr(tool({ tool: 'set_parameter', args: { parameter: 'cutout', value: v } }, 'Change worktop cut-out'));
   const showDoors = f.kind === 'tallcabinet' || f.params.front === 'doors';
   return (
     <div className="section">
       <h3>Construction</h3>
       {f.kind === 'basecabinet' && <SelectField label="Front" value={f.params.front} options={[{ value: 'doors', label: 'Doors + shelves' }, { value: 'drawers', label: 'Drawer stack' }]} onChange={setFront} />}
+      {f.kind === 'basecabinet' && <SelectField label="Corner" value={f.params.blindUm ? (f.params.blindSide ?? 'left') : 'none'} options={[{ value: 'none', label: 'Ordinary unit' }, { value: 'left', label: 'Blind corner — panel left' }, { value: 'right', label: 'Blind corner — panel right' }]} onChange={setCorner} />}
       {f.kind === 'basecabinet' && <SelectField label="Worktop cut-out" value={f.params.cutout ?? 'none'} options={[{ value: 'none', label: 'None' }, { value: 'sink', label: 'Sink' }, { value: 'hob', label: 'Hob' }]} onChange={setCutout} />}
       {f.kind === 'wallcabinet' && <SelectField label="Front" value={f.params.front} options={[{ value: 'doors', label: 'Doors' }, { value: 'flap', label: 'Lift-up flap' }, { value: 'open', label: 'Open shelves' }]} onChange={setFront} />}
       {err && <div className="field-error" role="alert">{err}</div>}

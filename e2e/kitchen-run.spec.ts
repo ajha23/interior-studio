@@ -40,9 +40,12 @@ test('kitchen run: fill a wall with base and wall units, edit and validate them,
   // Base units along wall 1: the window sill is above the counter, so the run passes under it.
   await clickWall(page, 0, be);
   await page.locator('.right').getByRole('button', { name: 'Base units' }).click();
-  await expect(page.locator('.right .run-msg')).toContainText('Added 4 base units on wall 1: 900 + 900 + 600 + 600 mm');
+  await expect(page.locator('.right .run-msg')).toContainText('Added 4 base units on wall 1: 600 + 600 + 900 + 900 mm, with 1 blind-corner unit');
   await expect.poll(() => kitchenItems(be.latest.scene, 'basecabinet').length, { timeout: 10_000 }).toBe(4);
   expect(kitchenItems(be.latest.scene, 'basecabinet').reduce((s, b) => s + b.params.widthUm, 0)).toBe(mm(3000));
+  // The east end meets the clear east wall, so the last unit is a blind-corner unit (panel toward the corner).
+  const corner = kitchenItems(be.latest.scene, 'basecabinet').find((b) => b.name === 'Corner unit B4')!;
+  expect(corner.params).toMatchObject({ blindUm: mm(600), blindSide: 'right', doorCount: 1 });
 
   // Wall units stop at the window: two 900 mm units either side of it.
   await clickWall(page, 0, be);
@@ -86,8 +89,18 @@ test('kitchen run: fill a wall with base and wall units, edit and validate them,
   await expect.poll(() => (kitchenItems(be.latest.scene, 'wallcabinet').find((w) => w.name === 'Wall unit W1')?.params as { front?: string })?.front, { timeout: 10_000 }).toBe('flap');
   await page.screenshot({ path: 'test-results/kitchen-run.png' });
 
+  // The corner unit's inspector shows the blind panel; it can be turned back into an ordinary unit.
+  await page.getByRole('tab', { name: 'Plan' }).click();
+  await page.getByRole('tab', { name: 'Scene' }).click();
+  await objects.getByText('Corner unit B4').click();
+  await expect(page.getByTestId('furn-blind')).toHaveValue('600');
+  await expect(page.locator('.right').getByLabel('Corner')).toHaveValue('right');
+  await command(page, 'set the base cabinet width to 800');
+  await expect(page.getByTestId('cmd-entry').last()).toContainText('300 mm of open door');
+  await expect(page.getByTestId('furn-width')).toHaveValue('900');
+
   // Drawings carry sheets for the new units.
   await page.getByRole('tab', { name: 'Drawings' }).click();
   await expect(page.locator('.main')).toContainText('Wall unit W1');
-  await expect(page.locator('.main')).toContainText('Base unit B4');
+  await expect(page.locator('.main')).toContainText('Corner unit B4');
 });

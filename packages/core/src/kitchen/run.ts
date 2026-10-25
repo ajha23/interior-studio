@@ -7,6 +7,7 @@ import { newBaseCabinet, newTallCabinet, newWallCabinet } from '../domain/factor
 import type { FurnitureItem, KitchenItem, Plan, Project } from '../domain/types';
 import { mm, splitExact, type Um } from '../domain/units';
 import { envelope } from '../furniture';
+import { BLIND_MIN_OPEN_UM } from '../furniture/basecabinet';
 import { footprint, normDeg } from '../geometry/furniture';
 import { interiorPoint } from '../plan/polygon';
 import { detectRooms, type DetectedRoom } from '../plan/rooms';
@@ -139,10 +140,38 @@ export function freeStretches(project: Project, face: WallFace, type: RunType, o
   return out.filter(([a, b]) => b - a >= MIN_MODULE).map(([a, b]) => [Math.round(a), Math.round(b)]);
 }
 
+/** Width of the blind panel on a corner unit: the depth of the run that meets it, plus door clearance. */
+export const BLIND_CORNER_UM = mm(600);
+const MIN_CORNER_MODULE = BLIND_CORNER_UM + BLIND_MIN_OPEN_UM;
+
+/**
+ * An inside corner at one end of a face where the perpendicular wall's face is still clear to the
+ * corner. A base run meeting it needs a blind-corner unit, so the later run doesn't block the
+ * first unit's doors.
+ */
+function openCorner(project: Project, face: WallFace, end: 'start' | 'end'): boolean {
+  const pt = wallPoint(face.geom, end === 'start' ? face.start : face.end, face.side * (face.geom.wall.thicknessUm / 2));
+  for (const wid of face.room.wallIds) {
+    if (wid === face.geom.wall.id) continue;
+    const f2 = wallFace(project.plan, wid, [face.room]);
+    if (!f2 || Math.abs(f2.geom.u.x * face.geom.u.x + f2.geom.u.y * face.geom.u.y) > 0.05) continue;
+    for (const at of ['start', 'end'] as const) {
+      const along = at === 'start' ? f2.start : f2.end;
+      const p2 = wallPoint(f2.geom, along, f2.side * (f2.geom.wall.thicknessUm / 2));
+      if (Math.hypot(p2.x - pt.x, p2.y - pt.y) > mm(5)) continue;
+      // The neighbour's base zone must be free right at the corner.
+      return freeStretches(project, f2, 'base').some(([s, e]) => (at === 'start' ? Math.abs(s - f2.start) : Math.abs(e - f2.end)) < mm(1));
+    }
+  }
+  return false;
+}
+
 export interface RunPlan {
   items: KitchenItem[];
   stretches: [Um, Um][];
   fillersUm: Um[];
+  /** Blind-corner units placed at inside corners. */
+  corners: number;
 }
 
 /** Rotation that puts a piece's back on the wall face (plan convention: rot 0 → back faces −y). */
@@ -155,7 +184,7 @@ function backToWall(face: WallFace): number {
  * Plan cabinets along a wall face. `template` (e.g. the selected unit) supplies height, depth and
  * finishes so a run matches what's already there.
  */
-export function planRun(project: Project, face: WallFace, type: RunType, opts: { fit?: 'exact' | 'standard'; front?: 'doors' | 'drawers'; template?: FurnitureItem; ignoreIds?: string[] } = {}): RunPlan {
+export function planRun(project: Project, face: WallFace, type: RunType, opts: { fit?: 'exact' | 'standard'; front?: 'doors' | 'drawers'; template?: FurnitureItem; ignoreIds?: string[]; corners?: boolean } = {}): RunPlan {
   const tpl = opts.template && opts.template.kind === (type === 'base' ? 'basecabinet' : type === 'wall' ? 'wallcabinet' : 'tallcabinet') ? opts.template : undefined;
   const mountUm = tpl?.kind === 'wallcabinet' ? tpl.params.mountHeightUm : undefined;
   const heightUm = tpl?.kind === 'wallcabinet' ? tpl.params.heightUm : undefined;
@@ -163,10 +192,19 @@ export function planRun(project: Project, face: WallFace, type: RunType, opts: {
   const rot = backToWall(face);
   const items: KitchenItem[] = [];
   const fillersUm: Um[] = [];
+  let corners = 0;
   let n = project.furniture.filter((f) => f.kind === (type === 'base' ? 'basecabinet' : type === 'wall' ? 'wallcabinet' : 'tallcabinet')).length;
   for (const [s, e] of stretches) {
     const split = splitRun(e - s, type, opts.fit ?? 'exact');
     fillersUm.push(split.fillerUm);
+    // Base runs that end in an inside corner get a blind-corner unit there, using the biggest module.
+    let cornerAt: 'start' | 'end' | null = null;
+    if (type === 'base' && opts.corners !== false && split.widthsUm.length && Math.max(...split.widthsUm) >= MIN_CORNER_MODULE) {
+      if (Math.abs(e - face.end) < mm(1) && openCorner(project, face, 'end')) cornerAt = 'end';
+      else if (Math.abs(s - face.start) < mm(1) && openCorner(project, face, 'start')) cornerAt = 'start';
+    }
+    // Largest module first by default (nearer wall.a); at an end corner it goes last.
+    if (cornerAt === 'end') split.widthsUm.reverse();
     // Units start at the stretch end nearer wall.a; a standard-fit filler goes at the far end.
     let along = s;
     for (const w of split.widthsUm) {
@@ -185,15 +223,23 @@ export function planRun(project: Project, face: WallFace, type: RunType, opts: {
       }
       if (tpl) item.materials = { ...(tpl.materials as typeof item.materials) };
       n += 1;
-      item.name = `${type === 'base' ? 'Base unit B' : type === 'wall' ? 'Wall unit W' : 'Tall unit T'}${n}`;
+      const isCorner = cornerAt !== null && ((cornerAt === 'end' && w === split.widthsUm[split.widthsUm.length - 1] && along + w >= e - mm(1)) || (cornerAt === 'start' && along <= s + mm(1)));
+      item.name = isCorner ? `Corner unit B${n}` : `${type === 'base' ? 'Base unit B' : type === 'wall' ? 'Wall unit W' : 'Tall unit T'}${n}`;
       const d = envelope(item).depthUm;
       const c = wallPoint(face.geom, along + w / 2, face.side * (face.geom.wall.thicknessUm / 2 + d / 2));
       item.xUm = Math.round(c.x);
       item.yUm = Math.round(c.y);
       item.rotDeg = rot;
+      if (isCorner && item.kind === 'basecabinet') {
+        // Which end of the unit meets the corner depends on how its local x runs along the wall.
+        const pts = footprint(item);
+        const forward = (pts[1].x - pts[0].x) * face.geom.u.x + (pts[1].y - pts[0].y) * face.geom.u.y > 0;
+        item.params = { ...item.params, front: 'doors', doorCount: 1, blindUm: BLIND_CORNER_UM, blindSide: (cornerAt === 'end') === forward ? 'right' : 'left' };
+        corners += 1;
+      }
       items.push(item);
       along += w;
     }
   }
-  return { items, stretches, fillersUm };
+  return { items, stretches, fillersUm, corners };
 }

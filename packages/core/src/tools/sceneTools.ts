@@ -14,7 +14,7 @@ import { fmtMm, mm, type Um } from '../domain/units';
 import { normDeg } from '../geometry/furniture';
 import { adjustBaseCabinet, BASE_CABINET_LIMITS } from '../furniture/basecabinet';
 import { adjustDoors, TALL_CABINET_LIMITS, WALL_CABINET_LIMITS } from '../furniture/kitchen';
-import { planRun, wallFace, type RunType } from '../kitchen/run';
+import { BLIND_CORNER_UM, planRun, wallFace, type RunType } from '../kitchen/run';
 import { detectRooms } from '../plan/rooms';
 import { nearestWall, wallIndexLabel } from '../plan/walls';
 import { envelope, resolveParametric } from '../furniture';
@@ -40,7 +40,7 @@ export type ToolResult =
   | { ok: true; command: Command | null; summary: string; selection?: ToolSelection; itemId?: string }
   | { ok: false; error: string };
 
-export type Dimension = 'width' | 'depth' | 'height' | 'plinth' | 'worktop' | 'mount_height' | 'elevation' | 'split';
+export type Dimension = 'width' | 'depth' | 'height' | 'plinth' | 'worktop' | 'mount_height' | 'elevation' | 'split' | 'blind';
 export type MaterialSlot = 'carcass' | 'shutter' | 'worktop' | 'main' | 'accent' | 'color';
 
 /** JSON-schema tool declarations (for LLM function calling) generated from the same registry. */
@@ -68,8 +68,8 @@ export const TOOL_SPECS: { name: ToolName; description: string; parameters: Reco
       properties: {
         target: { type: 'string' },
         expectKind: { type: 'string' },
-        parameter: { type: 'string', enum: ['front', 'doorCount', 'drawerCount', 'shelfCount', 'shutterCount', 'shelvesPerModule', 'drawersPerModule', 'cutout'] },
-        value: { type: 'string', description: 'Number for counts (e.g. "2"), "doors"/"drawers" for front, or "sink"/"hob"/"none" for the base cabinet worktop cut-out.' },
+        parameter: { type: 'string', enum: ['front', 'doorCount', 'drawerCount', 'shelfCount', 'shutterCount', 'shelvesPerModule', 'drawersPerModule', 'cutout', 'corner'] },
+        value: { type: 'string', description: 'Number for counts (e.g. "2"), "doors"/"drawers" for front, "sink"/"hob"/"none" for the base cabinet worktop cut-out, or for parameter "corner" use "left"/"right" (side of the blind panel) or "none" to make a base cabinet a blind-corner unit.' },
       },
       required: ['parameter', 'value'],
     },
@@ -182,6 +182,7 @@ const DIMENSION_KEYS: Record<Dimension, string> = {
   mount_height: 'mountHeightUm',
   elevation: 'elevationUm',
   split: 'splitUm',
+  blind: 'blindUm',
 };
 
 /** The limits table for kitchen units (one source for tools, inspector and resolver). */
@@ -191,7 +192,7 @@ function kitchenLimits(item: FurnitureItem): Record<string, { min: number; max: 
 
 function allowedDimensions(item: FurnitureItem): Dimension[] {
   switch (item.kind) {
-    case 'basecabinet': return ['width', 'depth', 'height', 'plinth', 'worktop'];
+    case 'basecabinet': return item.params.blindUm ? ['width', 'depth', 'height', 'plinth', 'worktop', 'blind'] : ['width', 'depth', 'height', 'plinth', 'worktop'];
     case 'wallcabinet': return ['width', 'depth', 'height', 'mount_height'];
     case 'tallcabinet': return ['width', 'depth', 'height', 'plinth', 'split'];
     case 'tvunit': return ['width', 'depth', 'height', 'mount_height'];
@@ -260,7 +261,7 @@ function setDimension(ctx: ToolContext, args: Record<string, unknown>): ToolResu
 }
 
 const PARAMS_BY_KIND: Partial<Record<FurnitureItem['kind'], string[]>> = {
-  basecabinet: ['front', 'doorCount', 'drawerCount', 'shelfCount', 'cutout'],
+  basecabinet: ['front', 'doorCount', 'drawerCount', 'shelfCount', 'cutout', 'corner'],
   wallcabinet: ['front', 'doorCount', 'shelfCount'],
   tallcabinet: ['doorCount', 'shelfCount'],
   wardrobe: ['shutterCount', 'shelvesPerModule', 'drawersPerModule'],
@@ -273,6 +274,14 @@ function setParameter(ctx: ToolContext, args: Record<string, unknown>): ToolResu
   const p = str(args.parameter);
   const allowed = PARAMS_BY_KIND[item.kind] ?? [];
   if (!allowed.includes(p)) return fail(allowed.length ? `A ${KIND_LABEL[item.kind]} has no "${p}" setting. Use ${allowed.join(', ')}.` : `A ${KIND_LABEL[item.kind]} has no construction settings.`);
+  if (p === 'corner') {
+    if (item.kind !== 'basecabinet') return fail('Only base cabinets can be blind-corner units.');
+    const v = str(args.value).toLowerCase();
+    if (v === 'none' || v === 'no' || v === 'off' || v === 'normal') return planParams(ctx, item, { blindUm: 0 }, 'an ordinary (non-corner) unit');
+    const side = v.startsWith('l') ? 'left' : v.startsWith('r') ? 'right' : null;
+    if (!side) return fail('Corner must be "left", "right" or "none" (the side the blind panel goes on).');
+    return planParams(ctx, item, { blindUm: item.params.blindUm || BLIND_CORNER_UM, blindSide: side, front: 'doors' }, `blind-corner unit, blind panel on the ${side}`);
+  }
   if (p === 'cutout') {
     const v = str(args.value).toLowerCase();
     const cutout = v.startsWith('sink') ? 'sink' : v.startsWith('hob') || v.startsWith('cooktop') || v.startsWith('stove') ? 'hob' : v === 'none' || v === 'no' || v === 'off' ? 'none' : null;
@@ -496,7 +505,7 @@ function fillWall(ctx: ToolContext, args: Record<string, unknown>): ToolResult {
   return {
     ok: true,
     command: { type: 'batch', label: `Fill wall with ${type} units`, commands: run.items.map((item): Command => ({ type: 'furniture.add', item })) },
-    summary: `Added ${run.items.length} ${type} unit${run.items.length > 1 ? 's' : ''} on ${wallIndexLabel(ctx.project.plan, wallId)}: ${widths} mm${fillers.length ? ` (filler ${fillers.map((f) => fmtMm(f)).join(', ')} mm)` : ''}.`,
+    summary: `Added ${run.items.length} ${type} unit${run.items.length > 1 ? 's' : ''} on ${wallIndexLabel(ctx.project.plan, wallId)}: ${widths} mm${fillers.length ? ` (filler ${fillers.map((f) => fmtMm(f)).join(', ')} mm)` : ''}${run.corners ? `, with ${run.corners} blind-corner unit${run.corners > 1 ? 's' : ''}` : ''}.`,
     itemId: run.items[0].id,
   };
 }

@@ -28,3 +28,9 @@ Sprint 1 adds natural-language editing ("Change the selected base cabinet width 
 - **Kitchen runs** (`kitchen/run.ts`): a wall's clear face inside its room is found from the room polygon; doors block every unit, windows block units whose height band overlaps the glass, and pieces standing against the face block the run. Each free stretch is split into 900/800/600/450/300 mm modules (fewest modules, most 600s) and, by default, widened to close the gap exactly.
 - **Spatial validation for tools:** geometry-changing tools are rejected if they *introduce* an overlap, out-of-room, wall-crossing or above-ceiling error. Pre-existing problems don't block, so older designs stay editable.
 - New tools `add_cabinet` and `fill_wall`; the inspector's "Kitchen run" actions call the same tools.
+
+## Sprint 5 addendum: blind-corner units
+
+- A blind-corner unit is an ordinary base cabinet with `blindUm` (fixed blind panel width, default 600 mm = depth of the meeting run + door clearance) and `blindSide`. No new template or schema step: both params are optional, so scene schema stays v7.
+- `planRun` (base runs) makes the biggest module at an inside corner a blind-corner unit when the perpendicular wall face is still clear to the corner. The run that follows on that wall then starts clear of the corner unit through the existing `freeStretches` blocking, so no door is ever blocked. If the neighbouring wall already has a unit in the corner, no blind unit is made (known limitation: the earlier unit is not converted).
+- Tools: `set_parameter corner left|right|none` and `set_dimension blind`. Construction limits (door opening at least 300 mm, doors not drawers) live in `baseCabinetLimitIssues`, so inspector, tools and AI all agree.

@@ -112,6 +112,10 @@ export interface BaseCabinetParams {
   shelfCount: number;
   /** Cut-out in this unit's worktop (sink bowl or hob). Needs a worktop and a unit at least 600 mm wide. */
   cutout?: 'none' | 'sink' | 'hob';
+  /** Blind-corner unit: width of the fixed blind panel (0 / absent = ordinary unit). The panel tucks behind the adjoining run. */
+  blindUm?: Um;
+  /** Which end of the unit (as seen from the front) carries the blind panel. */
+  blindSide?: 'left' | 'right';
 }
 
 /** Wall-hung kitchen unit (see furniture/kitchen.ts). */

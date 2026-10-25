@@ -39,7 +39,7 @@ export function partLabel(p: Part): string {
     case 'partition': return 'Partition';
     case 'shelf': return 'Shelf';
     case 'back': return 'Back panel';
-    case 'shutter': return p.name.includes('flap') ? 'Flap door' : 'Shutter';
+    case 'shutter': return p.name.includes('flap') ? 'Flap door' : p.name.includes('Blind') ? 'Blind panel' : 'Shutter';
     case 'drawer-front': return 'Drawer front';
     case 'drawer-bottom': return 'Drawer bottom';
     case 'panel': return 'Wall panel';

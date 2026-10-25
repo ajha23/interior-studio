@@ -13,6 +13,8 @@ const PLINTH_SETBACK_UM = mm(50);
 const RAIL_WIDTH_UM = mm(100);
 const MAX_DOOR_WIDTH_UM = mm(600);
 const MIN_DRAWER_CLEAR_UM = mm(250);
+/** Narrowest door opening a blind-corner unit may leave. */
+export const BLIND_MIN_OPEN_UM = mm(300);
 
 /**
  * Hard limits for every base-cabinet parameter. One table drives the resolver, the inspector
@@ -27,6 +29,7 @@ export const BASE_CABINET_LIMITS = {
   doorCount: { min: 1, max: 2, label: 'Doors' },
   drawerCount: { min: 1, max: 5, label: 'Drawers' },
   shelfCount: { min: 0, max: 3, label: 'Shelves' },
+  blindUm: { min: 0, max: mm(800), label: 'Blind width' },
 } as const satisfies Record<string, { min: number; max: number; label: string }>;
 
 export type BaseCabinetLimitKey = keyof typeof BASE_CABINET_LIMITS;
@@ -47,7 +50,7 @@ export const DEFAULT_BASE_CABINET: BaseCabinetParams = {
 export function baseCabinetLimitIssues(p: BaseCabinetParams): Issue[] {
   const issues: Issue[] = [];
   for (const [key, lim] of Object.entries(BASE_CABINET_LIMITS) as [BaseCabinetLimitKey, (typeof BASE_CABINET_LIMITS)[BaseCabinetLimitKey]][]) {
-    const v = p[key];
+    const v = p[key] ?? 0;
     const isLen = key.endsWith('Um');
     const show = (n: number) => (isLen ? `${fmtMm(n)} mm` : String(n));
     if (!Number.isFinite(v)) issues.push({ severity: 'error', code: `${key.toUpperCase()}_NAN`, message: `${lim.label} must be a number.` });
@@ -59,6 +62,11 @@ export function baseCabinetLimitIssues(p: BaseCabinetParams): Issue[] {
     if (p.cutout !== 'sink' && p.cutout !== 'hob') issues.push({ severity: 'error', code: 'CUTOUT', message: 'Cut-out must be a sink or a hob.' });
     else if (p.worktopUm <= 0) issues.push({ severity: 'error', code: 'CUTOUT_NO_TOP', message: `A ${p.cutout} cut-out needs a worktop on the unit.` });
     else if (p.widthUm < mm(600)) issues.push({ severity: 'error', code: 'CUTOUT_NARROW', message: `A ${p.cutout} cut-out needs a unit at least 600 mm wide (this one is ${fmtMm(p.widthUm)} mm).` });
+  }
+  if ((p.blindUm ?? 0) > 0) {
+    if (p.front !== 'doors') issues.push({ severity: 'error', code: 'BLIND_FRONT', message: 'A blind-corner unit has doors, not drawers.' });
+    if (p.blindSide !== 'left' && p.blindSide !== 'right') issues.push({ severity: 'error', code: 'BLIND_SIDE', message: 'Blind side must be left or right.' });
+    if (p.widthUm - (p.blindUm ?? 0) < BLIND_MIN_OPEN_UM) issues.push({ severity: 'error', code: 'BLIND_OPEN', message: `A blind-corner unit needs at least ${fmtMm(BLIND_MIN_OPEN_UM)} mm of open door: width ${fmtMm(p.widthUm)} mm leaves ${fmtMm(Math.max(0, p.widthUm - (p.blindUm ?? 0)))} mm with a ${fmtMm(p.blindUm ?? 0)} mm blind panel.` });
   }
   if (p.front !== 'doors' && p.front !== 'drawers') issues.push({ severity: 'error', code: 'FRONT', message: 'Front must be doors or drawers.' });
   return issues;
@@ -84,14 +92,17 @@ export function resolveBaseCabinet(params: BaseCabinetParams, rp: RulePack): Res
   const Wi = W - 2 * t; // clear width
   const overallDepth = D + (WT > 0 ? WORKTOP_OVERHANG_UM : 0);
   const overall = { widthUm: W, depthUm: overallDepth, heightUm: H + WT, zMinUm: 0 };
-  const result = (): ResolvedFurniture => ({ templateKey: 'basecabinet', templateVersion: BASECABINET_TEMPLATE_VERSION, overall, modules: [{ xUm: t, widthUm: Math.max(0, Wi), label: params.front === 'drawers' ? `${params.drawerCount} drawers` : `${params.doorCount} door${params.doorCount > 1 ? 's' : ''}` }], parts, hardware, issues });
+  const result = (): ResolvedFurniture => ({ templateKey: 'basecabinet', templateVersion: BASECABINET_TEMPLATE_VERSION, overall, modules: [{ xUm: t, widthUm: Math.max(0, Wi), label: (params.blindUm ?? 0) > 0 ? 'blind corner' : params.front === 'drawers' ? `${params.drawerCount} drawers` : `${params.doorCount} door${params.doorCount > 1 ? 's' : ''}` }], parts, hardware, issues });
 
   if (Wi <= 0 || sd <= 0 || Hc - 2 * t <= 0) {
     issues.push({ severity: 'error', code: 'GEOMETRY', message: 'Dimensions too small for the construction method.' });
     return result();
   }
-  if (params.front === 'doors' && params.doorCount === 1 && W > MAX_DOOR_WIDTH_UM) {
-    issues.push({ severity: 'error', code: 'DOOR_WIDE', message: `A single door wider than ${fmtMm(MAX_DOOR_WIDTH_UM)} mm sags — use 2 doors for a ${fmtMm(W)} mm cabinet.` });
+  const blind = Math.max(0, params.blindUm ?? 0);
+  const blindLeft = blind > 0 && params.blindSide === 'left';
+  const openW = W - blind; // width the doors span
+  if (params.front === 'doors' && params.doorCount === 1 && openW > MAX_DOOR_WIDTH_UM) {
+    issues.push({ severity: 'error', code: 'DOOR_WIDE', message: `A single door wider than ${fmtMm(MAX_DOOR_WIDTH_UM)} mm sags — use 2 doors for a ${fmtMm(openW)} mm opening.` });
   }
   if (params.front === 'drawers' && Wi - 2 * rp.drawerSideClearanceUm < MIN_DRAWER_CLEAR_UM) {
     issues.push({ severity: 'error', code: 'DRAWER_NARROW', message: `Drawers need at least ${fmtMm(MIN_DRAWER_CLEAR_UM + 2 * t + 2 * rp.drawerSideClearanceUm)} mm cabinet width.` });
@@ -118,12 +129,17 @@ export function resolveBaseCabinet(params: BaseCabinetParams, rp: RulePack): Res
       add({ key: `shelf-${i}`, name: `Shelf ${i}`, role: 'shelf', lengthUm: Wi, widthUm: sd - rp.shelfSetbackUm, thicknessUm: t, material: 'carcass', grain: 'along-length', edgeBanding: edgeCode(1, 0), box: { x: t, y: bt, z, w: Wi, d: sd - rp.shelfSetbackUm, h: t } });
     }
     const doors = params.doorCount;
-    const widths = splitExact(W - (doors + 1) * g, doors);
-    let x = g;
+    const widths = splitExact(openW - (doors + 1) * g, doors);
+    let x = g + (blindLeft ? blind : 0);
     widths.forEach((dw, i) => {
       add({ key: `door-${i + 1}`, name: doors > 1 ? `Door ${i === 0 ? 'L' : 'R'}` : 'Door', role: 'shutter', lengthUm: Hc - 2 * g, widthUm: dw, thicknessUm: st, material: 'shutter', grain: 'along-length', edgeBanding: edgeCode(2, 2), box: { x, y: Dc, z: g, w: dw, d: st, h: Hc - 2 * g } });
       x += dw + g;
     });
+    if (blind > 0) {
+      // Fixed panel closing the blind end: no hinges, it sits flush with the doors.
+      const bx = blindLeft ? g : W - blind + g;
+      add({ key: 'blind-panel', name: 'Blind panel', role: 'shutter', lengthUm: Hc - 2 * g, widthUm: blind - 2 * g, thicknessUm: st, material: 'shutter', grain: 'along-length', edgeBanding: edgeCode(2, 2), box: { x: bx, y: Dc, z: g, w: blind - 2 * g, d: st, h: Hc - 2 * g } });
+    }
     const hingesPerDoor = Hc - 2 * g > mm(900) ? 3 : 2;
     hardware.push({ name: 'Concealed hinge', spec: '110°, soft-close, full overlay', qty: doors * hingesPerDoor });
     if (n) hardware.push({ name: 'Shelf support', spec: '5 mm pin', qty: n * 4 });
@@ -185,10 +201,10 @@ export function adjustBaseCabinet(prev: BaseCabinetParams, next: BaseCabinetPara
   const notes: string[] = [];
   const doorsTouched = next.doorCount !== prev.doorCount;
   if (params.front === 'doors' && !doorsTouched) {
-    if (params.doorCount === 1 && params.widthUm > MAX_DOOR_WIDTH_UM) {
+    if (params.doorCount === 1 && params.widthUm - (params.blindUm ?? 0) > MAX_DOOR_WIDTH_UM) {
       params.doorCount = 2;
       notes.push(`switched to 2 doors (one door is limited to ${fmtMm(MAX_DOOR_WIDTH_UM)} mm)`);
-    } else if (params.doorCount === 2 && params.widthUm < mm(400)) {
+    } else if (params.doorCount === 2 && params.widthUm - (params.blindUm ?? 0) < mm(400)) {
       params.doorCount = 1;
       notes.push('switched to 1 door (two doors need 400 mm or more)');
     }
