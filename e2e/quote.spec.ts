@@ -49,6 +49,10 @@ test('quote: priced from the scene, rates editable, saved as a numbered snapshot
   await expect(bom).toContainText('Matching PVC edge band');
   await expect(bom).toContainText('Worktop · Black galaxy granite');
   await expect(bom).toContainText('Concealed hinge');
+  // Cut-list: the four base units form one 3000 mm slab with three joints.
+  await expect(page.getByTestId('worktop-cut')).toHaveCount(1);
+  await expect(page.getByTestId('worktop-cut')).toContainText('3,000 × 580');
+  await expect(page.getByTestId('worktop-cut').locator('td').last()).toHaveText('3');
   await page.getByRole('tab', { name: 'Client quote' }).click();
 
   // An admin changes the granite rate: saved to the studio price list, the quote reprices.

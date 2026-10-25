@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { buildBom, buildQuote, formatInr, FINISHES, sanitizePriceList, WORKTOP_FINISHES, type PriceList } from '@studio/core';
+import { buildBom, buildQuote, finishById, fmtMm, formatInr, FINISHES, sanitizePriceList, worktopRuns, WORKTOP_FINISHES, type PriceList } from '@studio/core';
 import { canAdmin, canEdit, useAuth } from '../auth/AuthProvider';
 import { usePriceList, useQuotes, useSavePriceList, useSaveQuote } from '../data/quotes';
 import { errorMessage } from '../lib/supabase';
@@ -100,6 +100,7 @@ export function QuoteView() {
   const pl = priceList.data?.rates;
   const quote = useMemo(() => (pl ? buildQuote(project, pl) : null), [project, pl]);
   const bom = useMemo(() => (pl ? buildBom(project, pl) : null), [project, pl]);
+  const cuts = useMemo(() => worktopRuns(project), [project]);
   const rooms = useMemo(() => (quote ? [...new Set(quote.lines.map((l) => l.room))] : []), [quote]);
   const today = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
 
@@ -245,6 +246,31 @@ export function QuoteView() {
               </tr>
             </tfoot>
           </table>
+          {cuts.length > 0 && (
+            <>
+              <h3 className="cut-title">Worktop cut-list</h3>
+              <table className="quote-table" data-testid="worktop-cuts">
+                <thead>
+                  <tr>
+                    <th>Slab</th>
+                    <th>Finish</th>
+                    <th className="r">Length × depth (mm)</th>
+                    <th className="r">Joints</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cuts.map((c) => (
+                    <tr key={c.id} data-testid="worktop-cut">
+                      <td>{c.name}</td>
+                      <td>{finishById(c.finishId).name}</td>
+                      <td className="r num">{fmtMm(c.lengthUm)} × {fmtMm(c.depthUm)}</td>
+                      <td className="r num">{c.joints}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
         </section>
       )}
 
