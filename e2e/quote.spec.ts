@@ -87,4 +87,13 @@ test('quote: priced from the scene, rates editable, saved as a numbered snapshot
   await expect(page.getByTestId('cmd-entry').last()).toContainText(`Whole design: ${formatInr(repriced.total)} including 18% GST`);
   await page.waitForTimeout(3000);
   expect(be.versions).toHaveLength(1);
+
+  // A sink cut-out on a 900 mm base unit: validated, priced, and listed on the slab's cut-list.
+  await page.getByRole('tab', { name: 'Scene' }).click();
+  await page.getByRole('list', { name: 'Objects' }).getByText('Base unit B1').click();
+  await page.locator('.right').getByLabel('Worktop cut-out').selectOption('sink');
+  await page.getByRole('tab', { name: 'Quote' }).click();
+  await page.getByRole('tab', { name: 'Workshop BOM' }).click();
+  await expect(page.getByTestId('worktop-cut')).toContainText('sink');
+  await expect(page.locator('.sheet')).toContainText('Worktop cut-outs');
 });

@@ -44,6 +44,8 @@ export interface PriceList {
   labourPct: number;
   /** Site installation per manufactured unit. */
   installPerUnit: number;
+  /** Worktop cut-out (sink or hob), each, labour and polishing. */
+  cutoutEach: number;
   /** Studio margin on the pre-tax total. */
   marginPct: number;
   /** GST on the quote (18% for modular furniture and services in India). */
@@ -81,6 +83,7 @@ export const DEFAULT_PRICE_LIST: PriceList = {
   catalogue: {},
   labourPct: 18,
   installPerUnit: 750,
+  cutoutEach: 900,
   marginPct: 20,
   gstPct: 18,
 };
@@ -109,6 +112,7 @@ export function sanitizePriceList(input: unknown): PriceList {
     catalogue: rates(p.catalogue, d.catalogue, 10_000_000),
     labourPct: finite(p.labourPct, 0, 200, d.labourPct),
     installPerUnit: finite(p.installPerUnit, 0, 100_000, d.installPerUnit),
+    cutoutEach: finite(p.cutoutEach, 0, 50_000, d.cutoutEach),
     marginPct: finite(p.marginPct, 0, 300, d.marginPct),
     gstPct: finite(p.gstPct, 0, 40, d.gstPct),
   };
@@ -203,6 +207,8 @@ export function buildBom(project: Project, priceList: PriceList): Bom {
     const rate = priceList.worktopPerSqft[id] ?? 0;
     lines.push({ section: 'Worktops', description: `Worktop · ${finishById(id).name}`, qty, unit: 'sq ft', rate, amount: round(qty * rate) });
   }
+  const cutouts = project.furniture.filter((f) => isParametric(f) && hasCutout(f)).length;
+  if (cutouts > 0) lines.push({ section: 'Worktops', description: 'Worktop cut-outs (sink / hob)', qty: cutouts, unit: 'no.', rate: priceList.cutoutEach, amount: round(cutouts * priceList.cutoutEach) });
   for (const h of [...hardware.values()].sort((a, b) => a.name.localeCompare(b.name))) {
     const rate = priceList.hardware[h.name] ?? priceList.hardwareDefault;
     lines.push({ section: 'Hardware', description: `${h.name} — ${h.spec}`, qty: h.qty, unit: 'no.', rate, amount: round(h.qty * rate) });
@@ -247,6 +253,8 @@ export interface Quote {
   unpriced: string[];
 }
 
+const hasCutout = (f: ParametricItem) => f.kind === 'basecabinet' && f.params.worktopUm > 0 && (f.params.cutout === 'sink' || f.params.cutout === 'hob');
+
 /** Area-based material cost of one manufactured unit (its share of sheets incl. waste). */
 function unitMaterialCost(f: ParametricItem, project: Project, pl: PriceList): number {
   const r = resolveParametric(f, project.rulePack);
@@ -262,6 +270,7 @@ function unitMaterialCost(f: ParametricItem, project: Project, pl: PriceList): n
     cost += edgeBandM(p) * 1.1 * pl.edgeBandPerM;
   }
   for (const h of r.hardware) cost += h.qty * (pl.hardware[h.name] ?? pl.hardwareDefault);
+  if (f.kind === 'basecabinet' && hasCutout(f)) cost += pl.cutoutEach;
   return cost;
 }
 

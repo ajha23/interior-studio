@@ -167,3 +167,38 @@ describe('continuous worktops', () => {
     expect(split.reduce((s, r) => s + r.lengthUm, 0)).toBe(mm(3000) - gapWidth);
   });
 });
+
+describe('worktop cut-outs', () => {
+  const base = (w: number, patch = {}) => newBaseCabinet(0, 0, { widthUm: mm(w), ...patch });
+  const ctxOf = (items: KitchenItem[]) => ({ project: { ...kitchen(), furniture: items }, selection: items[0] ? { kind: 'furniture' as const, id: items[0].id } : null });
+
+  it('sets, validates and clears a sink cut-out through the scene tools', () => {
+    const unit = base(900);
+    const ctx = ctxOf([unit]);
+    const ok = planTool(ctx, { tool: 'set_parameter', args: { parameter: 'cutout', value: 'sink' } });
+    expect(ok.ok).toBe(true);
+    const narrow = base(450);
+    const bad = planTool(ctxOf([narrow]), { tool: 'set_parameter', args: { parameter: 'cutout', value: 'hob' } });
+    expect(bad.ok).toBe(false);
+    expect(JSON.stringify(bad)).toMatch(/at least 600 mm/);
+    const noTop = base(900, { worktopUm: 0 });
+    expect(planTool(ctxOf([noTop]), { tool: 'set_parameter', args: { parameter: 'cutout', value: 'sink' } }).ok).toBe(false);
+    expect(planTool(ctxOf([unit]), { tool: 'set_parameter', args: { parameter: 'cutout', value: 'bogus' } }).ok).toBe(false);
+  });
+
+  it('is undoable and shows up in worktop runs and the BOM', async () => {
+    const { worktopRuns } = await import('./worktops');
+    const { buildBom, DEFAULT_PRICE_LIST } = await import('../commerce/pricing');
+    const unit = base(900);
+    let project = { ...kitchen(), furniture: [unit] as Project['furniture'] };
+    const [next, inverse] = applyCommand(project, { type: 'furniture.params', id: unit.id, params: { cutout: 'sink' } });
+    expect(worktopRuns(next)[0].cutouts).toEqual([{ itemId: unit.id, kind: 'sink' }]);
+    const bom = buildBom(next, DEFAULT_PRICE_LIST);
+    const line = bom.lines.find((l) => l.description.startsWith('Worktop cut-outs'))!;
+    expect(line.qty).toBe(1);
+    expect(line.amount).toBe(DEFAULT_PRICE_LIST.cutoutEach);
+    const [back] = applyCommand(next, inverse);
+    expect(worktopRuns(back)[0].cutouts).toEqual([]);
+    expect(buildBom(back, DEFAULT_PRICE_LIST).lines.some((l) => l.description.startsWith('Worktop cut-outs'))).toBe(false);
+  });
+});

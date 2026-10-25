@@ -68,8 +68,8 @@ export const TOOL_SPECS: { name: ToolName; description: string; parameters: Reco
       properties: {
         target: { type: 'string' },
         expectKind: { type: 'string' },
-        parameter: { type: 'string', enum: ['front', 'doorCount', 'drawerCount', 'shelfCount', 'shutterCount', 'shelvesPerModule', 'drawersPerModule'] },
-        value: { type: 'string', description: 'Number for counts (e.g. "2"), or "doors"/"drawers" for front.' },
+        parameter: { type: 'string', enum: ['front', 'doorCount', 'drawerCount', 'shelfCount', 'shutterCount', 'shelvesPerModule', 'drawersPerModule', 'cutout'] },
+        value: { type: 'string', description: 'Number for counts (e.g. "2"), "doors"/"drawers" for front, or "sink"/"hob"/"none" for the base cabinet worktop cut-out.' },
       },
       required: ['parameter', 'value'],
     },
@@ -260,7 +260,7 @@ function setDimension(ctx: ToolContext, args: Record<string, unknown>): ToolResu
 }
 
 const PARAMS_BY_KIND: Partial<Record<FurnitureItem['kind'], string[]>> = {
-  basecabinet: ['front', 'doorCount', 'drawerCount', 'shelfCount'],
+  basecabinet: ['front', 'doorCount', 'drawerCount', 'shelfCount', 'cutout'],
   wallcabinet: ['front', 'doorCount', 'shelfCount'],
   tallcabinet: ['doorCount', 'shelfCount'],
   wardrobe: ['shutterCount', 'shelvesPerModule', 'drawersPerModule'],
@@ -273,6 +273,12 @@ function setParameter(ctx: ToolContext, args: Record<string, unknown>): ToolResu
   const p = str(args.parameter);
   const allowed = PARAMS_BY_KIND[item.kind] ?? [];
   if (!allowed.includes(p)) return fail(allowed.length ? `A ${KIND_LABEL[item.kind]} has no "${p}" setting. Use ${allowed.join(', ')}.` : `A ${KIND_LABEL[item.kind]} has no construction settings.`);
+  if (p === 'cutout') {
+    const v = str(args.value).toLowerCase();
+    const cutout = v.startsWith('sink') ? 'sink' : v.startsWith('hob') || v.startsWith('cooktop') || v.startsWith('stove') ? 'hob' : v === 'none' || v === 'no' || v === 'off' ? 'none' : null;
+    if (cutout === null) return fail('Cut-out must be "sink", "hob" or "none".');
+    return planParams(ctx, item, { cutout }, cutout !== 'none' ? `${cutout} cut-out in the worktop` : 'no worktop cut-out');
+  }
   if (p === 'front') {
     const v = str(args.value).toLowerCase();
     const options = item.kind === 'wallcabinet' ? ['doors', 'flap', 'open'] : ['doors', 'drawers'];

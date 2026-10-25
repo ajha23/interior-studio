@@ -23,6 +23,8 @@ export interface WorktopRun {
   finishId: string;
   /** Number of joints between slabs in the run (0 for a single slab). */
   joints: number;
+  /** Sink and hob cut-outs in this slab, in order along the wall. */
+  cutouts: { itemId: string; kind: 'sink' | 'hob' }[];
 }
 
 interface Span {
@@ -86,6 +88,7 @@ export function worktopRuns(project: Project): WorktopRun[] {
         depthUm: first.depth,
         finishId: first.finish,
         joints: cur.length - 1,
+        cutouts: cur.flatMap((c) => (c.item.params.cutout === 'sink' || c.item.params.cutout === 'hob' ? [{ itemId: c.item.id, kind: c.item.params.cutout }] : [])),
       });
       cur = [];
     };

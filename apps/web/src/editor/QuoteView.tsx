@@ -255,6 +255,7 @@ export function QuoteView() {
                     <th>Slab</th>
                     <th>Finish</th>
                     <th className="r">Length × depth (mm)</th>
+                    <th className="r">Cut-outs</th>
                     <th className="r">Joints</th>
                   </tr>
                 </thead>
@@ -264,6 +265,7 @@ export function QuoteView() {
                       <td>{c.name}</td>
                       <td>{finishById(c.finishId).name}</td>
                       <td className="r num">{fmtMm(c.lengthUm)} × {fmtMm(c.depthUm)}</td>
+                      <td className="r num">{c.cutouts.length ? c.cutouts.map((o) => o.kind).join(', ') : '—'}</td>
                       <td className="r num">{c.joints}</td>
                     </tr>
                   ))}

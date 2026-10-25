@@ -110,6 +110,8 @@ export interface BaseCabinetParams {
   doorCount: number;
   drawerCount: number;
   shelfCount: number;
+  /** Cut-out in this unit's worktop (sink bowl or hob). Needs a worktop and a unit at least 600 mm wide. */
+  cutout?: 'none' | 'sink' | 'hob';
 }
 
 /** Wall-hung kitchen unit (see furniture/kitchen.ts). */

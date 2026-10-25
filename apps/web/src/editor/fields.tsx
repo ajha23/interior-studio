@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useId, useState, type ReactNode } from 'react';
 import { mm, plainMm, type Um } from '@studio/core';
 
 interface MmFieldProps {
@@ -135,11 +135,12 @@ export function TextField({ label, value, onCommit }: { label: string; value: st
 }
 
 export function SelectField<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: { value: T; label: string }[]; onChange: (v: T) => void }) {
+  const id = useId();
   return (
     <div className="field">
-      <label>{label}</label>
+      <label htmlFor={id}>{label}</label>
       <div className="inp">
-        <select value={value} onChange={(e) => onChange(e.target.value as T)}>
+        <select id={id} value={value} onChange={(e) => onChange(e.target.value as T)}>
           {options.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}

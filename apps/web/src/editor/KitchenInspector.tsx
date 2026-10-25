@@ -76,11 +76,13 @@ export function KitchenConstruction({ f }: { f: KitchenItem }) {
   const setFront = (v: string) => setErr(tool({ tool: 'set_parameter', args: { parameter: 'front', value: v } }, 'Change front'));
   const count = (parameter: string, label: string) => (v: number) => tool({ tool: 'set_parameter', args: { parameter, value: String(v) } }, `Change ${label.toLowerCase()}`);
   const lim = LIMITS[f.kind] as Record<string, { min: number; max: number }>;
+  const setCutout = (v: string) => setErr(tool({ tool: 'set_parameter', args: { parameter: 'cutout', value: v } }, 'Change worktop cut-out'));
   const showDoors = f.kind === 'tallcabinet' || f.params.front === 'doors';
   return (
     <div className="section">
       <h3>Construction</h3>
       {f.kind === 'basecabinet' && <SelectField label="Front" value={f.params.front} options={[{ value: 'doors', label: 'Doors + shelves' }, { value: 'drawers', label: 'Drawer stack' }]} onChange={setFront} />}
+      {f.kind === 'basecabinet' && <SelectField label="Worktop cut-out" value={f.params.cutout ?? 'none'} options={[{ value: 'none', label: 'None' }, { value: 'sink', label: 'Sink' }, { value: 'hob', label: 'Hob' }]} onChange={setCutout} />}
       {f.kind === 'wallcabinet' && <SelectField label="Front" value={f.params.front} options={[{ value: 'doors', label: 'Doors' }, { value: 'flap', label: 'Lift-up flap' }, { value: 'open', label: 'Open shelves' }]} onChange={setFront} />}
       {err && <div className="field-error" role="alert">{err}</div>}
       {showDoors && <IntField label="Doors" value={f.params.doorCount} min={lim.doorCount.min} max={lim.doorCount.max} onCommit={count('doorCount', 'Doors')} />}

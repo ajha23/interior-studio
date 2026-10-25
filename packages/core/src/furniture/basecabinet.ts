@@ -55,6 +55,11 @@ export function baseCabinetLimitIssues(p: BaseCabinetParams): Issue[] {
     else if (!isLen && !Number.isInteger(v)) issues.push({ severity: 'error', code: `${key.toUpperCase()}_INT`, message: `${lim.label} must be a whole number.` });
   }
   if (p.worktopUm > 0 && p.worktopUm < mm(12)) issues.push({ severity: 'error', code: 'WORKTOP_THIN', message: 'Worktop must be at least 12 mm thick, or 0 for none.' });
+  if (p.cutout !== undefined && p.cutout !== 'none') {
+    if (p.cutout !== 'sink' && p.cutout !== 'hob') issues.push({ severity: 'error', code: 'CUTOUT', message: 'Cut-out must be a sink or a hob.' });
+    else if (p.worktopUm <= 0) issues.push({ severity: 'error', code: 'CUTOUT_NO_TOP', message: `A ${p.cutout} cut-out needs a worktop on the unit.` });
+    else if (p.widthUm < mm(600)) issues.push({ severity: 'error', code: 'CUTOUT_NARROW', message: `A ${p.cutout} cut-out needs a unit at least 600 mm wide (this one is ${fmtMm(p.widthUm)} mm).` });
+  }
   if (p.front !== 'doors' && p.front !== 'drawers') issues.push({ severity: 'error', code: 'FRONT', message: 'Front must be doors or drawers.' });
   return issues;
 }
