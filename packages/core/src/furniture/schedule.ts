@@ -31,7 +31,7 @@ export function materialLabel(part: Part, item: ParametricItem, rp: RulePack): s
   return `${board} · ${finishById(item.materials.carcass).name}`;
 }
 
-function partLabel(p: Part): string {
+export function partLabel(p: Part): string {
   switch (p.role) {
     case 'side': return 'Side panel';
     case 'top': return /rail/.test(p.key) ? 'Rail' : 'Top';

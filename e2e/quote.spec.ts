@@ -96,4 +96,13 @@ test('quote: priced from the scene, rates editable, saved as a numbered snapshot
   await page.getByRole('tab', { name: 'Workshop BOM' }).click();
   await expect(page.getByTestId('worktop-cut')).toContainText('sink');
   await expect(page.locator('.sheet')).toContainText('Worktop cut-outs');
+
+  // Workshop cut-list: one table per board, every part listed with banding, worktops last.
+  await page.getByRole('tab', { name: 'Cut-list' }).click();
+  await expect(page.getByTestId('cut-board').first()).toBeVisible();
+  expect(await page.getByTestId('cut-board').count()).toBeGreaterThan(1);
+  await expect(page.locator('.cutlist-sheet')).toContainText('Side panel');
+  await expect(page.locator('.cutlist-sheet')).toContainText('Back / drawer-bottom ply');
+  await expect(page.locator('.cutlist-sheet')).toContainText('Worktops — supplied cut to size');
+  await page.screenshot({ path: 'test-results/cutlist.png', fullPage: true });
 });

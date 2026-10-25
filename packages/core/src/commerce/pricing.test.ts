@@ -67,3 +67,18 @@ describe('pricing', () => {
     expect(formatInr(1234567)).toBe('₹12,34,567');
   });
 });
+
+describe('workshop cut-list', () => {
+  it('groups every non-worktop part per board and agrees with the BOM sheet count', async () => {
+    const { buildCutList } = await import('./cutlist');
+    const { p } = kitchenProject();
+    const boards = buildCutList(p);
+    expect(boards.length).toBeGreaterThan(1);
+    expect(boards.every((b) => b.rows.length > 0 && b.sheets >= 1)).toBe(true);
+    expect(boards.reduce((s, b) => s + b.rows.reduce((n, r) => n + r.qty, 0), 0)).toBe(boards.reduce((s, b) => s + b.pieces, 0));
+    const bom = buildBom(p, DEFAULT_PRICE_LIST);
+    const bomSheets = bom.lines.filter((l) => l.section === 'Boards').reduce((s, l) => s + l.qty, 0);
+    expect(boards.reduce((s, b) => s + b.sheets, 0)).toBe(bomSheets);
+    expect(boards.some((b) => b.rows.some((r) => r.part === 'Worktop'))).toBe(false);
+  });
+});

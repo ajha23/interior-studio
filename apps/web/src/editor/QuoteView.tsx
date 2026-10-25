@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react';
-import { buildBom, buildQuote, finishById, fmtMm, formatInr, FINISHES, sanitizePriceList, worktopRuns, WORKTOP_FINISHES, type PriceList } from '@studio/core';
+import { buildBom, buildCutList, buildQuote, finishById, fmtMm, formatInr, plainMm, FINISHES, sanitizePriceList, worktopRuns, WORKTOP_FINISHES, type PriceList } from '@studio/core';
 import { canAdmin, canEdit, useAuth } from '../auth/AuthProvider';
 import { usePriceList, useQuotes, useSavePriceList, useSaveQuote } from '../data/quotes';
 import { errorMessage } from '../lib/supabase';
 import { relativeTime } from '../ui/format';
 import { useStudio } from './store';
 
-type Tab = 'quote' | 'bom';
+type Tab = 'quote' | 'bom' | 'cuts';
 
 function NumberCell({ value, onChange, disabled, suffix, label }: { value: number; onChange: (v: number) => void; disabled: boolean; suffix?: string; label: string }) {
   const [text, setText] = useState(String(value));
@@ -101,6 +101,7 @@ export function QuoteView() {
   const quote = useMemo(() => (pl ? buildQuote(project, pl) : null), [project, pl]);
   const bom = useMemo(() => (pl ? buildBom(project, pl) : null), [project, pl]);
   const cuts = useMemo(() => worktopRuns(project), [project]);
+  const boards = useMemo(() => buildCutList(project), [project]);
   const rooms = useMemo(() => (quote ? [...new Set(quote.lines.map((l) => l.room))] : []), [quote]);
   const today = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
 
@@ -114,6 +115,7 @@ export function QuoteView() {
         <div className="seg seg-light" role="tablist" aria-label="Quote view">
           <button role="tab" aria-selected={tab === 'quote'} className={tab === 'quote' ? 'on' : ''} onClick={() => setTab('quote')}>Client quote</button>
           <button role="tab" aria-selected={tab === 'bom'} className={tab === 'bom' ? 'on' : ''} onClick={() => setTab('bom')}>Workshop BOM</button>
+          <button role="tab" aria-selected={tab === 'cuts'} className={tab === 'cuts' ? 'on' : ''} onClick={() => setTab('cuts')}>Cut-list</button>
         </div>
         <span style={{ flex: 1 }} />
         {!priceList.data?.saved && <span className="badge draft" title="Set your studio's rates before sending quotes">Sample rates</span>}
@@ -198,6 +200,81 @@ export function QuoteView() {
           {quote.unpriced.length > 0 && <p className="field-hint">Price on request: {quote.unpriced.join(', ')}.</p>}
           <textarea className="quote-notes no-print" aria-label="Quote notes" value={notes} maxLength={2000} rows={3} onChange={(e) => setNotes(e.target.value)} />
           <p className="quote-notes-print">{notes}</p>
+        </section>
+      ) : tab === 'cuts' ? (
+        <section className="sheet cutlist-sheet">
+          <div className="quote-top">
+            <div>
+              <div className="quote-studio">{activeOrg?.orgName ?? 'Interior Studio'}</div>
+              <h1>Workshop cut-list</h1>
+            </div>
+            <dl className="quote-meta">
+              <dt>Project</dt>
+              <dd>{project.name}</dd>
+              <dt>Date</dt>
+              <dd>{today}</dd>
+              <dt>Design version</dt>
+              <dd>v{versionNo}</dd>
+            </dl>
+          </div>
+          <span className="field-hint">Finished sizes in mm, length along the grain. Edge band: L = long edge, S = short edge. Sheets include cutting waste.</span>
+          {boards.length === 0 && <p className="field-hint">Add cabinets to the design to build a cut-list.</p>}
+          {boards.map((b) => (
+            <table className="quote-table cut-board" key={b.key} data-testid="cut-board">
+              <caption>
+                {b.label} — {b.pieces} pieces · {b.areaM2.toFixed(2)} m² · {b.sheets} sheet{b.sheets === 1 ? '' : 's'}
+              </caption>
+              <thead>
+                <tr>
+                  <th>Unit</th>
+                  <th>Part</th>
+                  <th className="r">Qty</th>
+                  <th className="r">Length</th>
+                  <th className="r">Width</th>
+                  <th>Edge band</th>
+                  <th>Grain</th>
+                </tr>
+              </thead>
+              <tbody>
+                {b.rows.map((r, i) => (
+                  <tr key={i} data-testid="cut-row">
+                    <td>{r.unit}</td>
+                    <td>{r.part}</td>
+                    <td className="r num">{r.qty}</td>
+                    <td className="r num">{plainMm(r.lengthUm)}</td>
+                    <td className="r num">{plainMm(r.widthUm)}</td>
+                    <td className="num">{r.edgeBanding}</td>
+                    <td>{r.grain === 'none' ? '—' : '↕ length'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ))}
+          {cuts.length > 0 && (
+            <table className="quote-table cut-board">
+              <caption>Worktops — supplied cut to size</caption>
+              <thead>
+                <tr>
+                  <th>Slab</th>
+                  <th>Finish</th>
+                  <th className="r">Length × depth (mm)</th>
+                  <th className="r">Cut-outs</th>
+                  <th className="r">Joints</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cuts.map((c) => (
+                  <tr key={c.id}>
+                    <td>{c.name}</td>
+                    <td>{finishById(c.finishId).name}</td>
+                    <td className="r num">{fmtMm(c.lengthUm)} × {fmtMm(c.depthUm)}</td>
+                    <td className="r num">{c.cutouts.length ? c.cutouts.map((o) => o.kind).join(', ') : '—'}</td>
+                    <td className="r num">{c.joints}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </section>
       ) : (
         <section className="sheet">
