@@ -6,3 +6,4 @@
 - [x] IndexedDB packages and images
 - [x] Store (undo/redo, images, exports) and Client package studio UI in Deliverables
 - [x] Unit, storage and e2e tests; docs
+- [x] Chat/voice package edits: schema + tool, planner, approvals, rules provider, tests

@@ -9,7 +9,7 @@ import { WALLS, type FurnitureType, type KitchenProject, type WallId } from '@/d
 import { LENGTH_UNITS, parseLength, UNIT_LABEL, type LengthUnit } from '@/engine/measurement/units';
 import { findEntity } from '../entities';
 import { resolveTarget, typeAlias } from '../resolve';
-import { DesignObjectiveSchema, type AssistantOperation, type AssistantRequest, type AssistantResponse, type DeliverableRequest, type DesignObjectiveInput, type Direction, type LengthInput, type PlacementInput, type Priority, type Show, type TargetRef } from '../schema';
+import { DesignObjectiveSchema, type AssistantOperation, type AssistantRequest, type AssistantResponse, type DeliverableRequest, type DesignObjectiveInput, type PackageOp, type Direction, type LengthInput, type PlacementInput, type Priority, type Show, type TargetRef } from '../schema';
 import type { SceneAction } from '../schema';
 import { parseHomeBrief } from '@/engine/home/brief';
 import type { AssistantProvider } from './types';
@@ -57,6 +57,10 @@ export function interpret(request: AssistantRequest): AssistantResponse {
   // Doors, drawers, walking and views: acting in the room, not editing it.
   const scene = sceneRequest(text, ctx);
   if (scene) return scene;
+
+  // Client package pages, notes, label positions and title block (never the design).
+  const pkg = packageRequest(text, request.message.trim());
+  if (pkg) return pkg;
 
   // Drawings, schedules, BOM, readiness and exports are computed by the app.
   const deliverable = deliverableRequest(text);
@@ -690,6 +694,94 @@ function explainObjective(o: ReturnType<typeof DesignObjectiveSchema.parse>, ref
   if (o.scope !== 'all') parts.push(o.scope === 'upper-only' ? 'changing only upper units' : 'changing only base units');
   if (o.priorities.length) parts.push(`ranked by ${o.priorities.join(', then ')}`);
   return `${parts.join(', ')}.`;
+}
+
+// ── Client package ─────────────────────────────────────────────────────────
+
+/** The pages a sentence names ("elevation B", "the layout", "every page"); undefined = the open page. */
+function pageRefIn(t: string): string | undefined {
+  const letter = /\belevation ([a-h])\b/.exec(t);
+  if (letter) return letter[1];
+  const wall = /\b(back|left|right|front) wall elevation\b/.exec(t);
+  if (wall) return `${wall[1]} wall`;
+  if (/\b(every|all) pages?\b|\beach page\b/.test(t)) return 'all';
+  if (/\b(stale|outdated|out of date) pages?\b/.test(t)) return 'stale';
+  const n = /\bpage (\d+)\b/.exec(t);
+  if (n) return n[1];
+  if (/\b(kitchen layout|layout|floor plan)\b/.test(t)) return 'layout';
+  if (/\b(hardware|accessories|reference images?)\b/.test(t)) return 'hardware';
+  if (/\b3d view\b/.test(t)) return '3d';
+  if (/\bschedule\b/.test(t)) return 'schedule';
+  return undefined;
+}
+
+const INFO_FIELD: Record<string, Extract<PackageOp, { op: 'set_info' }>['field']> = {
+  client: 'client',
+  'client name': 'client',
+  address: 'address',
+  'site address': 'address',
+  date: 'date',
+  'drawn by': 'drawnBy',
+  'approved by': 'approvedBy',
+  'reference by': 'referenceBy',
+  studio: 'studio',
+  'studio name': 'studio',
+  'studio address': 'studioAddress',
+  project: 'projectTitle',
+  'project title': 'projectTitle',
+  'project name': 'projectTitle',
+};
+
+/** "add a note that…", "change this page to landscape", "move the 900 mm dimension away…", "which pages are outdated?" */
+function packageRequest(t: string, raw: string): AssistantResponse | null {
+  const pkg = (ops: PackageOp[], page?: string): AssistantResponse => ({ kind: 'package', request: { ...(page ? { page } : {}), ops } });
+  if (/\b(which|what) pages?\b.*\b(outdated|out of date|stale|need(s)? (updating|regenerat\w*))\b|\b(outdated|stale) pages\b\??$/.test(t) && !/\bregenerate\b/.test(t)) return pkg([{ op: 'status' }]);
+  if (/\bopen (the )?client package\b/.test(t)) return pkg([{ op: 'open' }], pageRefIn(t.replace(/client package/, '')));
+
+  const note = /^(?:please\s+)?add (?:a |an )?note(?: (?:to|on) (.+?))?(?:\s+(?:that|saying|which says))?\s*[:,]?\s+(.+)$/i.exec(raw);
+  if (note && /^add (a |an )?note\b/.test(t)) {
+    let text = note[2]!.trim().replace(/^["'“]|["'”.]$/g, '');
+    if (!/^note\b/i.test(text)) text = `NOTE: ${text.charAt(0).toUpperCase()}${text.slice(1)}`;
+    return pkg([{ op: 'add_note', text }], note[1] ? pageRefIn(note[1].toLowerCase()) : undefined);
+  }
+  const moveNote = /\bmove (?:the )?(?:last |new )?note (?:to )?(?:the )?(top[- ]left|top[- ]right|bottom[- ]left|bottom[- ]right|cent(?:re|er)|middle)\b/.exec(t);
+  if (moveNote) {
+    const p = moveNote[1]!.replace(' ', '-');
+    return pkg([{ op: 'move_note', position: /cent|middle/.test(p) ? 'centre' : (p as 'top-left') }], pageRefIn(t));
+  }
+  const orient = /\b(change|make|set|switch|turn|put)\b.*\b(landscape|portrait)\b/.exec(t);
+  if (orient) return pkg([{ op: 'set_orientation', orientation: orient[2] as 'landscape' | 'portrait' }], pageRefIn(t));
+  const paper = /\b(change|make|set|switch|put|print)\b.*\b(a3|a4)\b/.exec(t);
+  if (paper && /\bpages?\b|\b(layout|elevation|schedule|board)\b/.test(t)) return pkg([{ op: 'set_paper', paper: paper[2]!.toUpperCase() as 'A3' | 'A4' }], pageRefIn(t));
+  const dim = /\b(move|shift|push|pull)\b (?:the )?(\d+) ?mm dimension(?: label| line)?\b.*?\b(away|further|closer|nearer|up|down|left|right)\b/.exec(t);
+  if (dim) {
+    const d = dim[3]!;
+    return pkg([{ op: 'move_dimension', value: Number(dim[2]), direction: d === 'further' ? 'away' : d === 'nearer' ? 'closer' : (d as 'away') }], pageRefIn(t));
+  }
+  const hide = /\bhide (?:the )?(\d+) ?mm dimension\b/.exec(t);
+  if (hide) return pkg([{ op: 'hide_dimension', value: Number(hide[1]) }], pageRefIn(t));
+  if (/\b(make|show)\b.*\bimages?\b.*\b(larger|bigger|smaller)\b/.test(t)) return pkg([{ op: 'resize_images', change: /smaller/.test(t) ? 'smaller' : 'larger' }], 'hardware');
+  const elev = /\b(create|add|make|generate)\b (?:an|a new|another) elevation\b(?: (?:for|of) (?:the )?(?:(back|left|right|front) wall|wall [a-h]\b))?/.exec(t);
+  if (elev) return pkg([{ op: 'add_page', template: 'elevation', ...(elev[2] ? { wall: elev[2] as WallId } : {}) }]);
+  if (/\btitle block\b/.test(t) && /\b(add|put|show|every|all)\b/.test(t)) return pkg([{ op: 'title_block' }]);
+  const info = /^(?:please\s+)?set (?:the )?(client name|client|site address|address|date|drawn by|approved by|reference by|studio address|studio name|studio|project title|project name|project)(?: field)? to\s+(.+)$/i.exec(raw);
+  if (info) return pkg([{ op: 'set_info', field: INFO_FIELD[info[1]!.toLowerCase()]!, value: info[2]!.trim().replace(/[."']$/, '') }]);
+  const regen = /\b(regenerate|refresh|update)\b (?:the )?(.+?)(?: (?:using|from|for|with) (?:the )?(?:latest |last )?(approved|current)\b.*)?$/.exec(t);
+  if (regen && /\b(regenerate|refresh)\b/.test(t) && !/\b(drawings?|drawing set|pdf|deliverables?)\b/.test(t)) {
+    const ref = pageRefIn(regen[2]!);
+    if (ref) return pkg([{ op: 'regenerate', revision: regen[3] === 'approved' || /\bapproved\b/.test(t) ? 'approved' : 'current' }], ref);
+  }
+  const del = /\b(delete|remove)\b (?:the )?(.+?) page\b/.exec(t);
+  if (del) return pkg([{ op: 'delete_page' }], pageRefIn(`${del[2]} page`) ?? del[2]);
+  const rename = /^(?:please\s+)?rename (?:the )?(.+?) page to\s+(.+)$/i.exec(raw);
+  if (rename) return pkg([{ op: 'rename_page', name: rename[2]!.trim().replace(/^["'“]|["'”.]$/g, '') }], pageRefIn(rename[1]!.toLowerCase()) ?? rename[1]);
+  const movePage = /\bmove (?:the )?(.+?) page (up|down|to the (?:start|front|beginning)|to the (?:end|back)|first|last|to page (\d+))\b/.exec(t);
+  if (movePage) {
+    const w = movePage[2]!;
+    const to = movePage[3] ? Number(movePage[3]) : /start|front|beginning|first/.test(w) ? 'first' : /end|back|last/.test(w) ? 'last' : (w as 'up' | 'down');
+    return pkg([{ op: 'move_page', to }], pageRefIn(`${movePage[1]} page`) ?? (movePage[1] === 'this' ? undefined : movePage[1]));
+  }
+  return null;
 }
 
 // ── Deliverables ───────────────────────────────────────────────────────────

@@ -16,7 +16,7 @@ import { PlanCancelled, planLayouts, resolveObjective, signature, type PlanOptio
 import { canAutoApply, type AssistantSettings } from './policy';
 import { ProviderError, type AssistantProvider, type ServedBy } from './providers/types';
 import { resolveTarget } from './resolve';
-import { AssistantResponseSchema, DesignObjectiveSchema, LIMITS, type AssistantResponse, type DeliverableRequest, type HomeBriefInput, type SceneAction, type DesignObjective, type HistoryTurn, type Plan, type Show, type TargetRef } from './schema';
+import { AssistantResponseSchema, DesignObjectiveSchema, LIMITS, type AssistantResponse, type DeliverableRequest, type HomeBriefInput, type PackageRequest, type SceneAction, type DesignObjective, type HistoryTurn, type Plan, type Show, type TargetRef } from './schema';
 import { bind, focusAfter, runPlan, type Alternative, type Proposal, type RunContext } from './transaction';
 
 export interface EditorPort {
@@ -31,6 +31,8 @@ export interface EditorPort {
   fmt(mm: number): string;
   /** Computes a deliverable summary from the project (drawings, schedule, BOM, readiness). */
   deliverable?(request: DeliverableRequest): DeliverableReply;
+  /** Edits the client package (or proposes the edits for approval) and describes the result. */
+  package?(request: PackageRequest): DeliverableReply;
   /** With a whole home open and no room in the editor: answers home-level requests (null = not one). */
   homeCommand?(text: string): string | null;
   /** Generates and opens a whole home; returns what is happening. */
@@ -73,6 +75,7 @@ export type ChatMessage =
   | { id: string; role: 'assistant'; kind: 'error'; text: string; code: string; retryable: boolean; retryText?: string }
   | { id: string; role: 'assistant'; kind: 'history'; text: string }
   | { id: string; role: 'assistant'; kind: 'deliverable'; request: DeliverableRequest; reply: DeliverableReply }
+  | { id: string; role: 'assistant'; kind: 'package'; request: PackageRequest; reply: DeliverableReply }
   | { id: string; role: 'assistant'; kind: 'layouts'; explanation: string; result: PlanResult; status: LayoutStatus; appliedId?: string; note?: string; error?: string };
 
 /** Layout options: waiting for a choice, one applied, all rejected, replaced by newer options, or none valid. */
@@ -424,6 +427,16 @@ export class Conversation {
       case 'home':
         this.push({ id: msgId(), role: 'assistant', kind: 'answer', text: this.editor.home ? this.editor.home(response.brief) : 'Whole homes can be designed from the projects page.' });
         return;
+      case 'package': {
+        if (!this.editor.package) {
+          this.push({ id: msgId(), role: 'assistant', kind: 'answer', text: 'The client package is not available here.' });
+          return;
+        }
+        const reply = this.editor.package(response.request);
+        this.logEvent('response', `package ${response.request.ops.map((o) => o.op).join(',')}`);
+        this.push({ id: msgId(), role: 'assistant', kind: 'package', request: response.request, reply });
+        return;
+      }
       case 'deliverable': {
         if (!this.editor.deliverable) {
           this.push({ id: msgId(), role: 'assistant', kind: 'answer', text: 'Deliverables are not available here.' });
@@ -627,7 +640,7 @@ export class Conversation {
         : m.kind === 'clarify' ? m.question
         : m.kind === 'history' ? m.text
         : m.kind === 'error' ? `(error: ${m.text})`
-        : m.kind === 'deliverable' ? `(${m.reply.title}: ${m.reply.lines.slice(0, 3).join(' ')})`
+        : m.kind === 'deliverable' || m.kind === 'package' ? `(${m.reply.title}: ${m.reply.lines.slice(0, 3).join(' ')})`
         : m.kind === 'layouts' ? `(layout options ${m.status}: ${m.result.candidates.map((c, i) => `${i + 1}. ${c.name}`).join('; ') || m.result.infeasible.join(' ')})`
         : `(proposal ${m.status}) ${m.proposal.explanation}${m.proposal.errors.length ? ` — rejected: ${m.proposal.errors[0]}` : ''}`;
       return { role: 'assistant', text: text.slice(0, LIMITS.historyChars) };

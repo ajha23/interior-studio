@@ -606,6 +606,8 @@ export function spokenSummary(m: ChatMessage): string | null {
       return firstSentence(m.text);
     case 'deliverable':
       return `${m.reply.title}. ${firstSentence(m.reply.lines[0] ?? '')}`;
+    case 'package':
+      return `${m.reply.title}. ${firstSentence(m.reply.lines[0] ?? '')}${m.reply.actions.some((a) => a.action.startsWith('package:apply')) ? ' Press Apply in the panel to make the change.' : ''}`;
     case 'layouts': {
       const r = m.result;
       if (m.status === 'applied') return 'The layout was applied.';

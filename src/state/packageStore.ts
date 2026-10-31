@@ -35,6 +35,8 @@ interface PackageState {
   load: (projectId: string | null) => Promise<void>;
   createStarter: () => void;
   dispatch: (cmd: PackageCommand) => PackageResult;
+  /** Replaces the package with an already validated result (chat edits), as one undo step. */
+  applyPackage: (next: ClientPackage, message: string) => void;
   undo: () => void;
   redo: () => void;
   selectPage: (pageId: string) => void;
@@ -105,6 +107,13 @@ export const usePackageStore = create<PackageState>()((set, get) => ({
     const selection = cmd.type.startsWith('remove') || cmd.type === 'discard-orphans' ? null : get().selection;
     set({ pkg: r.package, past: [...get().past, pkg].slice(-HISTORY), future: [], pageId, selection: pageId === get().pageId ? selection : null, message: { text: r.message, error: false } });
     return r;
+  },
+  applyPackage: (next, text) => {
+    const { pkg } = get();
+    if (!pkg) return;
+    persist(next);
+    const pageId = next.pages.some((p) => p.id === get().pageId) ? get().pageId : (next.pages[0]?.id ?? null);
+    set({ pkg: next, past: [...get().past, pkg].slice(-HISTORY), future: [], pageId, selection: null, message: { text, error: false } });
   },
   undo: () => {
     const { past, pkg, future } = get();

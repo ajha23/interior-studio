@@ -95,4 +95,23 @@ test('Client package: pages, notes, label edits, stale detection, regeneration, 
   await pageItem(page, /Elevation A/).click();
   await expect(sheet).toContainText('LED strip will be installed');
   await expect(sheet).toContainText('Test Client');
+
+  // Chat edits the open page (the design is not touched); a broad edit waits for Apply.
+  await page.getByRole('button', { name: 'Assistant', exact: true }).click();
+  const chatBox = page.getByLabel('Message the design assistant');
+  await chatBox.fill('Add a note that the gas pipe will be covered later');
+  await chatBox.press('Enter');
+  await expect(page.getByTestId('package-chat-message').last()).toContainText('Package updated');
+  await expect(sheet).toContainText('NOTE: The gas pipe will be covered later');
+  await chatBox.fill('Which pages are outdated?');
+  await chatBox.press('Enter');
+  // The reload reopened the last saved design (before the height edit): now elevation A, which was
+  // regenerated from the edit, is the stale page.
+  await expect(page.getByTestId('package-chat-message').last()).toContainText('Elevation A — Back wall: Technical content stale');
+  await chatBox.fill('Change every page to A4');
+  await chatBox.press('Enter');
+  const approve = page.getByTestId('package-chat-message').last();
+  await expect(approve).toContainText('Nothing is changed until you apply it');
+  await approve.getByRole('button', { name: 'Apply' }).click();
+  await expect(page.getByTestId('page-paper')).toHaveValue('A4');
 });

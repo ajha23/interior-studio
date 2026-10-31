@@ -7,3 +7,7 @@
   discardable; boards and snapshots (missing images, stale snapshots); PDF with one image object.
 - `persistence/projectDb.test.ts`: package and images saved, reloaded and deleted with the project.
 - `e2e/package.spec.ts`: the whole workflow in the browser, through PDF export and reload.
+- `state/packageAssistant.test.ts`: the brief's requests parsed as typed edits; immediate one-page edits
+  with undo and no design change; questions for ambiguity; approval for broad/destructive edits and
+  refusal of outdated approvals; status and regeneration; title block fields.
+- `e2e/package.spec.ts` also adds a note, asks for outdated pages and approves an all-pages edit from chat.

@@ -92,6 +92,7 @@ are checked against the domain model independently of rendering.
 | Revisions, stale outputs, approved revisions, readiness per output | Blocking incomplete manufacturing | `engine/deliverables/deliverables.test.ts`; `state/deliverables.test.ts` |
 | Chat/voice deliverable requests; presentation mode | Typed requests; replies from the engine; editing hidden | `state/deliverables.test.ts`; `e2e/deliverables.spec.ts` |
 | 020 client package: create, rename/reorder pages, title block, note, move a dimension label (value unchanged), undo/redo, design edit → only affected pages stale, regenerate keeps edits, package PDF, reopen | As in docs/DELIVERABLES.md › Client packages | `e2e/package.spec.ts`; `engine/package/package.test.ts`; `persistence/projectDb.test.ts` |
+| 020 chat/voice package edits (notes, orientation, dimension label moves, image size, new elevation, title block, regenerate from approved, outdated pages) | Typed edits; questions when ambiguous; Apply for broad or destructive ones; design untouched | `state/packageAssistant.test.ts`; `e2e/package.spec.ts` |
 | Package file safety; edits whose element changed; boards, snapshots, missing images | Sanitised or rejected; flagged, never misapplied; reported on the page | `engine/package/package.test.ts` |
 
 Run everything: `npm run check && npm run e2e`.

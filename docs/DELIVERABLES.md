@@ -95,13 +95,18 @@ labels, images, captions, paper and orientation. Package edits have their own un
 - Images are re-encoded to JPEG in the browser and stored per project; a 3D view is captured from the
   3D camera and goes stale when the design changes.
 - Export: one vector PDF (images embedded once), SVG per page. Stale pages say STALE in the title block.
+- Chat and voice: "add a note that the LED strip will be installed after the kitchen is completed",
+  "change this page to landscape", "move the 900 mm dimension away from the cabinet", "make the
+  hardware reference images larger", "create an elevation for the left wall", "regenerate elevation B
+  using the latest approved model", "which pages are outdated?". One-page edits apply at once;
+  several pages, deletions and approved-revision regeneration wait for Apply (docs/AI_ASSISTANT.md).
 - Code: `engine/package/*` (schema, commands, composition), `state/packageStore.ts`,
-  `features/deliverables/package/*`.
+  `state/packageAssistant.ts`, `ai/packagePlan.ts`, `features/deliverables/package/*`.
 
 ## Limitations
 - One construction rule set; blind corners, end and decorative panels, scribes and joinery
   allowances are not modelled. Board counts are not nested.
 - Elevations are per wall (a run is shown on its wall's elevation).
 - History, approvals and client packages live in this browser (no server storage or accounts yet).
-- Client packages: no chat/voice commands yet; elevations are per wall (no island or section views).
+- Client packages: elevations are per wall (no island or section views); chat can't add images or capture 3D views.
 - XLSX is not offered (CSV opens in spreadsheets).

@@ -284,6 +284,7 @@ function Message({ message: m }: { message: ChatMessage }) {
     case 'layouts':
       return <LayoutOptions message={m} />;
     case 'deliverable':
+    case 'package':
       return <DeliverableMessage message={m} />;
     case 'answer':
       return (
