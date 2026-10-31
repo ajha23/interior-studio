@@ -12,15 +12,15 @@ async function createProject(page: Page, name: string, layout: 'Straight' | 'L-s
 
 /** Selects the first base cabinet through the dimensioned plan (real clicks on drawn geometry). */
 async function selectBaseCabinetInPlan(page: Page) {
-  await page.getByRole('button', { name: 'Plan' }).click();
+  await page.getByRole('button', { name: 'Plan', exact: true }).click();
   await page.getByTestId('plan-view').getByRole('button', { name: 'Base cabinet 600', exact: true }).first().click();
   await expect(page.getByTestId('inspector-title')).toHaveText('Base cabinet');
 }
 
 test('create a room, edit a cabinet, undo, save and reopen', async ({ page }) => {
   await createProject(page, 'E2E kitchen');
-  await expect(page.getByTestId('status-room')).toHaveText('Room 4500 × 3200 × 2700 mm');
-  await expect(page.getByTestId('room-width-label')).toHaveText('4500 mm');
+  await expect(page.getByTestId('status-room')).toHaveText('Room 4,500 mm × 3,200 mm × 2,700 mm');
+  await expect(page.getByTestId('room-width-label')).toHaveText('4,500 mm');
 
   await selectBaseCabinetInPlan(page);
   const width = page.getByTestId('inspector-width');
@@ -46,7 +46,7 @@ test('create a room, edit a cabinet, undo, save and reopen', async ({ page }) =>
   // Reload: the hash route reopens the project from IndexedDB.
   await page.reload();
   await expect(page.getByTestId('viewport-3d').locator('canvas')).toBeVisible();
-  await page.getByRole('button', { name: 'Plan' }).click();
+  await page.getByRole('button', { name: 'Plan', exact: true }).click();
   await expect(page.getByTestId('plan-view').getByRole('button', { name: 'Base cabinet 900', exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: 'All projects' }).click();

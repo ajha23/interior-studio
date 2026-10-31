@@ -4,7 +4,7 @@
  * above/below, and clear of units standing on the perpendicular walls. The nearest candidate within
  * the tolerance wins; otherwise the offset rounds to the grid.
  */
-import { allElements, elementLabel, spanAlongWall, wallAxis, wallLength, type KitchenElement, type KitchenProject, type WallId } from '@/domain';
+import { allElements, elementLabel, openingLabel, spanAlongWall, wallAxis, wallLength, type KitchenElement, type KitchenProject, type WallId } from '@/domain';
 import { elementBox } from '../geometry/box';
 
 export interface SnapResult {
@@ -50,6 +50,12 @@ export function snapCandidates(project: KitchenProject, el: KitchenElement, wall
       const [min, max] = axis === 'x' ? [b.minX, b.maxX] : [b.minZ, b.maxZ];
       out.push({ offset: max, label: `clear of ${name}`, priority: 2 }, { offset: min - width, label: `clear of ${name}`, priority: 2 });
     }
+  }
+  // Stop just short of (or just past) a door or window this unit would block at its height.
+  for (const o of project.openings) {
+    if (o.wallId !== wallId || !(o.sill < own.maxY && own.minY < o.sill + o.height)) continue;
+    const name = openingLabel(o).replace(/ on the \w+ wall$/, '');
+    out.push({ offset: o.offset - width, label: `before the ${name}`, priority: 1 }, { offset: o.offset + o.width, label: `after the ${name}`, priority: 1 });
   }
   return out.filter((c) => c.offset >= 0 && c.offset <= len - width);
 }

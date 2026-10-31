@@ -7,6 +7,7 @@
  * y up. Conversion to Three.js world units happens only in `src/rendering`.
  */
 import { z } from 'zod';
+import { LENGTH_UNITS } from '@/engine/measurement/units';
 
 export const SCHEMA_VERSION = 2;
 
@@ -94,7 +95,23 @@ export const ApplianceSchema = z.object({
 });
 export type Appliance = z.infer<typeof ApplianceSchema>;
 
-export type KitchenElement = KitchenCabinet | Appliance;
+export const FurnitureTypeSchema = z.enum(['table', 'chair', 'sofa']);
+export type FurnitureType = z.infer<typeof FurnitureTypeSchema>;
+
+/** Loose furniture (dining table, chair, sofa): floor-standing, resizable, with a finish. */
+export const FurnitureSchema = z.object({
+  kind: z.literal('furniture'),
+  id: EntityIdSchema,
+  type: FurnitureTypeSchema,
+  dimensions: DimensionsSchema,
+  position: PositionSchema,
+  rotationY: RotationSchema,
+  wallId: WallIdSchema.optional(),
+  materialId: z.string().min(1),
+});
+export type Furniture = z.infer<typeof FurnitureSchema>;
+
+export type KitchenElement = KitchenCabinet | Appliance | Furniture;
 
 export const MaterialCategorySchema = z.enum(['shutter', 'carcass', 'countertop', 'floor', 'wall']);
 export type MaterialCategory = z.infer<typeof MaterialCategorySchema>;
@@ -138,6 +155,28 @@ export const SurfacesSchema = z.object({
 });
 export type Surfaces = z.infer<typeof SurfacesSchema>;
 
+export const OpeningKindSchema = z.enum(['door', 'window', 'opening']);
+export type OpeningKind = z.infer<typeof OpeningKindSchema>;
+
+/**
+ * A door, window or plain opening in a wall. `offset` is measured like units: from the start of
+ * the wall to the opening's nearest edge. `sill` is the bottom of the opening above the floor.
+ * Doors swing into the room (`in`), out of it (`out`) or slide (`none`), hinged on the `hinge` side
+ * as seen from inside the room.
+ */
+export const OpeningSchema = z.object({
+  id: EntityIdSchema,
+  kind: OpeningKindSchema,
+  wallId: WallIdSchema,
+  offset: Mm.nonnegative(),
+  width: Mm.positive(),
+  height: Mm.positive(),
+  sill: Mm.nonnegative(),
+  swing: z.enum(['in', 'out', 'none']),
+  hinge: z.enum(['left', 'right']),
+});
+export type Opening = z.infer<typeof OpeningSchema>;
+
 /** A saved place to stand and look from (walk mode), e.g. "At the hob". Angles in radians. */
 export const ViewpointSchema = z.object({
   id: EntityIdSchema,
@@ -150,6 +189,32 @@ export const ViewpointSchema = z.object({
 });
 export type Viewpoint = z.infer<typeof ViewpointSchema>;
 
+/**
+ * Production settings for workshop outputs. Everything is optional: an unset field is reported as
+ * missing by the readiness check instead of being assumed. `constructionId` names a rule set in
+ * `engine/deliverables/construction.ts`.
+ */
+export const ProductionSettingsSchema = z
+  .object({
+    constructionId: z.string().trim().min(1).max(40).optional(),
+    hinge: z.string().trim().min(1).max(80).optional(),
+    drawerRunner: z.string().trim().min(1).max(80).optional(),
+    handle: z.string().trim().min(1).max(80).optional(),
+    /** Saw and offcut allowance applied to board estimates, in percent. */
+    wastePercent: z.number().min(0).max(50).optional(),
+    /** Prices for estimates only; currency is a label. */
+    prices: z
+      .object({
+        currency: z.string().trim().length(3),
+        boardPerM2: z.number().nonnegative().optional(),
+        bandingPerM: z.number().nonnegative().optional(),
+        worktopPerM: z.number().nonnegative().optional(),
+      })
+      .optional(),
+  })
+  .strict();
+export type ProductionSettings = z.infer<typeof ProductionSettingsSchema>;
+
 export const KitchenProjectSchema = z.object({
   schemaVersion: z.literal(SCHEMA_VERSION),
   id: EntityIdSchema,
@@ -161,11 +226,28 @@ export const KitchenProjectSchema = z.object({
   materials: z.record(z.string(), KitchenMaterialSchema),
   /** Optional and defaulted, so files saved before viewpoints existed still load unchanged. */
   viewpoints: z.array(ViewpointSchema).max(50).default([]),
+  /** Loose furniture; optional and defaulted (no schema bump). */
+  furniture: z.array(FurnitureSchema).max(100).default([]),
+  /** How lengths are shown and typed. Display only: geometry is always stored in millimetres. */
+  preferences: z.object({ unit: z.enum(LENGTH_UNITS) }).default({ unit: 'mm' }),
+  /** Doors, windows and openings; optional and defaulted like `viewpoints`. */
+  openings: z.array(OpeningSchema).max(40).default([]),
+  /** Workshop settings; optional and defaulted (no schema bump). */
+  production: ProductionSettingsSchema.default({}),
 });
 export type KitchenProject = z.infer<typeof KitchenProjectSchema>;
 
 export function isCabinet(el: KitchenElement): el is KitchenCabinet {
-  return 'materialId' in el;
+  return 'interior' in el;
+}
+
+export function isFurniture(el: KitchenElement): el is Furniture {
+  return 'kind' in el && el.kind === 'furniture';
+}
+
+/** Which spec table an element's type belongs to. */
+export function categoryOf(el: KitchenElement): 'cabinet' | 'appliance' | 'furniture' {
+  return isCabinet(el) ? 'cabinet' : isFurniture(el) ? 'furniture' : 'appliance';
 }
 
 /** Readable one-line messages from a Zod error, e.g. "room.width: Room width must be at least 1500 mm". */

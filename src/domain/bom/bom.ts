@@ -4,7 +4,7 @@
  * top, bottom and back. They are not a cut list.
  */
 import { deriveCountertops } from '../furniture/countertops';
-import { APPLIANCE_SPECS, CABINET_SPECS } from '../furniture/specs';
+import { APPLIANCE_SPECS, CABINET_SPECS, FURNITURE_SPECS } from '../furniture/specs';
 import { WALL_LABEL } from '../room/walls';
 import type { ApplianceType, CabinetType, KitchenProject } from '../schema';
 
@@ -41,6 +41,7 @@ export interface CountertopBomRow {
 export interface Bom {
   cabinets: CabinetBomRow[];
   appliances: ApplianceBomRow[];
+  furniture: { key: string; label: string; width: number; height: number; depth: number; finish: string; quantity: number; entityIds: string[] }[];
   countertops: CountertopBomRow[];
   totals: {
     cabinetCount: number;
@@ -80,6 +81,16 @@ export function computeBom(project: KitchenProject): Bom {
     applianceRows.set(key, row);
   }
 
+  const furnitureRows = new Map<string, Bom['furniture'][number]>();
+  for (const f of project.furniture) {
+    const { width: w, height: h, depth: d } = f.dimensions;
+    const key = `${f.type}|${w}|${h}|${d}|${f.materialId}`;
+    const row = furnitureRows.get(key) ?? { key, label: FURNITURE_SPECS[f.type].label, width: w, height: h, depth: d, finish: finishName(f.materialId), quantity: 0, entityIds: [] };
+    row.quantity += 1;
+    row.entityIds.push(f.id);
+    furnitureRows.set(key, row);
+  }
+
   const countertops = deriveCountertops(project).map((ct) => ({
     id: ct.id,
     wall: ct.wallId ? WALL_LABEL[ct.wallId] : 'Free-standing',
@@ -93,6 +104,7 @@ export function computeBom(project: KitchenProject): Bom {
   return {
     cabinets: [...cabinetRows.values()].sort(byLabel),
     appliances: [...applianceRows.values()].sort(byLabel),
+    furniture: [...furnitureRows.values()].sort(byLabel),
     countertops,
     totals: {
       cabinetCount: project.cabinets.length,

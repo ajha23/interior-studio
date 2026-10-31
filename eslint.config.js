@@ -17,8 +17,8 @@ export default tseslint.config(
     },
   },
   {
-    // The domain and engine layers must stay framework-free (see docs/ARCHITECTURE.md).
-    files: ['src/domain/**/*.ts', 'src/engine/**/*.ts'],
+    // The domain, engine, assistant and server layers must stay framework-free (see docs/ARCHITECTURE.md).
+    files: ['src/domain/**/*.ts', 'src/engine/**/*.ts', 'src/ai/**/*.ts', 'src/server/**/*.ts', 'src/voice/**/*.ts'],
     rules: {
       'no-restricted-imports': ['error', { patterns: ['react', 'react-dom', 'three', '@react-three/*', 'zustand', '@/state/*', '@/rendering/*', '@/features/*', '@/components/*'] }],
     },

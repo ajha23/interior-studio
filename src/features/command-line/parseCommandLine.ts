@@ -7,10 +7,11 @@ import {
   allElements,
   APPLIANCE_SPECS,
   CABINET_SPECS,
+  FURNITURE_SPECS,
   INTERIOR_PRESETS,
   isCabinet,
   offsetAlongWall,
-  specFor,
+  specOf,
   WALLS,
   type ApplianceType,
   type CabinetType,
@@ -23,7 +24,7 @@ import {
   type WallId,
 } from '@/domain';
 import { footprintSize } from '@/engine/geometry/box';
-import { parseMm } from '@/engine/measurement/format';
+import { LENGTH_UNITS, parseLength, type LengthUnit } from '@/engine/measurement/units';
 import type { CameraPreset, Projection, VisualStyle } from '@/state/editorStore';
 
 export type ViewAction =
@@ -32,7 +33,7 @@ export type ViewAction =
   | { kind: 'preset'; preset: CameraPreset }
   | { kind: 'style'; style: VisualStyle }
   | { kind: 'projection'; projection: Projection }
-  | { kind: 'mode'; mode: '3d' | 'plan' }
+  | { kind: 'mode'; mode: '3d' | 'plan' | 'split' | 'drawings' }
   | { kind: 'toggle'; what: 'grid' | 'walls' | 'bom' | 'inside' };
 
 export type CommandLineAction =
@@ -64,15 +65,16 @@ export const COMMAND_HELP: { usage: string; does: string }[] = [
   { usage: 'glass · solid · open · inside', does: 'Door style · show interiors in 3D' },
   { usage: 'interact · opendoors · closedoors · open all · close all', does: 'Open doors and drawers like in real life (H)' },
   { usage: 'walk · orbit · stand · eye 1150', does: 'Walk through the room at eye height (V), stand at the selected unit' },
+  { usage: "units ft-in · units cm · w 2' 6\" · w 76 cm", does: 'Display unit; lengths can be typed in any unit' },
   { usage: 'finish oak · worktop granite · floor tile · walls sage · carcass grey', does: 'Change finishes' },
-  { usage: 'add base 600 · add wall 800 · add fridge', does: 'Add a unit in the first free spot' },
+  { usage: 'add base 600 · add wall 800 · add fridge · add door 900 · add window 1200 · add table 1800 · add sofa', does: 'Add a unit, opening or furniture in the first free spot' },
   { usage: 'e / erase', does: 'Delete the selected unit' },
   { usage: 'u / undo · redo', does: 'Undo or redo' },
   { usage: 'next · prev · sel sink 2 · sel none', does: 'Select units (Tab / Shift+Tab)' },
   { usage: 'ze / fit · f / focus', does: 'Zoom extents · focus the selection (Home · F)' },
   { usage: 'iso · top · back · left · right', does: 'Standard views and wall elevations' },
   { usage: 'realistic · edges · xray · ortho · persp', does: 'Visual style and projection' },
-  { usage: 'plan · 3d · grid · walls · bom', does: 'Switch view or toggle overlays' },
+  { usage: 'plan · 3d · drawings · grid · walls · bom', does: 'Switch view or toggle overlays' },
   { usage: 'room 4500 3200 [2700] · layout straight|l|empty', does: 'Room size and layout preset' },
   { usage: 'save · rename My kitchen', does: 'Save or rename the project' },
 ];
@@ -94,9 +96,11 @@ function findMaterial(project: KitchenProject, category: MaterialCategory, words
   return match ? { id: match.id } : { error: `No ${category} finish matches “${query}”. Options: ${options.map((m) => m.name).join(', ')}.` };
 }
 
-function numberArg(token: string | undefined, what: string): number | { error: string } {
-  const n = token === undefined ? null : parseMm(token);
-  return n === null ? { error: `${what} needs a whole number of millimetres, e.g. “${what.toLowerCase()} 900”.` } : n;
+/** A length typed in any unit (bare numbers use the project's display unit), as whole millimetres. */
+function lengthArg(text: string | undefined, unit: LengthUnit, what: string, allowNegative = false): number | { error: string } {
+  if (!text) return { error: `${what} needs a length, e.g. “${what.toLowerCase()} 900”.` };
+  const r = parseLength(text, unit, allowNegative);
+  return r.ok ? r.mm : { error: `${what}: ${r.error}` };
 }
 
 export function parseCommandLine(input: string, ctx: CommandContext): CommandLineAction {
@@ -105,6 +109,11 @@ export function parseCommandLine(input: string, ctx: CommandContext): CommandLin
   if (!head) return { kind: 'help' };
   const el: KitchenElement | undefined = ctx.selectedId ? allElements(ctx.project).find((e) => e.id === ctx.selectedId) : undefined;
   const joined = tokens.join(' ');
+  const unit = ctx.project.preferences.unit;
+  const len = (t: string | undefined) => {
+    const r = t === undefined ? null : parseLength(t, unit);
+    return r && r.ok ? r.mm : null;
+  };
 
   // Navigation and display.
   if (['ze', 'fit', 'home', 'zoom', 'zoom e', 'zoom extents', 'z e'].includes(joined)) return { kind: 'view', action: { kind: 'fit' } };
@@ -115,17 +124,21 @@ export function parseCommandLine(input: string, ctx: CommandContext): CommandLin
   if (['realistic', 'shaded'].includes(joined)) return { kind: 'view', action: { kind: 'style', style: 'realistic' } };
   if (['ortho', 'parallel', 'orthographic'].includes(joined)) return { kind: 'view', action: { kind: 'projection', projection: 'orthographic' } };
   if (['persp', 'perspective'].includes(joined)) return { kind: 'view', action: { kind: 'projection', projection: 'perspective' } };
-  if (joined === 'plan' || joined === '3d') return { kind: 'view', action: { kind: 'mode', mode: joined } };
+  if (joined === 'plan' || joined === '3d' || joined === 'split' || joined === 'drawings') return { kind: 'view', action: { kind: 'mode', mode: joined } };
   if (joined === 'grid' || joined === 'walls' || joined === 'bom' || joined === 'inside') return { kind: 'view', action: { kind: 'toggle', what: joined } };
 
   // History, selection, project.
   if (['u', 'undo'].includes(joined)) return { kind: 'history', action: 'undo' };
   if (['redo', 'mredo'].includes(joined)) return { kind: 'history', action: 'redo' };
+  if (head === 'units' || head === 'unit') {
+    const wanted = rest.join(' ').replace(/^(feet and inches|feet & inches|ft in|ftin|imperial)$/, 'ft-in').replace(/^(inches|inch)$/, 'in').replace(/^(feet|foot)$/, 'ft').replace(/^(millimetres|millimeters)$/, 'mm').replace(/^(centimetres|centimeters)$/, 'cm').replace(/^(metres|meters)$/, 'm');
+    return (LENGTH_UNITS as readonly string[]).includes(wanted) ? { kind: 'design', command: { type: 'set_measurement_unit', unit: wanted as LengthUnit } } : err(`Usage: units ${LENGTH_UNITS.join(' | ')}`);
+  }
   if (joined === 'interact' || joined === 'hand') return { kind: 'interact' };
   if (joined === 'walk' || joined === 'orbit') return { kind: 'walk', on: joined === 'walk' };
   if (joined === 'stand') return el ? { kind: 'stand' } : err(NEEDS_SELECTION);
   if (head === 'eye') {
-    const mm = rest[0] ? parseMm(rest[0]) : null;
+    const mm = rest.length ? len(rest.join(' ')) : null;
     return mm !== null && mm >= 600 && mm <= 2200 ? { kind: 'eye', mm } : err('Usage: eye 1600 (600–2200 mm above the floor)');
   }
   if (joined === 'open all' || joined === 'close all') return { kind: 'open', open: head === 'open', all: true };
@@ -153,7 +166,7 @@ export function parseCommandLine(input: string, ctx: CommandContext): CommandLin
     return pick ? { kind: 'select', id: pick.id } : err(`There ${matches.length === 1 ? 'is 1' : `are ${matches.length}`} ${type} unit${matches.length === 1 ? '' : 's'}.`);
   }
   if (head === 'room') {
-    const [w, l, h] = rest.map((t) => parseMm(t));
+    const [w, l, h] = rest.map((t) => len(t));
     if (w == null || l == null) return err('Usage: room 4500 3200 [2700]');
     return { kind: 'design', command: { type: 'set_room', room: { ...ctx.project.room, width: w, length: l, height: h ?? ctx.project.room.height } } };
   }
@@ -188,7 +201,7 @@ export function parseCommandLine(input: string, ctx: CommandContext): CommandLin
   }
   if (head === 'at') {
     if (!el) return err(NEEDS_SELECTION);
-    const [fromLeft, fromBack] = rest.map((t) => parseMm(t));
+    const [fromLeft, fromBack] = rest.map((t) => len(t));
     if (fromLeft == null || fromBack == null) return err('Usage: at 1200 900 (distance of the unit from the left wall and from the back wall)');
     const { sx, sz } = footprintSize(el.dimensions, el.rotationY);
     return { kind: 'design', command: { type: 'place_entity', entityId: el.id, x: fromLeft + sx / 2, z: fromBack + sz / 2, rotationY: el.rotationY } };
@@ -211,18 +224,25 @@ export function parseCommandLine(input: string, ctx: CommandContext): CommandLin
   // Adding.
   if (head === 'add' || head === 'insert' || head === 'i') {
     const kind = rest[0] ?? '';
-    const width = rest[1] !== undefined ? parseMm(rest[1]) : undefined;
+    const width = rest[1] !== undefined ? len(rest.slice(1).join(' ')) : undefined;
     if (width === null) return err('Width must be a whole number of millimetres.');
     if (kind in CABINET_ALIASES) {
       const type = CABINET_ALIASES[kind]!;
       const dims = { ...CABINET_SPECS[type].defaults, ...(width ? { width } : {}) };
       return { kind: 'design', command: { type: 'add_cabinet', cabinetType: type, dimensions: dims } };
     }
+    if (kind === 'table' || kind === 'chair' || kind === 'sofa') {
+      const spec = FURNITURE_SPECS[kind];
+      return { kind: 'design', command: { type: 'add_furniture', furnitureType: kind, ...(width ? { dimensions: { ...spec.defaults, width } } : {}) } };
+    }
+    if (kind === 'door' || kind === 'window' || kind === 'opening' || kind === 'archway') {
+      return { kind: 'design', command: { type: 'add_opening', kind: kind === 'archway' ? 'opening' : kind, ...(width ? { width } : {}) } };
+    }
     if (kind in APPLIANCE_ALIASES) {
       const type = APPLIANCE_ALIASES[kind]!;
       return { kind: 'design', command: { type: 'add_appliance', applianceType: type, width: width ?? APPLIANCE_SPECS[type].defaults.width } };
     }
-    return err(`Add what? ${[...Object.keys(CABINET_SPECS), ...Object.keys(APPLIANCE_SPECS)].join(', ')}.`);
+    return err(`Add what? ${[...Object.keys(CABINET_SPECS), ...Object.keys(APPLIANCE_SPECS), 'door', 'window', 'opening'].join(', ')}.`);
   }
 
   // Edits of the selected unit.
@@ -234,27 +254,27 @@ export function parseCommandLine(input: string, ctx: CommandContext): CommandLin
     if (!el) return err(NEEDS_SELECTION);
     let dims = { ...el.dimensions };
     if (dimKey) {
-      const n = numberArg(rest[0], dimKey[0]!.toUpperCase() + dimKey.slice(1));
+      const n = lengthArg(rest.join(' ') || undefined, unit, dimKey[0]!.toUpperCase() + dimKey.slice(1));
       if (typeof n !== 'number') return err(n.error);
       dims = { ...dims, [dimKey]: n };
     } else {
-      const values = rest.join(' ').split(/[\sx×*]+/).filter(Boolean).map((t) => parseMm(t));
+      const values = rest.join(' ').split(/\s*[x×*]\s*/).filter(Boolean).map((t) => len(t));
       if (values.length !== 3 || values.some((v) => v === null)) return err('Usage: size 900x720x560 (width × height × depth)');
       dims = { width: values[0]!, height: values[1]!, depth: values[2]! };
     }
     if (isCabinet(el)) return { kind: 'design', command: { type: 'resize_cabinet', cabinetId: el.id, dimensions: dims } };
-    if (dims.height !== el.dimensions.height || dims.depth !== el.dimensions.depth) return err(`Only the width of an appliance can change (${specFor('appliance', el.type).widths.join(', ')} mm).`);
+    if (dims.height !== el.dimensions.height || dims.depth !== el.dimensions.depth) return err(`Only the width of an appliance can change (${specOf(el).widths.join(', ')} mm).`);
     return { kind: 'design', command: { type: 'resize_appliance', applianceId: el.id, width: dims.width } };
   }
   if (['m', 'move', 'o', 'offset', 'wall', 'elev', 'elevation'].includes(head)) {
     if (!el) return err(NEEDS_SELECTION);
-    const spec = specFor(isCabinet(el) ? 'cabinet' : 'appliance', el.type);
+    const spec = specOf(el);
     let wallId: WallId = el.wallId ?? 'back';
     let offset = offsetAlongWall(el);
     let elevation = spec.mount === 'wall' ? el.position.y : undefined;
     const args = [...rest];
     if (head === 'elev' || head === 'elevation') {
-      const n = numberArg(args[0], 'Elev');
+      const n = lengthArg(args.join(' ') || undefined, unit, 'Elev');
       if (typeof n !== 'number') return err(n.error);
       elevation = n;
     } else {
@@ -266,7 +286,8 @@ export function parseCommandLine(input: string, ctx: CommandContext): CommandLin
       }
       if (args[0]) {
         const relative = /^[+-]/.test(args[0]);
-        const n = parseMm(args[0].replace(/^\+/, ''));
+        const parsed = parseLength(args.join(' '), unit, true);
+        const n = parsed.ok ? parsed.mm : null;
         if (n === null) return err('Usage: m 1200 (offset from the wall start) · m +50 / m -50 (nudge)');
         offset = relative ? offset + n : n;
       } else if (head !== 'wall' && wallId === el.wallId) {

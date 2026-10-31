@@ -1,0 +1,578 @@
+{
+  "format": "interior-studio/kitchen",
+  "schemaVersion": 2,
+  "savedAt": "2026-10-31T00:00:00.000Z",
+  "project": {
+    "schemaVersion": 2,
+    "id": "prj_fixture",
+    "name": "12 × 10 ft L kitchen",
+    "room": {
+      "width": 3658,
+      "length": 3048,
+      "height": 2438,
+      "wallThickness": 114
+    },
+    "surfaces": {
+      "floor": "floor-oak",
+      "wall": "wall-warm-white",
+      "countertop": "counter-quartz-white",
+      "carcass": "carcass-white"
+    },
+    "materials": {
+      "shutter-white-matte": {
+        "id": "shutter-white-matte",
+        "name": "White matte",
+        "category": "shutter",
+        "color": "#f1f0eb",
+        "roughness": 0.65,
+        "metalness": 0
+      },
+      "shutter-oak": {
+        "id": "shutter-oak",
+        "name": "Natural oak",
+        "category": "shutter",
+        "color": "#b98c5d",
+        "roughness": 0.55,
+        "metalness": 0
+      },
+      "shutter-walnut": {
+        "id": "shutter-walnut",
+        "name": "Walnut",
+        "category": "shutter",
+        "color": "#6a4a34",
+        "roughness": 0.5,
+        "metalness": 0
+      },
+      "shutter-sage": {
+        "id": "shutter-sage",
+        "name": "Sage green",
+        "category": "shutter",
+        "color": "#8ea38b",
+        "roughness": 0.6,
+        "metalness": 0
+      },
+      "shutter-navy": {
+        "id": "shutter-navy",
+        "name": "Deep navy",
+        "category": "shutter",
+        "color": "#2e3c55",
+        "roughness": 0.5,
+        "metalness": 0
+      },
+      "shutter-graphite": {
+        "id": "shutter-graphite",
+        "name": "Graphite",
+        "category": "shutter",
+        "color": "#3b3c3f",
+        "roughness": 0.45,
+        "metalness": 0
+      },
+      "shutter-cashmere": {
+        "id": "shutter-cashmere",
+        "name": "Cashmere",
+        "category": "shutter",
+        "color": "#d8cbb8",
+        "roughness": 0.6,
+        "metalness": 0
+      },
+      "carcass-white": {
+        "id": "carcass-white",
+        "name": "White carcass",
+        "category": "carcass",
+        "color": "#ebe8e1",
+        "roughness": 0.7,
+        "metalness": 0
+      },
+      "carcass-grey": {
+        "id": "carcass-grey",
+        "name": "Grey carcass",
+        "category": "carcass",
+        "color": "#9c9c9a",
+        "roughness": 0.7,
+        "metalness": 0
+      },
+      "counter-quartz-white": {
+        "id": "counter-quartz-white",
+        "name": "White quartz",
+        "category": "countertop",
+        "color": "#ebe9e4",
+        "roughness": 0.25,
+        "metalness": 0
+      },
+      "counter-black-granite": {
+        "id": "counter-black-granite",
+        "name": "Black granite",
+        "category": "countertop",
+        "color": "#27282b",
+        "roughness": 0.3,
+        "metalness": 0
+      },
+      "counter-oak": {
+        "id": "counter-oak",
+        "name": "Oak butcher block",
+        "category": "countertop",
+        "color": "#a97a4b",
+        "roughness": 0.5,
+        "metalness": 0
+      },
+      "counter-concrete": {
+        "id": "counter-concrete",
+        "name": "Concrete",
+        "category": "countertop",
+        "color": "#9c9a95",
+        "roughness": 0.75,
+        "metalness": 0
+      },
+      "floor-oak": {
+        "id": "floor-oak",
+        "name": "Oak planks",
+        "category": "floor",
+        "color": "#c7a27b",
+        "roughness": 0.6,
+        "metalness": 0
+      },
+      "floor-grey-tile": {
+        "id": "floor-grey-tile",
+        "name": "Grey tile",
+        "category": "floor",
+        "color": "#b8b6b1",
+        "roughness": 0.4,
+        "metalness": 0
+      },
+      "floor-terrazzo": {
+        "id": "floor-terrazzo",
+        "name": "Terrazzo",
+        "category": "floor",
+        "color": "#d9d4ca",
+        "roughness": 0.45,
+        "metalness": 0
+      },
+      "wall-warm-white": {
+        "id": "wall-warm-white",
+        "name": "Warm white",
+        "category": "wall",
+        "color": "#f3f0e9",
+        "roughness": 0.9,
+        "metalness": 0
+      },
+      "wall-sage": {
+        "id": "wall-sage",
+        "name": "Sage",
+        "category": "wall",
+        "color": "#c8d2c2",
+        "roughness": 0.9,
+        "metalness": 0
+      },
+      "wall-greige": {
+        "id": "wall-greige",
+        "name": "Greige",
+        "category": "wall",
+        "color": "#d8d1c6",
+        "roughness": 0.9,
+        "metalness": 0
+      }
+    },
+    "viewpoints": [],
+    "openings": [
+      {
+        "id": "window",
+        "kind": "window",
+        "wallId": "back",
+        "offset": 1000,
+        "width": 800,
+        "height": 1000,
+        "sill": 1050,
+        "swing": "none",
+        "hinge": "left"
+      },
+      {
+        "id": "door",
+        "kind": "door",
+        "wallId": "front",
+        "offset": 1500,
+        "width": 900,
+        "height": 2100,
+        "sill": 0,
+        "swing": "in",
+        "hinge": "left"
+      }
+    ],
+    "furniture": [],
+    "preferences": {
+      "unit": "mm"
+    },
+    "cabinets": [
+      {
+        "id": "corner",
+        "type": "corner",
+        "dimensions": {
+          "width": 1000,
+          "height": 720,
+          "depth": 560
+        },
+        "position": {
+          "x": 500,
+          "y": 100,
+          "z": 280
+        },
+        "rotationY": 0,
+        "materialId": "shutter-white-matte",
+        "wallId": "back",
+        "catalogItemId": "corner-1000",
+        "frontStyle": "solid",
+        "interior": {
+          "sections": [
+            {
+              "width": null,
+              "fittings": [
+                {
+                  "kind": "shelf",
+                  "y": 335,
+                  "glass": false
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "sink",
+        "type": "sink",
+        "dimensions": {
+          "width": 800,
+          "height": 720,
+          "depth": 560
+        },
+        "position": {
+          "x": 1400,
+          "y": 100,
+          "z": 280
+        },
+        "rotationY": 0,
+        "materialId": "shutter-white-matte",
+        "wallId": "back",
+        "catalogItemId": "sink-800",
+        "frontStyle": "solid",
+        "interior": {
+          "sections": [
+            {
+              "width": null,
+              "fittings": []
+            }
+          ]
+        }
+      },
+      {
+        "id": "base1",
+        "type": "base",
+        "dimensions": {
+          "width": 600,
+          "height": 720,
+          "depth": 560
+        },
+        "position": {
+          "x": 2700,
+          "y": 100,
+          "z": 280
+        },
+        "rotationY": 0,
+        "materialId": "shutter-white-matte",
+        "wallId": "back",
+        "catalogItemId": "base-600",
+        "frontStyle": "solid",
+        "interior": {
+          "sections": [
+            {
+              "width": null,
+              "fittings": [
+                {
+                  "kind": "shelf",
+                  "y": 335,
+                  "glass": false
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "drawer1",
+        "type": "drawer",
+        "dimensions": {
+          "width": 600,
+          "height": 720,
+          "depth": 560
+        },
+        "position": {
+          "x": 3300,
+          "y": 100,
+          "z": 280
+        },
+        "rotationY": 0,
+        "materialId": "shutter-white-matte",
+        "wallId": "back",
+        "catalogItemId": "drawer-600",
+        "frontStyle": "solid",
+        "interior": {
+          "sections": [
+            {
+              "width": null,
+              "fittings": []
+            }
+          ]
+        }
+      },
+      {
+        "id": "base2",
+        "type": "base",
+        "dimensions": {
+          "width": 600,
+          "height": 720,
+          "depth": 560
+        },
+        "position": {
+          "x": 280,
+          "y": 100,
+          "z": 1480
+        },
+        "rotationY": 90,
+        "materialId": "shutter-white-matte",
+        "wallId": "left",
+        "catalogItemId": "base-600",
+        "frontStyle": "solid",
+        "interior": {
+          "sections": [
+            {
+              "width": null,
+              "fittings": [
+                {
+                  "kind": "shelf",
+                  "y": 335,
+                  "glass": false
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "wall1",
+        "type": "wall",
+        "dimensions": {
+          "width": 600,
+          "height": 720,
+          "depth": 350
+        },
+        "position": {
+          "x": 2100,
+          "y": 1480,
+          "z": 175
+        },
+        "rotationY": 0,
+        "materialId": "shutter-white-matte",
+        "wallId": "back",
+        "catalogItemId": "wall-600",
+        "frontStyle": "solid",
+        "interior": {
+          "sections": [
+            {
+              "width": null,
+              "fittings": [
+                {
+                  "kind": "shelf",
+                  "y": 215,
+                  "glass": false
+                },
+                {
+                  "kind": "shelf",
+                  "y": 450,
+                  "glass": false
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "wall2",
+        "type": "wall",
+        "dimensions": {
+          "width": 600,
+          "height": 720,
+          "depth": 350
+        },
+        "position": {
+          "x": 2700,
+          "y": 1480,
+          "z": 175
+        },
+        "rotationY": 0,
+        "materialId": "shutter-white-matte",
+        "wallId": "back",
+        "catalogItemId": "wall-600",
+        "frontStyle": "solid",
+        "interior": {
+          "sections": [
+            {
+              "width": null,
+              "fittings": [
+                {
+                  "kind": "shelf",
+                  "y": 215,
+                  "glass": false
+                },
+                {
+                  "kind": "shelf",
+                  "y": 450,
+                  "glass": false
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "wall3",
+        "type": "wall",
+        "dimensions": {
+          "width": 600,
+          "height": 720,
+          "depth": 350
+        },
+        "position": {
+          "x": 3300,
+          "y": 1480,
+          "z": 175
+        },
+        "rotationY": 0,
+        "materialId": "shutter-white-matte",
+        "wallId": "back",
+        "catalogItemId": "wall-600",
+        "frontStyle": "solid",
+        "interior": {
+          "sections": [
+            {
+              "width": null,
+              "fittings": [
+                {
+                  "kind": "shelf",
+                  "y": 215,
+                  "glass": false
+                },
+                {
+                  "kind": "shelf",
+                  "y": 450,
+                  "glass": false
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "wall4",
+        "type": "wall",
+        "dimensions": {
+          "width": 600,
+          "height": 720,
+          "depth": 350
+        },
+        "position": {
+          "x": 175,
+          "y": 1480,
+          "z": 1480
+        },
+        "rotationY": 90,
+        "materialId": "shutter-white-matte",
+        "wallId": "left",
+        "catalogItemId": "wall-600",
+        "frontStyle": "solid",
+        "interior": {
+          "sections": [
+            {
+              "width": null,
+              "fittings": [
+                {
+                  "kind": "shelf",
+                  "y": 215,
+                  "glass": false
+                },
+                {
+                  "kind": "shelf",
+                  "y": 450,
+                  "glass": false
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "appliances": [
+      {
+        "id": "dw",
+        "type": "dishwasher",
+        "dimensions": {
+          "width": 600,
+          "height": 820,
+          "depth": 560
+        },
+        "position": {
+          "x": 2100,
+          "y": 0,
+          "z": 280
+        },
+        "rotationY": 0,
+        "wallId": "back"
+      },
+      {
+        "id": "range",
+        "type": "range",
+        "dimensions": {
+          "width": 600,
+          "height": 860,
+          "depth": 600
+        },
+        "position": {
+          "x": 300,
+          "y": 0,
+          "z": 880
+        },
+        "rotationY": 90,
+        "wallId": "left"
+      },
+      {
+        "id": "fridge",
+        "type": "fridge",
+        "dimensions": {
+          "width": 700,
+          "height": 1800,
+          "depth": 650
+        },
+        "position": {
+          "x": 325,
+          "y": 0,
+          "z": 2130
+        },
+        "rotationY": 90,
+        "wallId": "left"
+      },
+      {
+        "id": "hood",
+        "type": "hood",
+        "dimensions": {
+          "width": 600,
+          "height": 690,
+          "depth": 500
+        },
+        "position": {
+          "x": 250,
+          "y": 1510,
+          "z": 880
+        },
+        "rotationY": 90,
+        "wallId": "left"
+      }
+    ]
+  }
+}

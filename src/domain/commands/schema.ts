@@ -4,6 +4,7 @@
  * The schema is the contract an AI adapter must satisfy; anything it emits is parsed here first.
  */
 import { z } from 'zod';
+import { LENGTH_UNITS } from '@/engine/measurement/units';
 import { INTERIOR_PRESETS } from '../furniture/interior';
 import {
   ApplianceTypeSchema,
@@ -11,9 +12,12 @@ import {
   DimensionsSchema,
   EntityIdSchema,
   FrontStyleSchema,
+  FurnitureTypeSchema,
   InteriorSchema,
   CentreMm,
   Mm,
+  OpeningKindSchema,
+  ProductionSettingsSchema,
   RoomSchema,
   RotationSchema,
   SurfaceSchema,
@@ -54,6 +58,14 @@ export const DesignCommandSchema = z.discriminatedUnion('type', [
   }),
   z.object({ type: z.literal('resize_cabinet'), cabinetId: EntityIdSchema, dimensions: DimensionsSchema }),
   z.object({ type: z.literal('resize_appliance'), applianceId: EntityIdSchema, width: Mm.positive() }),
+  z.object({
+    type: z.literal('add_furniture'),
+    furnitureType: FurnitureTypeSchema,
+    id: EntityIdSchema.optional(),
+    dimensions: DimensionsSchema.optional(),
+    materialId: z.string().optional(),
+  }),
+  z.object({ type: z.literal('resize_furniture'), furnitureId: EntityIdSchema, dimensions: DimensionsSchema }),
   z.object({ type: z.literal('move_entity'), entityId: EntityIdSchema, placement: PlacementSchema }),
   /** Free-standing placement: footprint centre in room millimetres and a rotation (floor units only). */
   z.object({ type: z.literal('place_entity'), entityId: EntityIdSchema, x: CentreMm, z: CentreMm, rotationY: RotationSchema }),
@@ -66,6 +78,31 @@ export const DesignCommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('remove_entity'), entityId: EntityIdSchema }),
   z.object({ type: z.literal('save_viewpoint'), viewpoint: ViewpointSchema.omit({ id: true }).extend({ id: EntityIdSchema.optional() }) }),
   z.object({ type: z.literal('delete_viewpoint'), id: EntityIdSchema }),
+  z.object({
+    type: z.literal('add_opening'),
+    kind: OpeningKindSchema,
+    id: EntityIdSchema.optional(),
+    wallId: WallIdSchema.optional(),
+    offset: Mm.nonnegative().optional(),
+    width: Mm.positive().optional(),
+    height: Mm.positive().optional(),
+    sill: Mm.nonnegative().optional(),
+  }),
+  z.object({
+    type: z.literal('update_opening'),
+    id: EntityIdSchema,
+    wallId: WallIdSchema.optional(),
+    offset: Mm.nonnegative().optional(),
+    width: Mm.positive().optional(),
+    height: Mm.positive().optional(),
+    sill: Mm.nonnegative().optional(),
+    swing: z.enum(['in', 'out', 'none']).optional(),
+    hinge: z.enum(['left', 'right']).optional(),
+  }),
+  z.object({ type: z.literal('remove_opening'), id: EntityIdSchema }),
+  z.object({ type: z.literal('set_measurement_unit'), unit: z.enum(LENGTH_UNITS) }),
+  /** Merges into the project's production settings; `null` clears a field. */
+  z.object({ type: z.literal('set_production_settings'), settings: ProductionSettingsSchema.partial().extend({ clear: z.array(z.enum(['constructionId', 'hinge', 'drawerRunner', 'handle', 'wastePercent', 'prices'])).max(6).optional() }) }),
 ]);
 export type DesignCommand = z.infer<typeof DesignCommandSchema>;
 

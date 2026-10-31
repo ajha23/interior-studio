@@ -94,3 +94,101 @@ Walking is a second camera rig (`WalkControls`) rather than a constrained orbit 
 movement, collisions and eye height behave like being in the room. The walker's position is view
 state; named viewpoints are design data (`project.viewpoints`, optional with a default, so no schema
 bump) changed through commands, because designers present them to clients.
+
+## D-014 — Wall openings constrain the layout
+
+Doors, windows and plain openings are design data (`project.openings`, optional with a default, so
+older files load unchanged). They are validated like units, and units may not intersect an opening's
+zone (700 mm into the room, over the opening's height) or an inward door's swing. That makes "a base
+unit under a window" valid and "a wall cabinet over a window" invalid without special cases. Walls are
+built as solid pieces around their openings; the front wall is now rendered and cut away like the others.
+
+## D-015 — Design checks are warnings, computed from the same geometry
+
+Kitchen-planning guidance (clearances, walkways, wall-cabinet and hood heights, landing space, work
+triangle) is reported as warnings by `engine/checks/designChecks.ts` and never blocks an edit, unlike
+the hard invariants. Door and drawer clearances sweep the same movers that animate in Interact mode,
+so a warning always matches what the user sees when opening the door. Thresholds are typical guidance
+and live as named constants in that file.
+
+## D-016 — Drawings and cut lists come from the same parts as the 3D model
+
+Elevations project each unit's procedural parts onto its wall; the cut list takes each part's two
+largest dimensions as length × width and the smallest as thickness (plinths become 18 mm kickboards).
+Hardware is counted from the movers (hinges by door height, runners per drawer). Nothing is typed in a
+second time, so drawings, cut list and 3D always agree. The construction rules are illustrative and
+the sheet says so; nested cutting layouts are left to the workshop's software (CSV export).
+
+## D-017 — Display units never touch geometry
+
+Storage stays integer millimetres. Units are a project preference used only to format and parse.
+Parsing converts exactly and rounds once (nearest mm, halves away from zero), so a 12 ft room is
+stored as 3658 mm and redisplays as 12' 0". Changing the unit is an ordinary command (undoable, saved)
+that changes nothing else; a test asserts geometry is identical across every unit.
+
+## D-018 — Walls are derived entities with stable ids
+
+The room is a rectangle, so walls are derived (not stored) with stable ids `wall-back` etc. They can be
+selected and inspected; editing a wall's length edits the room width or length. Free-form wall layouts
+(non-rectangular rooms) remain a later decision.
+
+## D-019 — Furniture is a third element category
+
+Tables, chairs and sofas are `project.furniture` items with a finish. Cabinets are now identified by
+their interior (not by having a material), and every spec lookup goes through `specOf(element)`.
+
+## D-020 — The assistant proposes operations; deterministic code edits
+
+Models return high-level, Zod-validated operations with references and lengths in any unit, not
+`DesignCommand`s or code. `src/ai` resolves references against the project, converts lengths once to
+millimetres, applies explicit direction semantics and compiles to ordinary commands, which run on an
+isolated copy through `executeBatch` before anything is shown. So a chat edit and an inspector edit
+are the same edit, a model cannot bypass validation, and the whole pipeline is testable with a
+deterministic provider. Commits go through `applyTransaction` (revision check, one undo step).
+
+## D-021 — The model key lives on a server function
+
+The browser talks to `/api/assistant` (Vite middleware in development, a Vercel function in
+production) which owns the system prompt, tools, limits and key. The function is bundled into
+`.vercel/output` (Build Output API) so it shares the app's TypeScript without path-alias or ESM
+resolution problems at runtime. Without configuration the endpoint uses the rule-based provider.
+
+## D-022 — Voice is an input method, not an editing path
+
+Speech recognition produces text and nothing else. A finished utterance is normalised (spoken numbers
+and units only) and sent through `Conversation.send(text, { source: 'voice' })`, the same call as the
+text box, so voice cannot bypass validation, previews, approval or undo. Recognition uses the
+browser's Web Speech API behind `SpeechToTextProvider` (no new dependency, no keys); a cloud provider
+can be added behind the same interface. One utterance per click, at most one submission per session,
+and replies to requests from a previous project or conversation are discarded.
+
+## D-023 — Layout planning is deterministic; the model only states the goal
+
+Whole-layout requests become a Zod `DesignObjective`. Generation, measurement, constraint checks and
+ranking are deterministic code in `src/ai/layout` that proposes ordinary `DesignCommand`s, evaluates
+them on isolated copies and commits only the designer's choice through `applyTransaction`. Hard and
+soft constraints are explicit with their sources; guidance figures are configurable and never
+presented as building-code compliance. A small heuristic search is used first; the generator
+interface leaves room for a constraint solver later. Candidate previews reuse the editor's transient
+`preview` so the same renderers show uncommitted options.
+
+## D-024 — One drawing model, written to SVG and PDF by the same renderer
+
+Technical deliverables are built as a typed drawing model in model millimetres (with dimensions that
+keep their measured value apart from their text) and drawn through a `Painter`; the SVG and PDF
+writers implement the painter, so both formats contain the same geometry and text layout. The PDF
+writer is our own (vector, Helvetica, ~200 lines) rather than a dependency. Screenshots are only used
+for presentations and are captioned as not to scale.
+
+## D-025 — Manufacturing outputs only from explicit, verified construction rules
+
+A construction method must be chosen (saved in `project.production`, optional and defaulted, no schema
+bump) before panels are listed, and only cabinet types the rule set marks as verified are cut; the
+rest are excluded and reported. Quantities are labelled calculated or estimated, with formulas.
+Readiness is reported per output and "manufacturing-ready" requires no blocking issue and no warning.
+
+## D-026 — Revisions are content hashes
+
+A design revision id is a hash of the project content, so deliverables can name the exact design they
+came from across sessions without a server, and staleness is a comparison of ids. Approved revisions
+are stored as snapshots so drawings can be regenerated for them later.

@@ -172,7 +172,7 @@ describe('adding, moving and removing', () => {
 describe('countertops', () => {
   it('L-shaped runs produce slabs that meet without overlapping', () => {
     const slabs = deriveCountertops(lShaped());
-    expect(slabs.map((s) => [s.wallId, s.length])).toEqual([['back', 2900], ['left', 600], ['left', 600]]);
+    expect(slabs.map((s) => [s.wallId, s.length])).toEqual([['back', 3000], ['left', 600], ['left', 600]]);
     const back = slabs[0]!.box;
     const left = slabs[1]!.box;
     expect(left.minZ).toBeGreaterThanOrEqual(back.maxZ);
@@ -331,5 +331,46 @@ describe('viewpoints', () => {
     delete file.project.viewpoints;
     const parsed = parseProjectFile(JSON.stringify(file));
     expect(parsed.ok && parsed.project.viewpoints).toEqual([]);
+  });
+});
+
+describe('measurement preferences', () => {
+  it('switching the display unit never changes geometry', () => {
+    const p = createProject({ name: '12 x 10', room: { width: 3658, length: 3048, height: 2438, wallThickness: 150 }, layout: 'empty', unit: 'ft-in' });
+    expect(p.preferences.unit).toBe('ft-in');
+    let current = p;
+    for (const unit of ['cm', 'mm', 'm', 'in', 'ft', 'ft-in'] as const) {
+      current = run(current, { type: 'set_measurement_unit', unit });
+      expect(current.preferences.unit).toBe(unit);
+      expect(current.room).toEqual(p.room);
+      expect(current.cabinets).toBe(p.cabinets);
+    }
+  });
+
+  it('loads files saved before units existed in millimetres', () => {
+    const file = JSON.parse(serializeProject(straight()));
+    delete file.project.preferences;
+    const parsed = parseProjectFile(JSON.stringify(file));
+    expect(parsed.ok && parsed.project.preferences).toEqual({ unit: 'mm' });
+  });
+});
+
+describe('furniture', () => {
+  it('adds a table on free floor space, resizes it keeping its id, and changes its finish', () => {
+    const p = run(straight(), { type: 'add_furniture', furnitureType: 'table', id: 't' });
+    const t = p.furniture[0]!;
+    expect(t).toMatchObject({ id: 't', kind: 'furniture', dimensions: { width: 1600, height: 750, depth: 900 } });
+    expect(validateProject(p)).toEqual([]);
+    const resized = run(p, { type: 'resize_furniture', furnitureId: 't', dimensions: { width: 1200, height: 750, depth: 800 } }, { type: 'set_material', targetIds: ['t'], materialId: 'shutter-walnut' });
+    expect(resized.furniture[0]).toMatchObject({ id: 't', materialId: 'shutter-walnut', dimensions: { width: 1200 } });
+    expect(executeCommand(p, { type: 'resize_furniture', furnitureId: 't', dimensions: { width: 5000, height: 750, depth: 800 } }).result.errors[0]).toMatch(/outside the dining table range/);
+    expect(run(p, { type: 'remove_entity', entityId: 't' }).furniture).toEqual([]);
+  });
+
+  it('loads files saved before furniture existed', () => {
+    const file = JSON.parse(serializeProject(straight()));
+    delete file.project.furniture;
+    const parsed = parseProjectFile(JSON.stringify(file));
+    expect(parsed.ok && parsed.project.furniture).toEqual([]);
   });
 });

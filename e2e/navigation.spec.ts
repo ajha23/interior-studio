@@ -74,7 +74,7 @@ test('drag in the plan snaps to the wall end; undo restores', async ({ page }) =
   await page.mouse.down();
   await page.mouse.move(x + dx / 2, y, { steps: 3 });
   await page.mouse.move(x + dx, y, { steps: 3 });
-  await expect(page.getByTestId('plan-readout')).toContainText('3600 mm · wall end');
+  await expect(page.getByTestId('plan-readout')).toContainText('3,600 mm · wall end');
   await page.mouse.up();
   await expect(page.getByTestId('inspector-offset')).toHaveValue('3600');
   await page.keyboard.press('ControlOrMeta+z');

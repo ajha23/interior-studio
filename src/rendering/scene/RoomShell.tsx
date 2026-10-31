@@ -1,13 +1,15 @@
 import { Grid } from '@react-three/drei';
 import { useFrame, type ThreeEvent } from '@react-three/fiber';
-import { useRef } from 'react';
-import type { Mesh } from 'three';
-import type { KitchenProject } from '@/domain';
+import { useMemo, useRef } from 'react';
+import type { Group, Mesh } from 'three';
+import { WALLS, type KitchenProject, type WallId } from '@/domain';
+import { wallPieces } from '@/engine/geometry/walls';
 import type { SceneMaterials } from '../materials/useSceneMaterials';
 import { toWorld } from '../units';
 
 /** Height of the stub left in place of a cut-away wall, so the room outline stays readable. */
-const STUB = 0.08;
+const STUB = 80;
+const HIDDEN_LAYER = 31;
 
 interface Props {
   project: KitchenProject;
@@ -15,64 +17,100 @@ interface Props {
   showGrid: boolean;
   autoHideWalls: boolean;
   onBackgroundClick: () => void;
+  /** Clicking a wall selects it (stationary clicks only). */
+  onWallClick: (wallId: WallId) => void;
+  selectedWall: WallId | null;
   /** Walk mode: clicking the floor walks there (room mm) instead of clearing the selection. */
   onFloorClick?: (x: number, z: number) => void;
 }
 
 /**
- * Floor, back/left/right walls (the front is open) and the grid. With auto-hide on, a wall whose
- * outside faces the camera is cut down to a low stub, so the room is visible from any angle.
+ * Floor, the four walls (built as pieces around their doors and windows) and the grid. With
+ * auto-hide on, a wall whose outside faces the camera is cut down to a low stub, so the room is
+ * visible from any angle; from inside (walking) every wall stands.
  */
-export function RoomShell({ project, materials, showGrid, autoHideWalls, onBackgroundClick, onFloorClick }: Props) {
-  const W = toWorld(project.room.width);
-  const L = toWorld(project.room.length);
-  const H = toWorld(project.room.height);
-  const T = toWorld(project.room.wallThickness);
+export function RoomShell({ project, materials, showGrid, autoHideWalls, onBackgroundClick, onWallClick, selectedWall, onFloorClick }: Props) {
+  const { width, length, wallThickness } = project.room;
+  const W = toWorld(width);
+  const L = toWorld(length);
+  const T = toWorld(wallThickness);
   const wall = materials.get(project.surfaces.wall);
   const floor = materials.solid(project.surfaces.floor);
-  const back = useRef<Mesh>(null);
-  const left = useRef<Mesh>(null);
-  const right = useRef<Mesh>(null);
+  const pieces = useMemo(
+    () => Object.fromEntries(WALLS.map((w) => [w, wallPieces(project.room, w, project.openings)])) as Record<WallId, ReturnType<typeof wallPieces>>,
+    [project.room, project.openings],
+  );
+  const full = useRef<Partial<Record<WallId, Group | null>>>({});
+  const stub = useRef<Partial<Record<WallId, Mesh | null>>>({});
 
   useFrame(({ camera }) => {
     const p = camera.position;
-    const set = (mesh: Mesh | null, outside: boolean) => {
-      if (!mesh) return;
-      const cut = autoHideWalls && outside;
-      mesh.scale.y = cut ? STUB / H : 1;
-      mesh.position.y = cut ? STUB / 2 : H / 2;
-    };
-    set(back.current, p.z < 0);
-    set(left.current, p.x < 0);
-    set(right.current, p.x > W);
+    const outside: Record<WallId, boolean> = { back: p.z < 0, front: p.z > L, left: p.x < 0, right: p.x > W };
+    for (const w of WALLS) {
+      const cut = autoHideWalls && outside[w];
+      const g = full.current[w];
+      const s = stub.current[w];
+      if (g && g.visible === cut) {
+        g.visible = !cut;
+        // Raycasting ignores visibility: park a cut-away wall on a layer clicks never test, so it
+        // cannot catch clicks meant for the units behind it.
+        g.traverse((o) => (cut ? o.layers.set(HIDDEN_LAYER) : o.layers.set(0)));
+      }
+      if (s) s.visible = cut;
+    }
   });
 
-  // R3F fires onClick even at the end of an orbit drag; only a stationary click clears the selection.
-  const click = (e: ThreeEvent<MouseEvent>) => {
-    if (e.delta < 4) onBackgroundClick();
-  };
+  // R3F fires onClick even at the end of an orbit drag; only stationary clicks select or walk.
   const floorClick = (e: ThreeEvent<MouseEvent>) => {
     if (e.delta >= 4) return;
     if (onFloorClick) onFloorClick(e.point.x * 1000, e.point.z * 1000);
     else onBackgroundClick();
   };
+  const boxMesh = (key: string, b: { minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number }, w: WallId) => (
+    <mesh
+      key={key}
+      receiveShadow
+      castShadow
+      material={wall}
+      position={[toWorld((b.minX + b.maxX) / 2), toWorld((b.minY + b.maxY) / 2), toWorld((b.minZ + b.maxZ) / 2)]}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (e.delta < 4) onWallClick(w);
+      }}
+    >
+      <boxGeometry args={[toWorld(b.maxX - b.minX), toWorld(b.maxY - b.minY), toWorld(b.maxZ - b.minZ)]} />
+      {selectedWall === w && <meshBasicMaterial attach="material" color="#3b82f6" transparent opacity={0.35} />}
+    </mesh>
+  );
+
   return (
     <group>
       <mesh name="floor" receiveShadow material={floor} position={[W / 2, -0.01, L / 2]} onClick={floorClick}>
-        <boxGeometry args={[W + 2 * T, 0.02, L + T]} />
+        <boxGeometry args={[W + 2 * T, 0.02, L + 2 * T]} />
       </mesh>
-      <mesh ref={back} name="wall-back" receiveShadow castShadow material={wall} position={[W / 2, H / 2, -T / 2]} onClick={click}>
-        <boxGeometry args={[W + 2 * T, H, T]} />
-      </mesh>
-      <mesh ref={left} name="wall-left" receiveShadow castShadow material={wall} position={[-T / 2, H / 2, L / 2]} onClick={click}>
-        <boxGeometry args={[T, H, L]} />
-      </mesh>
-      <mesh ref={right} name="wall-right" receiveShadow castShadow material={wall} position={[W + T / 2, H / 2, L / 2]} onClick={click}>
-        <boxGeometry args={[T, H, L]} />
-      </mesh>
+      {WALLS.map((w) => (
+        <group key={w} name={`wall-${w}`}>
+          <group ref={(g) => void (full.current[w] = g)}>{pieces[w].map((b, i) => boxMesh(`${w}${i}`, b, w))}</group>
+          {/* Shown instead of the wall when it is cut away. */}
+          <mesh ref={(m) => void (stub.current[w] = m)} visible={false} material={wall} {...stubGeometry(project, w)} />
+        </group>
+      ))}
       {showGrid && (
         <Grid position={[W / 2, 0.001, L / 2]} args={[W, L]} cellSize={0.1} sectionSize={1} cellThickness={0.5} sectionThickness={1} cellColor="#9aa3ad" sectionColor="#5b6673" fadeDistance={40} />
       )}
     </group>
   );
+}
+
+function stubGeometry(project: KitchenProject, w: WallId) {
+  const { width, length, wallThickness: T } = project.room;
+  const b =
+    w === 'back' ? { minX: -T, maxX: width + T, minZ: -T, maxZ: 0 }
+    : w === 'front' ? { minX: -T, maxX: width + T, minZ: length, maxZ: length + T }
+    : w === 'left' ? { minX: -T, maxX: 0, minZ: 0, maxZ: length }
+    : { minX: width, maxX: width + T, minZ: 0, maxZ: length };
+  return {
+    position: [toWorld((b.minX + b.maxX) / 2), toWorld(STUB / 2), toWorld((b.minZ + b.maxZ) / 2)] as [number, number, number],
+    children: <boxGeometry args={[toWorld(b.maxX - b.minX), toWorld(STUB), toWorld(b.maxZ - b.minZ)]} />,
+  };
 }

@@ -56,7 +56,7 @@ describe('ElementInspector', () => {
     const width = screen.getByTestId('inspector-width');
     await user.clear(width);
     await user.type(width, 'wide{Enter}');
-    expect(screen.getByRole('alert')).toHaveTextContent('whole number of millimetres');
+    expect(screen.getByRole('alert')).toHaveTextContent('“wide” is not a length');
     expect(store().project).toBe(before);
   });
 

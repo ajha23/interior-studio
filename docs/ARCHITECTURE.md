@@ -10,7 +10,12 @@ src/
 ├── components/     Shared UI: ui/ (shadcn-style primitives, mm-field), layout/ (top bar, status bar)
 ├── state/          Zustand + Immer editor store: project, history, selection, view
 ├── rendering/      React Three Fiber: scene, cabinets/appliances, materials, selection, labels
-├── engine/         Framework-free maths: geometry (boxes, procedural parts), measurement
+├── ai/             Framework-free assistant: schema, references, compiler, transactions, providers,
+│                   layout/ (objective → constraints → candidates → scores)
+├── server/         /api/assistant handler (dev middleware + Vercel function)
+├── voice/          Framework-free speech input/output and normalisation (feeds the assistant)
+├── engine/         Framework-free maths: geometry (boxes, procedural parts), measurement,
+│                   deliverables/ (drawing model, plan/elevations, schedule, BOM, readiness, PDF/SVG/CSV)
 ├── domain/         Framework-free model: schema (Zod), specs, walls, constraints, commands,
 │                   presets, serialization, BOM
 ├── persistence/    IndexedDB project store
@@ -37,8 +42,9 @@ Zustand; ESLint enforces this.
    worktops (`domain/furniture/countertops.ts`), labels (`rendering/selection/labels.ts`), the plan
    and the BOM (`domain/bom/bom.ts`).
 
-The AI copilot (Phase 3) plugs in at step 1: it will emit `DesignCommand` JSON, which goes through
-exactly the same path, so a chat edit and an inspector edit produce identical results.
+The design assistant (Phase 2, `docs/AI_ASSISTANT.md`) plugs in at step 1: its operations are
+compiled to `DesignCommand`s and committed with `applyTransaction` (all-or-nothing, one undo step),
+so a chat edit and an inspector edit produce identical results.
 
 ## Rendering boundary
 
@@ -71,9 +77,8 @@ always goes through `parseProjectFile`: JSON parse → format check → migratio
   no separate `engine/collision`. Snapping along walls lives in `engine/snapping/alongWall.ts`.
 - Cabinets and appliances share one renderer (`rendering/cabinets/ElementModel.tsx`) because both
   are built from procedural parts.
-- `features/ai-copilot` does not exist yet; its contract is `DesignCommandSchema`. The typed
-  command line (`features/command-line`) already maps text to `DesignCommand`s and is the natural
-  place to plug an LLM adapter in later.
+- The assistant lives in `src/ai` (framework-free, lint-enforced) with its panel in
+  `features/assistant` and state in `state/assistantStore.ts`; see `docs/AI_ASSISTANT.md`.
 
 ## Walk mode (spec 010)
 

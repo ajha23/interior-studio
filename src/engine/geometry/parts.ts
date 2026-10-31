@@ -12,8 +12,8 @@
  * or a slide out of the front. The renderer animates them; `moverPose` is the shared maths.
  */
 import { BACK_PANEL, fittingName, fittingSpan, insideOf, PANEL, sectionWidths } from '@/domain/furniture/interior';
-import type { Fitting, KitchenCabinet, KitchenElement } from '@/domain/schema';
-import { isCabinet } from '@/domain/schema';
+import type { Fitting, Furniture, KitchenCabinet, KitchenElement } from '@/domain/schema';
+import { isCabinet, isFurniture } from '@/domain/schema';
 
 export type PartFinish = 'shutter' | 'carcass' | 'handle' | 'steel' | 'dark' | 'glass' | 'glassPane';
 
@@ -33,7 +33,11 @@ export const FRONT_THICKNESS = 18;
 export const FRONT_GAP = 3;
 const HANDLE_PROJECTION = 20;
 const PLINTH_SETBACK = 60;
-const BLIND_CORNER_DOOR = 450;
+/**
+ * A blind corner unit keeps 600 mm blind next to the corner (the perpendicular run's depth plus
+ * clearance), so its door can open without hitting the units round the corner.
+ */
+const BLIND_CORNER_BLIND = 600;
 
 export interface Mover {
   id: string;
@@ -61,7 +65,7 @@ const DOOR_ANGLE = (100 * Math.PI) / 180;
 const DROP_ANGLE = (85 * Math.PI) / 180;
 
 export function buildModel(el: KitchenElement): ElementModel {
-  return isCabinet(el) ? cabinetModel(el) : applianceModel(el.type, el.dimensions);
+  return isCabinet(el) ? cabinetModel(el) : isFurniture(el) ? furnitureModel(el) : applianceModel(el.type, el.dimensions);
 }
 
 export function buildParts(el: KitchenElement): Part[] {
@@ -225,7 +229,7 @@ function cabinetModel(c: KitchenCabinet): ElementModel {
     case 'corner': {
       // Blind corner: the left part is hidden behind the perpendicular run, so it gets a fixed
       // carcass-finish filler; the opening door is on the right.
-      const doorX = xr - BLIND_CORNER_DOOR;
+      const doorX = xr - Math.max(300, w - BLIND_CORNER_BLIND);
       if (!open) parts.push(...fronts('blind', d, xl, doorX, 0, h, 1, 'carcass'));
       // The opening is on the right, so its handle sits by the blind panel and it hinges on the right.
       doors('door', doorX, xr, 0, h, 1, h - 90, true);
@@ -437,5 +441,57 @@ function applianceModel(type: KitchenElement['type'], d: Dims): ElementModel {
     }
     default:
       return { parts: [box('body', 'steel', true, xl, xr, 0, h, zb, zf)], movers: [] };
+  }
+}
+
+/** Loose furniture in its finish ("shutter" parts use the piece's material); legs are dark. */
+function furnitureModel(f: Furniture): ElementModel {
+  const { width: w, height: h, depth: d } = f.dimensions;
+  const xl = -w / 2;
+  const xr = w / 2;
+  const zb = -d / 2;
+  const zf = d / 2;
+  const leg = 45;
+  const legs = (top: number, inset: number) =>
+    [
+      [xl + inset, zb + inset],
+      [xr - inset - leg, zb + inset],
+      [xl + inset, zf - inset - leg],
+      [xr - inset - leg, zf - inset - leg],
+    ].map(([x, z], i) => box(`leg${i}`, 'dark', true, x!, x! + leg, 0, top, z!, z! + leg));
+  switch (f.type) {
+    case 'table':
+      return { parts: [box('top', 'shutter', true, xl, xr, h - 30, h, zb, zf), ...legs(h - 30, 60)], movers: [] };
+    case 'chair': {
+      const seat = 450;
+      return {
+        parts: [
+          box('seat', 'shutter', true, xl, xr, seat - 40, seat, zb, zf),
+          ...legs(seat - 40, 20),
+          box('back', 'shutter', true, xl, xr, seat, h, zb, zb + 30),
+        ],
+        movers: [],
+      };
+    }
+    case 'sofa': {
+      const arm = Math.min(180, w * 0.12);
+      const seat = 420;
+      return {
+        parts: [
+          box('base', 'shutter', true, xl, xr, 60, seat - 120, zb, zf),
+          box('cushions', 'shutter', true, xl + arm, xr - arm, seat - 120, seat, zb + 200, zf),
+          box('backrest', 'shutter', true, xl, xr, seat - 120, h, zb, zb + 200),
+          box('armL', 'shutter', true, xl, xl + arm, seat - 120, 620, zb + 200, zf),
+          box('armR', 'shutter', true, xr - arm, xr, seat - 120, 620, zb + 200, zf),
+          ...[
+            [xl + 40, zb + 40],
+            [xr - 80, zb + 40],
+            [xl + 40, zf - 80],
+            [xr - 80, zf - 80],
+          ].map(([x, z], i) => box(`foot${i}`, 'dark', true, x!, x! + 40, 0, 60, z!, z! + 40)),
+        ],
+        movers: [],
+      };
+    }
   }
 }

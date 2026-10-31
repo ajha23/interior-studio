@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Download, FolderOpen, Plus, Sparkles, Trash2, Upload } from 'lucide-react';
-import { createExampleProject, createProject, DEFAULT_ROOM, layoutFitErrors, RoomSchema, zodMessages, type Layout, type Room } from '@/domain';
+import { createExampleProject, createProject, DEFAULT_ROOM, layoutFitErrors, ROOM_PRESETS, RoomSchema, zodMessages, type Layout, type Room } from '@/domain';
+import { Select } from '@/components/ui/select';
+import { LENGTH_UNITS, UNIT_LABEL, type LengthUnit } from '@/engine/measurement/units';
 import { deleteProject, listProjects, loadProject, type ProjectSummary } from '@/persistence/projectDb';
 import { navigate } from '@/app/router';
+import { formatLength } from '@/engine/measurement/units';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -23,6 +26,7 @@ export function ProjectsHome({ notice }: { notice?: string | null }) {
   const [name, setName] = useState('My kitchen');
   const [room, setRoom] = useState<Room>(DEFAULT_ROOM);
   const [layout, setLayout] = useState<Layout>('straight');
+  const [unit, setUnit] = useState<LengthUnit>('mm');
   const [errors, setErrors] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -41,7 +45,7 @@ export function ProjectsHome({ notice }: { notice?: string | null }) {
     if (problems.length) return;
     setBusy(true);
     try {
-      await createAndOpen(createProject({ name, room, layout }));
+      await createAndOpen(createProject({ name, room, layout, unit }));
     } finally {
       setBusy(false);
     }
@@ -92,11 +96,26 @@ export function ProjectsHome({ notice }: { notice?: string | null }) {
                 <Label htmlFor="project-name">Project name</Label>
                 <Input id="project-name" value={name} onChange={(e) => setName(e.target.value)} />
               </div>
+              <div className="grid grid-cols-[1fr_auto] items-end gap-2">
+                <div className="flex flex-wrap gap-1" aria-label="Room presets">
+                  {ROOM_PRESETS.map((p) => (
+                    <button key={p.id} type="button" onClick={() => setRoom(p.room)} className={cn('rounded border px-1.5 py-0.5 text-[11px] hover:bg-muted', room === p.room && 'border-highlight bg-accent')}>
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor="new-unit">Units</Label>
+                  <Select id="new-unit" value={unit} onChange={(e) => setUnit(e.target.value as LengthUnit)} className="h-8 w-36">
+                    {LENGTH_UNITS.map((u) => <option key={u} value={u}>{UNIT_LABEL[u]}</option>)}
+                  </Select>
+                </div>
+              </div>
               <div className="grid grid-cols-2 gap-3">
-                <MmField label="Room width" value={room.width} onCommit={setDim('width')} testId="new-room-width" />
-                <MmField label="Room length" value={room.length} onCommit={setDim('length')} testId="new-room-length" />
-                <MmField label="Ceiling height" value={room.height} onCommit={setDim('height')} />
-                <MmField label="Wall thickness" value={room.wallThickness} onCommit={setDim('wallThickness')} />
+                <MmField label="Room width" value={room.width} onCommit={setDim('width')} testId="new-room-width" unit={unit} />
+                <MmField label="Room length" value={room.length} onCommit={setDim('length')} testId="new-room-length" unit={unit} />
+                <MmField label="Ceiling height" value={room.height} onCommit={setDim('height')} unit={unit} testId="new-room-height" />
+                <MmField label="Wall thickness" value={room.wallThickness} onCommit={setDim('wallThickness')} unit={unit} />
               </div>
               <fieldset className="flex flex-col gap-1.5">
                 <legend className="mb-1.5 text-xs font-medium text-muted-foreground">Layout</legend>
@@ -145,7 +164,7 @@ export function ProjectsHome({ notice }: { notice?: string | null }) {
                   <div className="min-w-0">
                     <h3 className="truncate font-medium">{p.name}</h3>
                     <p className="text-xs text-muted-foreground">
-                      {p.room.width} × {p.room.length} mm · {p.elementCount} units · saved {new Date(p.updatedAt).toLocaleString()}
+                      {formatLength(p.room.width, 'mm')} × {formatLength(p.room.length, 'mm')} · {p.elementCount} units · saved {new Date(p.updatedAt).toLocaleString()}
                     </p>
                   </div>
                   <div className="mt-auto flex gap-1.5">

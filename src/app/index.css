@@ -80,3 +80,14 @@
   body { @apply bg-background text-foreground antialiased; font-feature-settings: 'tnum' 1; }
   :focus-visible { @apply outline-2 outline-offset-2 outline-ring; }
 }
+
+/* Printing a drawing sheet: only the sheet, on A3 landscape. */
+@page {
+  size: A3 landscape;
+  margin: 8mm;
+}
+@media print {
+  body * { visibility: hidden; }
+  .print-sheet, .print-sheet * { visibility: visible; }
+  .print-sheet { position: fixed; inset: 0; width: 100%; height: 100%; }
+}

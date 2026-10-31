@@ -4,15 +4,17 @@
  * A rejected command returns the original project object unchanged, with readable errors.
  */
 import { produce, type Draft } from 'immer';
-import { allElements, elementLabel, newIssues } from '../constraints/validate';
+import { allElements, elementLabel, newIssues, validateProject } from '../constraints/validate';
 import { findFreePlacement, makeAppliance, makeCabinet, newId } from '../furniture/factory';
 import { interiorPreset, PRESET_LABEL } from '../furniture/interior';
-import { dimensionErrors, specFor, type ElementSpec } from '../furniture/specs';
+import { dimensionErrors, FURNITURE_SPECS, specFor, specOf, type ElementSpec } from '../furniture/specs';
 import { buildLayout, layoutFitErrors } from '../project/presets';
-import { WALL_LABEL, offsetAlongWall, placeOnWall, spanAlongWall, wallAxis, wallLength } from '../room/walls';
-import { isCabinet, zodMessages, type Dimensions, type KitchenCabinet, type KitchenElement, type KitchenProject } from '../schema';
+import { OPENING_SPECS, openingLabel, openingSizeErrors } from '../room/openings';
+import { WALL_LABEL, WALLS, offsetAlongWall, placeOnWall, spanAlongWall, wallAxis, wallLength } from '../room/walls';
+import { isCabinet, isFurniture, zodMessages, type Dimensions, type Furniture, type KitchenCabinet, type KitchenElement, type KitchenProject, type Opening, type Position, type WallId } from '../schema';
 import { DesignCommandSchema, type CommandResult, type DesignCommand, type Placement } from './schema';
 import { DEFAULT_SHUTTER } from '../materials/library';
+import { UNIT_LABEL } from '@/engine/measurement/units';
 
 export interface ExecuteOptions {
   /** Id generator for created elements; injectable for deterministic tests. */
@@ -61,6 +63,32 @@ export function executeCommand(project: KitchenProject, input: unknown, options:
   const introduced = newIssues(project, next);
   if (introduced.length) return failed(project, introduced.map((i) => i.message));
   return { project: next, result: { success: true, errors: [], affectedEntityIds: outcome.affected, summary: outcome.summary } };
+}
+
+export interface BatchExecution {
+  /** The project after every command, or the original project when any command was rejected. */
+  project: KitchenProject;
+  success: boolean;
+  /** One result per command that ran; a failed batch ends with the rejected command's result. */
+  results: CommandResult[];
+  /** Index of the rejected command, or -1. */
+  failedIndex: number;
+}
+
+/**
+ * Runs commands in order as one transaction: each sees the project left by the previous one, and
+ * if any is rejected the whole batch is, returning the original project untouched (no partial commit).
+ */
+export function executeBatch(project: KitchenProject, commands: readonly unknown[], options: ExecuteOptions = {}): BatchExecution {
+  let current = project;
+  const results: CommandResult[] = [];
+  for (const [i, command] of commands.entries()) {
+    const { project: next, result } = executeCommand(current, command, options);
+    results.push(result);
+    if (!result.success) return { project, success: false, results, failedIndex: i };
+    current = next;
+  }
+  return { project: current, success: true, results, failedIndex: -1 };
 }
 
 function failed(project: KitchenProject, errors: string[]): Execution {
@@ -134,10 +162,32 @@ function apply(p: Draft<KitchenProject>, cmd: DesignCommand, ctx: Ctx): Outcome 
       return resize(p, el, cmd.dimensions);
     }
 
+    case 'add_furniture': {
+      const spec = FURNITURE_SPECS[cmd.furnitureType];
+      const dimensions = cmd.dimensions ?? { ...spec.defaults };
+      const sizeErrors = dimensionErrors(spec, dimensions);
+      if (sizeErrors.length) reject(...sizeErrors);
+      const materialId = cmd.materialId ?? 'shutter-oak';
+      requireMaterial(p, materialId, 'shutter');
+      const id = uniqueId(p, cmd.id ?? ctx.newId('fur'));
+      const piece: Furniture = { kind: 'furniture', id, type: cmd.furnitureType, dimensions, position: { x: 0, y: 0, z: 0 }, rotationY: 0, materialId };
+      const spot = findFloorSpot(p, piece) ?? reject(`There is no free floor space for a ${dimensions.width} mm ${spec.label.toLowerCase()}.`);
+      p.furniture.push({ ...piece, position: spot });
+      return { summary: `Added a ${spec.label.toLowerCase()} (${dimensions.width} × ${dimensions.depth} mm)`, affected: [id] };
+    }
+
+    case 'resize_furniture': {
+      const el = findElement(p, cmd.furnitureId);
+      if (!isFurniture(el)) reject(`${elementLabel(el)} is not furniture.`);
+      const sizeErrors = dimensionErrors(specOf(el), cmd.dimensions);
+      if (sizeErrors.length) reject(...sizeErrors);
+      return resize(p, el, cmd.dimensions);
+    }
+
     case 'resize_appliance': {
       const el = findElement(p, cmd.applianceId);
-      if (isCabinet(el)) reject('Use resize_cabinet for cabinets.');
-      const spec = specFor('appliance', el.type);
+      if (isCabinet(el) || isFurniture(el)) reject(`Use ${isCabinet(el) ? 'resize_cabinet' : 'resize_furniture'} for ${elementLabel(el)}.`);
+      const spec = specOf(el);
       const dims = { ...el.dimensions, width: cmd.width };
       const sizeErrors = dimensionErrors(spec, dims);
       if (sizeErrors.length) reject(...sizeErrors);
@@ -146,7 +196,7 @@ function apply(p: Draft<KitchenProject>, cmd: DesignCommand, ctx: Ctx): Outcome 
 
     case 'move_entity': {
       const el = findElement(p, cmd.entityId);
-      const spec = specFor(isCabinet(el) ? 'cabinet' : 'appliance', el.type);
+      const spec = specOf(el);
       if (spec.mount === 'floor' && cmd.placement.elevation !== undefined && cmd.placement.elevation !== spec.elevation) {
         reject(`A ${spec.label.toLowerCase()} stands on the floor; its elevation is fixed at ${spec.elevation} mm.`);
       }
@@ -163,7 +213,7 @@ function apply(p: Draft<KitchenProject>, cmd: DesignCommand, ctx: Ctx): Outcome 
 
     case 'place_entity': {
       const el = findElement(p, cmd.entityId);
-      const spec = specFor(isCabinet(el) ? 'cabinet' : 'appliance', el.type);
+      const spec = specOf(el);
       if (spec.mount === 'wall') reject(`A ${spec.label.toLowerCase()} hangs on a wall: move it along a wall or onto another wall.`);
       el.position = { x: cmd.x, y: spec.elevation, z: cmd.z };
       el.rotationY = cmd.rotationY;
@@ -173,7 +223,7 @@ function apply(p: Draft<KitchenProject>, cmd: DesignCommand, ctx: Ctx): Outcome 
 
     case 'rotate_entity': {
       const el = findElement(p, cmd.entityId);
-      const spec = specFor(isCabinet(el) ? 'cabinet' : 'appliance', el.type);
+      const spec = specOf(el);
       if (spec.mount === 'wall') reject(`A ${spec.label.toLowerCase()} hangs on a wall and faces the room; it cannot be rotated.`);
       // Rotating a wall unit lifts it off the wall: it keeps its centre and becomes free-standing.
       el.rotationY = cmd.rotationY;
@@ -218,15 +268,68 @@ function apply(p: Draft<KitchenProject>, cmd: DesignCommand, ctx: Ctx): Outcome 
       return { summary: `Deleted the viewpoint “${v.name}”`, affected: [] };
     }
 
+    case 'add_opening': {
+      const spec = OPENING_SPECS[cmd.kind];
+      const id = cmd.id ?? ctx.newId('opn');
+      if (p.openings.some((o) => o.id === id)) reject(`An opening with id “${id}” already exists.`);
+      const base: Opening = {
+        id,
+        kind: cmd.kind,
+        wallId: cmd.wallId ?? 'back',
+        offset: cmd.offset ?? 0,
+        width: cmd.width ?? spec.width.default,
+        height: cmd.height ?? spec.height.default,
+        sill: cmd.sill ?? spec.sill.default,
+        swing: cmd.kind === 'door' ? 'in' : 'none',
+        hinge: 'left',
+      };
+      const sizeErrors = openingSizeErrors(base);
+      if (sizeErrors.length) reject(...sizeErrors);
+      const opening = cmd.wallId !== undefined && cmd.offset !== undefined ? base : (findOpeningSpot(p, base, cmd.wallId) ?? reject(`There is no free stretch of wall for a ${base.width} mm ${spec.label.toLowerCase()}.`));
+      p.openings.push(opening);
+      return { summary: `Added a ${base.width} mm ${spec.label.toLowerCase()} on the ${opening.wallId} wall`, affected: [id] };
+    }
+
+    case 'update_opening': {
+      const o = p.openings.find((x) => x.id === cmd.id) ?? reject('That opening no longer exists.');
+      const { type: _t, id: _i, ...patch } = cmd;
+      if (patch.wallId && patch.wallId !== o.wallId && patch.offset === undefined) o.offset = 0;
+      Object.assign(o, Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)));
+      if (o.kind !== 'door') o.swing = 'none';
+      const sizeErrors = openingSizeErrors(o);
+      if (sizeErrors.length) reject(...sizeErrors);
+      return { summary: `Updated the ${openingLabel(o)}`, affected: [o.id] };
+    }
+
+    case 'remove_opening': {
+      const o = p.openings.find((x) => x.id === cmd.id) ?? reject('That opening no longer exists.');
+      p.openings = p.openings.filter((x) => x.id !== cmd.id);
+      return { summary: `Removed the ${openingLabel(o)}`, affected: [o.id] };
+    }
+
+    case 'set_production_settings': {
+      const { clear, ...patch } = cmd.settings;
+      const next = { ...p.production, ...Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)) };
+      for (const k of clear ?? []) delete (next as Record<string, unknown>)[k];
+      p.production = next;
+      return { summary: 'Updated the production settings', affected: [] };
+    }
+
+    case 'set_measurement_unit': {
+      // Display only: no length in the project changes.
+      p.preferences.unit = cmd.unit;
+      return { summary: `Showing lengths in ${UNIT_LABEL[cmd.unit].toLowerCase()}`, affected: [] };
+    }
+
     case 'set_material': {
       requireMaterial(p, cmd.materialId, 'shutter');
       for (const id of cmd.targetIds) {
         const el = findElement(p, id);
-        if (!isCabinet(el)) reject(`${elementLabel(el)} is an appliance; appliance finishes are fixed.`);
+        if (!isCabinet(el) && !isFurniture(el)) reject(`${elementLabel(el)} is an appliance; appliance finishes are fixed.`);
         el.materialId = cmd.materialId;
       }
       const name = p.materials[cmd.materialId]!.name;
-      return { summary: `Applied ${name} to ${cmd.targetIds.length} cabinet${cmd.targetIds.length === 1 ? '' : 's'}`, affected: cmd.targetIds };
+      return { summary: `Applied ${name} to ${cmd.targetIds.length} item${cmd.targetIds.length === 1 ? '' : 's'}`, affected: cmd.targetIds };
     }
 
     case 'set_surface_material': {
@@ -239,6 +342,7 @@ function apply(p: Draft<KitchenProject>, cmd: DesignCommand, ctx: Ctx): Outcome 
       const el = findElement(p, cmd.entityId);
       p.cabinets = p.cabinets.filter((c) => c.id !== el.id);
       p.appliances = p.appliances.filter((a) => a.id !== el.id);
+      p.furniture = p.furniture.filter((f) => f.id !== el.id);
       return { summary: `Removed ${elementLabel(el)}`, affected: [el.id] };
     }
   }
@@ -265,7 +369,7 @@ function resize(p: Draft<KitchenProject>, el: Draft<KitchenElement>, dims: Dimen
           affected.push(other.id);
           const over = spanAlongWall(other).end - wallLength(p.room, el.wallId);
           if (over > 0) {
-            const kind = specFor(isCabinet(el) ? 'cabinet' : 'appliance', el.type).label.toLowerCase();
+            const kind = specOf(el).label.toLowerCase();
             reject(`Not enough space on the ${WALL_LABEL[el.wallId].toLowerCase()}: a ${dims.width} mm ${kind} pushes ${elementLabel(other)} ${over} mm past the end of the wall.`);
           }
         }
@@ -293,7 +397,41 @@ function resize(p: Draft<KitchenProject>, el: Draft<KitchenElement>, dims: Dimen
 }
 
 function elementsOf(p: Draft<KitchenProject>): Draft<KitchenElement>[] {
-  return [...p.cabinets, ...p.appliances];
+  return [...p.cabinets, ...p.appliances, ...p.furniture];
+}
+
+/**
+ * A free stretch of wall for a new opening: the middle of each wall first (back, left, right, front,
+ * or only `wallId`), then working outwards in 100 mm steps, skipping spots that would cause issues.
+ */
+function findOpeningSpot(p: KitchenProject, base: Opening, wallId?: WallId): Opening | null {
+  for (const wall of wallId ? [wallId] : WALLS) {
+    const len = wallLength(p.room, wall);
+    const mid = Math.round((len - base.width) / 2 / 10) * 10;
+    for (let k = 0; k <= len / 100; k++) {
+      for (const offset of k === 0 ? [mid] : [mid - k * 100, mid + k * 100]) {
+        if (offset < 0 || offset + base.width > len) continue;
+        const candidate: Opening = { ...base, wallId: wall, offset };
+        if (!validateProject({ ...p, openings: [...p.openings, candidate] }).some((i) => i.entityIds.includes(candidate.id))) return candidate;
+      }
+    }
+  }
+  return null;
+}
+
+/** A free spot on the floor for loose furniture: from the middle of the room outwards, 100 mm steps. */
+function findFloorSpot(p: KitchenProject, piece: Furniture): Position | null {
+  const { width: W, length: L } = p.room;
+  const candidates: Position[] = [];
+  for (let x = piece.dimensions.width / 2 + 50; x <= W - piece.dimensions.width / 2 - 50; x += 100) {
+    for (let z = piece.dimensions.depth / 2 + 50; z <= L - piece.dimensions.depth / 2 - 50; z += 100) candidates.push({ x: Math.round(x), y: 0, z: Math.round(z) });
+  }
+  candidates.sort((a, b) => Math.hypot(a.x - W / 2, a.z - L / 2) - Math.hypot(b.x - W / 2, b.z - L / 2));
+  for (const position of candidates) {
+    const trial = { ...p, furniture: [...p.furniture, { ...piece, position }] };
+    if (!validateProject(trial).some((i) => i.entityIds.includes(piece.id))) return position;
+  }
+  return null;
 }
 
 function findCabinet(p: Draft<KitchenProject>, id: string): Draft<KitchenCabinet> {

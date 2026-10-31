@@ -12,7 +12,7 @@ import {
   executeCommand,
   isCabinet,
   placeOnWall,
-  specFor,
+  specOf,
   widthGrowSide,
   type DesignCommand,
   type Dimensions,
@@ -21,6 +21,7 @@ import {
 } from '@/domain';
 import { SNAP_GRID, snapWidth } from '@/engine/snapping/alongWall';
 import { roomToLocal } from '@/engine/geometry/transform';
+import { formatLength } from '@/engine/measurement/units';
 import { snapPlacement } from '@/engine/snapping/placement';
 import type { Preview } from '@/state/editorStore';
 import { MM_PER_WORLD_UNIT } from '../units';
@@ -125,7 +126,7 @@ export function useDirectEdit(project: KitchenProject, callbacks: DirectEditCall
     }
     if (!e.ray.intersectPlane(d.plane, hit.current)) return;
     const el = d.el;
-    const spec = specFor(isCabinet(el) ? 'cabinet' : 'appliance', el.type);
+    const spec = specOf(el);
     const p = { x: hit.current.x * MM_PER_WORLD_UNIT, y: hit.current.y * MM_PER_WORLD_UNIT, z: hit.current.z * MM_PER_WORLD_UNIT };
     const tolerance = SNAP_PX * mmPerPixel(hit.current);
 
@@ -135,7 +136,8 @@ export function useDirectEdit(project: KitchenProject, callbacks: DirectEditCall
         snap.kind === 'wall'
           ? { ...el, wallId: snap.wallId, ...placeOnWall(project.room, snap.wallId, el.dimensions, snap.offset, spec.mount === 'wall' ? el.position.y : spec.elevation) }
           : { ...el, wallId: undefined, position: { x: snap.x, y: spec.elevation, z: snap.z }, rotationY: snap.rotationY };
-      const where = snap.kind === 'wall' ? `↔ ${snap.offset} mm` : `${Math.round(snap.x - (attempt.rotationY % 180 ? el.dimensions.depth : el.dimensions.width) / 2)}, ${Math.round(snap.z - (attempt.rotationY % 180 ? el.dimensions.width : el.dimensions.depth) / 2)} mm`;
+      const f = (mm: number) => formatLength(mm, project.preferences.unit);
+      const where = snap.kind === 'wall' ? `↔ ${f(snap.offset)}` : `${f(Math.round(snap.x - (attempt.rotationY % 180 ? el.dimensions.depth : el.dimensions.width) / 2))}, ${f(Math.round(snap.z - (attempt.rotationY % 180 ? el.dimensions.width : el.dimensions.depth) / 2))}`;
       show(d, 'move', snap.command, `${where}${snap.snappedTo ? ` · ${snap.snappedTo}` : ''}`, attempt);
       return;
     }
@@ -160,7 +162,7 @@ export function useDirectEdit(project: KitchenProject, callbacks: DirectEditCall
       ? { type: 'resize_cabinet', cabinetId: el.id, dimensions: dims }
       : { type: 'resize_appliance', applianceId: el.id, width: dims.width };
     const letter = d.kind === 'width' ? 'W' : d.kind === 'height' ? 'H' : 'D';
-    show(d, 'resize', command, `${letter} ${dims[d.kind]} mm`, null);
+    show(d, 'resize', command, `${letter} ${formatLength(dims[d.kind], project.preferences.unit)}`, null);
   };
 
   const end = (e: ThreeEvent<PointerEvent>) => {

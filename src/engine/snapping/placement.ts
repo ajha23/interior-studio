@@ -9,8 +9,7 @@
 import {
   allElements,
   elementLabel,
-  isCabinet,
-  specFor,
+  specOf,
   WALL_ROTATION,
   WALLS,
   wallAxis,
@@ -38,7 +37,7 @@ function gapToWall(project: KitchenProject, el: KitchenElement, wall: WallId, x:
 }
 
 export function snapPlacement(project: KitchenProject, el: KitchenElement, x: number, z: number, tolerance: number): PlacementSnap {
-  const spec = specFor(isCabinet(el) ? 'cabinet' : 'appliance', el.type);
+  const spec = specOf(el);
   const nearest = [...WALLS].sort((a, b) => gapToWall(project, el, a, x, z) - gapToWall(project, el, b, x, z))[0]!;
   const elevation = spec.mount === 'wall' ? el.position.y : undefined;
 

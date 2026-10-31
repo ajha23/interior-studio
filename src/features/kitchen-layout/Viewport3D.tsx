@@ -2,7 +2,9 @@ import { Canvas } from '@react-three/fiber';
 import { BrickWall, Crosshair, DoorClosed, DoorOpen, Footprints, Grid3x3, Hand, Maximize2, PanelsTopLeft } from 'lucide-react';
 import { Select } from '@/components/ui/select';
 import { EYE_HEIGHTS } from '@/rendering/scene/walk';
+import { formatLength } from '@/engine/measurement/units';
 import { ViewpointsMenu } from './ViewpointsMenu';
+import { wallFromId } from '@/features/room-editor/WallInspector';
 import { WalkMinimap } from './WalkMinimap';
 import { useMemo, useRef, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
@@ -15,6 +17,7 @@ import { sceneLabels } from '@/rendering/selection/labels';
 import { LabelProjector } from '@/rendering/selection/LabelProjector';
 import { useEditorStore, type CameraPreset, type VisualStyle } from '@/state/editorStore';
 import { openKey } from '@/state/openings';
+import { useSelectedChecks } from '@/features/checks/useDesignChecks';
 
 const VIEWS: { preset: CameraPreset; label: string; title: string }[] = [
   { preset: 'iso', label: 'Iso', title: 'Isometric view' },
@@ -53,6 +56,8 @@ export function Viewport3D({ active = true }: { active?: boolean }) {
   const s = useEditorStore();
   const project = s.project!;
   const overlay = useRef<HTMLDivElement>(null);
+  const selectedChecks = useSelectedChecks();
+  const zones = useMemo(() => selectedChecks.flatMap((c) => (c.severity === 'warning' && c.zone ? [c.zone] : [])), [selectedChecks]);
   const labels = useMemo(() => sceneLabels(s.preview?.project ?? project, s.selectedId, s.preview), [project, s.selectedId, s.preview]);
   const callbacks = useMemo(
     () => ({
@@ -80,7 +85,7 @@ export function Viewport3D({ active = true }: { active?: boolean }) {
     <div className="relative size-full" data-testid="viewport-3d">
       <Canvas frameloop={active ? 'always' : 'never'} shadows dpr={[1, 2]} onPointerMissed={(e) => e.button === 0 && s.select(null)} gl={{ preserveDrawingBuffer: true, antialias: true }}>
         <color attach="background" args={['#e8eaee']} />
-        <KitchenScene project={project} selectedId={s.selectedId} showGrid={s.showGrid} visualStyle={s.visualStyle} autoHideWalls={s.autoHideWalls} showInteriors={s.showInteriors} interactMode={s.interactMode} walking={s.navMode === 'walk'} openness={s.openness} preview={s.preview} callbacks={callbacks} />
+        <KitchenScene project={project} selectedId={s.selectedId} showGrid={s.showGrid} visualStyle={s.visualStyle} autoHideWalls={s.autoHideWalls} showInteriors={s.showInteriors} interactMode={s.interactMode} walking={s.navMode === 'walk'} openness={s.openness} preview={s.preview} zones={zones} selectedWall={wallFromId(s.selectedId)} callbacks={callbacks} />
         <CameraRig
           project={project}
           request={s.camera.request}
@@ -140,7 +145,7 @@ export function Viewport3D({ active = true }: { active?: boolean }) {
               onChange={(e) => e.target.value !== 'custom' && s.setEyeHeight(Number(e.target.value))}
             >
               {EYE_HEIGHTS.map((e) => <option key={e.value} value={e.value}>{e.label}</option>)}
-              {!EYE_HEIGHTS.some((e) => e.value === s.eyeHeight) && <option value="custom">Eye {s.eyeHeight} mm</option>}
+              {!EYE_HEIGHTS.some((e) => e.value === s.eyeHeight) && <option value="custom">Eye {formatLength(s.eyeHeight, project.preferences.unit)}</option>}
             </Select>
           )}
           <ViewpointsMenu />
@@ -214,7 +219,7 @@ export function Viewport3D({ active = true }: { active?: boolean }) {
       )}
       <p className="pointer-events-none absolute bottom-3 left-3 rounded-md bg-card/90 px-2 py-1 text-[11px] text-muted-foreground shadow-sm">
         {s.navMode === 'walk'
-          ? `Walking at ${s.eyeHeight} mm · W A S D: walk · Q / E: turn · Shift: hurry · drag: look around · scroll: step · click the floor: go there · F / double-click a unit: stand at it${s.interactMode ? ' · click doors and drawers to open them' : ''}`
+          ? `Walking at ${formatLength(s.eyeHeight, project.preferences.unit)} eye height · W A S D: walk · Q / E: turn · Shift: hurry · drag: look around · scroll: step · click the floor: go there · F / double-click a unit: stand at it${s.interactMode ? ' · click doors and drawers to open them' : ''}`
           : s.interactMode
           ? 'Interact: click a door, drawer or appliance door to open or close it · drag a handle to pull it · H to go back to editing'
           : 'Orbit: drag · Pan: right-drag · Zoom: scroll · Move: drag a unit anywhere · Resize: blue W / green H / amber D grips · Rotate: R · Focus: double-click / F · Fit: Home · Interact: H'}

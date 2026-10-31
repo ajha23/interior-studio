@@ -1,7 +1,9 @@
-import { allElements, type KitchenProject } from '@/domain';
+import { allElements, openingPlacement, type KitchenProject, type WallId } from '@/domain';
+import type { Box } from '@/engine/geometry/box';
 import type { Preview, VisualStyle } from '@/state/editorStore';
 import { Countertops } from '../cabinets/Countertops';
 import { ElementModel } from '../cabinets/ElementModel';
+import { OpeningModel } from '../cabinets/OpeningModel';
 import { useSceneMaterials } from '../materials/useSceneMaterials';
 import { useMemo } from 'react';
 import type { Openness } from '@/state/openings';
@@ -24,14 +26,17 @@ interface Props {
   walking: boolean;
   openness: Openness;
   preview: Preview | null;
+  /** Amber areas to highlight: what a selected unit's doors sweep, or a too-narrow walkway. */
+  zones: Box[];
   callbacks: DirectEditCallbacks & InteractCallbacks & { deselect: () => void; walkTo: (x: number, z: number) => void };
+  selectedWall: WallId | null;
 }
 
 /**
  * The whole kitchen, derived from the project on every change. While a drag is in progress the
  * dry-run result is shown instead, so neighbours and worktops move live.
  */
-export function KitchenScene({ project, selectedId, showGrid, visualStyle, autoHideWalls, showInteriors, interactMode, walking, openness, preview, callbacks }: Props) {
+export function KitchenScene({ project, selectedId, showGrid, visualStyle, autoHideWalls, showInteriors, interactMode, walking, openness, preview, zones, callbacks, selectedWall }: Props) {
   const shown = preview?.project ?? project;
   const materials = useSceneMaterials(shown.materials, visualStyle);
   const edit = useDirectEdit(project, callbacks);
@@ -77,7 +82,7 @@ export function KitchenScene({ project, selectedId, showGrid, visualStyle, autoH
         shadow-camera-bottom={-6}
         shadow-bias={-0.0004}
       />
-      <RoomShell project={shown} materials={materials} showGrid={showGrid} autoHideWalls={autoHideWalls && !walking} onBackgroundClick={callbacks.deselect} onFloorClick={walking ? callbacks.walkTo : undefined} />
+      <RoomShell project={shown} materials={materials} showGrid={showGrid} autoHideWalls={autoHideWalls && !walking} onBackgroundClick={callbacks.deselect} onWallClick={(w) => callbacks.select(`wall-${w}`)} selectedWall={selectedWall} onFloorClick={walking ? callbacks.walkTo : undefined} />
       <Countertops project={shown} materials={materials} />
       {allElements(shown).map((el) => (
         <ElementModel
@@ -92,8 +97,30 @@ export function KitchenScene({ project, selectedId, showGrid, visualStyle, autoH
           moverHandlers={interactMode ? (m) => interact(el, m) : null}
         />
       ))}
+      {shown.openings.map((o) => {
+        const place = openingPlacement(shown.room, o);
+        return (
+          <OpeningModel
+            key={o.id}
+            opening={o}
+            room={shown.room}
+            joineryMaterialId={shown.surfaces.carcass}
+            materials={materials}
+            selected={o.id === selectedId}
+            openness={openByElement[o.id] ?? NONE}
+            onSelect={callbacks.select}
+            moverHandlers={interactMode ? (m) => interact({ id: o.id, ...place }, m) : null}
+          />
+        );
+      })}
       {selected && !interactMode && <ResizeGrips element={selected} grip={(axis) => edit.grip(selected, axis)} />}
       {preview && !preview.valid && preview.attempt && <InvalidGhost attempt={preview.attempt} />}
+      {zones.map((z, i) => (
+        <mesh key={`zone${i}`} position={[toWorld((z.minX + z.maxX) / 2), toWorld((z.minY + z.maxY) / 2), toWorld((z.minZ + z.maxZ) / 2)]} raycast={() => null}>
+          <boxGeometry args={[toWorld(z.maxX - z.minX), toWorld(Math.max(10, z.maxY - z.minY)), toWorld(z.maxZ - z.minZ)]} />
+          <meshBasicMaterial color="#f59e0b" transparent opacity={0.22} depthWrite={false} />
+        </mesh>
+      ))}
     </>
   );
 }

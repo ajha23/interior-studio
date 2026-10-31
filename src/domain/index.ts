@@ -5,6 +5,7 @@ export * from './furniture/countertops';
 export * from './furniture/interior';
 export * from './furniture/factory';
 export * from './room/walls';
+export * from './room/openings';
 export * from './constraints/validate';
 export * from './materials/library';
 export * from './commands/schema';

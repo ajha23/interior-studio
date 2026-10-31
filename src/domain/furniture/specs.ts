@@ -4,7 +4,7 @@
  * Appliances only come in their listed widths. Heights and depths are bounded ranges. Anything
  * else is rejected with a message naming what is supported, never silently adjusted.
  */
-import type { ApplianceType, CabinetType, Dimensions, Millimeters } from '../schema';
+import { categoryOf, type ApplianceType, type CabinetType, type Dimensions, type FurnitureType, type KitchenElement, type Millimeters } from '../schema';
 
 export interface Range {
   min: Millimeters;
@@ -149,6 +149,48 @@ export const APPLIANCE_SPECS: Record<ApplianceType, ElementSpec> = {
     supportsCountertop: false,
   },
 };
+
+export const FURNITURE_SPECS: Record<FurnitureType, ElementSpec> = {
+  table: {
+    label: 'Dining table',
+    mount: 'floor',
+    widths: [800, 1200, 1400, 1600, 1800, 2000],
+    widthRange: { min: 600, max: 3000 },
+    height: { min: 700, max: 780 },
+    depth: { min: 600, max: 1200 },
+    defaults: { width: 1600, height: 750, depth: 900 },
+    elevation: 0,
+    supportsCountertop: false,
+  },
+  chair: {
+    label: 'Chair',
+    mount: 'floor',
+    widths: [420, 450, 500],
+    widthRange: { min: 380, max: 600 },
+    height: { min: 780, max: 1000 },
+    depth: { min: 420, max: 600 },
+    defaults: { width: 450, height: 850, depth: 500 },
+    elevation: 0,
+    supportsCountertop: false,
+  },
+  sofa: {
+    label: 'Sofa',
+    mount: 'floor',
+    widths: [1600, 2000, 2400],
+    widthRange: { min: 1200, max: 3200 },
+    height: { min: 700, max: 950 },
+    depth: { min: 800, max: 1100 },
+    defaults: { width: 2000, height: 820, depth: 900 },
+    elevation: 0,
+    supportsCountertop: false,
+  },
+};
+
+/** The spec for any element (cabinet, appliance or furniture). */
+export function specOf(el: KitchenElement): ElementSpec {
+  const c = categoryOf(el);
+  return c === 'cabinet' ? CABINET_SPECS[el.type as CabinetType] : c === 'furniture' ? FURNITURE_SPECS[el.type as FurnitureType] : APPLIANCE_SPECS[el.type as ApplianceType];
+}
 
 export function specFor(kind: 'cabinet', type: CabinetType): ElementSpec;
 export function specFor(kind: 'appliance', type: ApplianceType): ElementSpec;

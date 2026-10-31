@@ -1,14 +1,18 @@
 import { useId, useState, type KeyboardEvent } from 'react';
-import { parseMm } from '@/engine/measurement/format';
+import { formatLength, parseLength, unitSuffix, type LengthUnit } from '@/engine/measurement/units';
 import { cn } from '@/lib/utils';
+import { useLengthUnit } from '@/state/units';
 import { Input } from './input';
 import { Label } from './label';
 
 interface MmFieldProps {
   label: string;
+  /** The stored value, in millimetres. */
   value: number;
-  /** Applies the new value. If the domain rejects it, the field shows the unchanged project value. */
+  /** Applies the new value (millimetres). If the domain rejects it, the field shows the unchanged project value. */
   onCommit: (value: number) => void;
+  /** Display and entry unit; defaults to the open project's preference. */
+  unit?: LengthUnit;
   disabled?: boolean;
   hint?: string;
   className?: string;
@@ -16,27 +20,30 @@ interface MmFieldProps {
 }
 
 /**
- * A millimetre input that commits on Enter or blur and reverts on Escape. Text that is not a
- * whole number of millimetres is never sent to the domain; rejected values revert to the last
- * valid value, so the field always shows what the project actually contains.
+ * A length input. It shows the stored millimetres in the display unit and accepts any unit
+ * ("1500", "381 cm", "3.81 m", "12' 6\""), converting once to whole millimetres on Enter or blur;
+ * Escape reverts. Invalid text never reaches the domain, and a rejected value reverts to the last
+ * valid one, so the field always shows what the project contains.
  */
-export function MmField({ label, value, onCommit, disabled, hint, className, testId }: MmFieldProps) {
+export function MmField({ label, value, onCommit, unit: unitProp, disabled, hint, className, testId }: MmFieldProps) {
   const id = useId();
+  const projectUnit = useLengthUnit();
+  const unit = unitProp ?? projectUnit;
   const [draft, setDraft] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const shown = draft ?? String(value);
+  const shown = draft ?? formatLength(value, unit, true);
+  const suffix = unitSuffix(unit);
 
   const commit = () => {
     if (draft === null) return;
-    const parsed = parseMm(draft);
-    if (parsed === null) {
-      setError('Enter a whole number of millimetres.');
-      setDraft(null);
+    const parsed = parseLength(draft, unit);
+    setDraft(null);
+    if (!parsed.ok) {
+      setError(parsed.error);
       return;
     }
     setError(null);
-    setDraft(null);
-    if (parsed !== value) onCommit(parsed);
+    if (parsed.mm !== value) onCommit(parsed.mm);
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -57,7 +64,8 @@ export function MmField({ label, value, onCommit, disabled, hint, className, tes
         <Input
           id={id}
           data-testid={testId}
-          inputMode="numeric"
+          data-mm={value}
+          inputMode={unit === 'ft-in' || unit === 'in' ? 'text' : 'decimal'}
           value={shown}
           disabled={disabled}
           aria-invalid={error ? true : undefined}
@@ -65,9 +73,9 @@ export function MmField({ label, value, onCommit, disabled, hint, className, tes
           onChange={(e) => setDraft(e.target.value)}
           onBlur={commit}
           onKeyDown={onKeyDown}
-          className="pr-9"
+          className={suffix ? 'pr-9' : undefined}
         />
-        <span className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 text-xs text-muted-foreground">mm</span>
+        {suffix && <span className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 text-xs text-muted-foreground">{suffix}</span>}
       </div>
       {(error || hint) && (
         <p id={`${id}-hint`} className={cn('text-[11px]', error ? 'text-destructive' : 'text-muted-foreground')} role={error ? 'alert' : undefined}>

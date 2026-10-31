@@ -1,9 +1,10 @@
-import { ROOM_LIMITS, layoutFitErrors, type Layout, type Room, type Surface } from '@/domain';
+import { ROOM_LIMITS, ROOM_PRESETS, layoutFitErrors, type Layout, type Room, type Surface } from '@/domain';
 import { PanelSection } from '@/components/layout/PanelSection';
 import { Button } from '@/components/ui/button';
 import { MmField } from '@/components/ui/mm-field';
 import { FinishPicker } from '@/features/material-editor/FinishPicker';
 import { useEditorStore } from '@/state/editorStore';
+import { useFormatLength } from '@/state/units';
 
 const LAYOUTS: { value: Layout; label: string }[] = [
   { value: 'straight', label: 'Straight' },
@@ -22,6 +23,7 @@ const SURFACES: { surface: Surface; label: string }[] = [
 export function RoomPanel() {
   const project = useEditorStore((s) => s.project)!;
   const dispatch = useEditorStore((s) => s.dispatch);
+  const fmt = useFormatLength();
   const setRoom = (patch: Partial<Room>) => dispatch({ type: 'set_room', room: { ...project.room, ...patch } });
   const hasUnits = project.cabinets.length + project.appliances.length > 0;
 
@@ -31,7 +33,7 @@ export function RoomPanel() {
     dispatch({ type: 'apply_layout', layout });
   };
 
-  const range = (k: keyof Room) => `${ROOM_LIMITS[k].min}–${ROOM_LIMITS[k].max}`;
+  const range = (k: keyof Room) => `${fmt(ROOM_LIMITS[k].min)}–${fmt(ROOM_LIMITS[k].max)}`;
   return (
     <div aria-label="Room properties">
       <PanelSection title="Room">
@@ -40,6 +42,13 @@ export function RoomPanel() {
           <MmField label="Length (side walls)" value={project.room.length} onCommit={(length) => setRoom({ length })} testId="room-length" hint={range('length')} />
           <MmField label="Ceiling height" value={project.room.height} onCommit={(height) => setRoom({ height })} hint={range('height')} />
           <MmField label="Wall thickness" value={project.room.wallThickness} onCommit={(wallThickness) => setRoom({ wallThickness })} hint={range('wallThickness')} />
+        </div>
+        <div className="flex flex-wrap gap-1" aria-label="Room presets">
+          {ROOM_PRESETS.map((p) => (
+            <button key={p.id} type="button" title={`${fmt(p.room.width)} × ${fmt(p.room.length)}`} onClick={() => setRoom(p.room)} className="rounded border px-1.5 py-0.5 text-[11px] hover:bg-muted">
+              {p.label}
+            </button>
+          ))}
         </div>
         <p className="text-[11px] text-muted-foreground">Units on the right and front walls move with their wall when the room changes size.</p>
       </PanelSection>

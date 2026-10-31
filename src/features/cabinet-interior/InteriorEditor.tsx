@@ -22,6 +22,7 @@ import { PanelSection } from '@/components/layout/PanelSection';
 import { Button } from '@/components/ui/button';
 import { MmField } from '@/components/ui/mm-field';
 import { useEditorStore } from '@/state/editorStore';
+import { useFormatDims, useFormatLength } from '@/state/units';
 
 const FRONTS: { style: FrontStyle; label: string }[] = [
   { style: 'solid', label: 'Solid doors' },
@@ -59,6 +60,8 @@ export function InteriorEditor({ cabinet }: { cabinet: KitchenCabinet }) {
   const [selected, setSelected] = useState<Selected>(null);
   const [shelfCount, setShelfCount] = useState(3);
   const inside = insideOf(cabinet.dimensions);
+  const fmt = useFormatLength();
+  const fmtDims = useFormatDims();
   const setInterior = (interior: Interior) => dispatch({ type: 'set_interior', cabinetId: cabinet.id, interior });
   const dryRun = (interior: Interior) => executeCommand(project, { type: 'set_interior', cabinetId: cabinet.id, interior }).result;
 
@@ -121,7 +124,7 @@ export function InteriorEditor({ cabinet }: { cabinet: KitchenCabinet }) {
 
       <InteriorDiagram cabinet={cabinet} selected={sel} onSelect={setSelected} dryRun={dryRun} commit={setInterior} />
       <p className="text-[11px] text-muted-foreground">
-        Inside {inside.width} × {inside.height} × {inside.depth} mm. Drag fittings up or down and dividers sideways; click one to edit it exactly.
+        Inside {fmtDims(inside)}. Drag fittings up or down and dividers sideways; click one to edit it exactly.
       </p>
 
       {fitting && sel && (
@@ -133,13 +136,13 @@ export function InteriorEditor({ cabinet }: { cabinet: KitchenCabinet }) {
             </Button>
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <MmField label="Height above floor" value={fitting.y} testId="fitting-y" onCommit={(y) => setInterior(replaceFitting(cabinet.interior, sel.section, sel.fitting, { ...fitting, y }))} hint={`Inside floor = 0, top = ${inside.height}`} />
+            <MmField label="Height above floor" value={fitting.y} testId="fitting-y" onCommit={(y) => setInterior(replaceFitting(cabinet.interior, sel.section, sel.fitting, { ...fitting, y }))} hint={`Inside floor = 0, top = ${fmt(inside.height)}`} />
             {'height' in fitting && (
               <MmField
                 label="Height"
                 value={fitting.height}
                 onCommit={(height) => setInterior(replaceFitting(cabinet.interior, sel.section, sel.fitting, { ...fitting, height }))}
-                hint={`Minimum ${FITTING_HEIGHT[fitting.kind]?.min ?? 0}`}
+                hint={`Minimum ${fmt(FITTING_HEIGHT[fitting.kind]?.min ?? 0)}`}
               />
             )}
           </div>
@@ -159,6 +162,7 @@ export function InteriorEditor({ cabinet }: { cabinet: KitchenCabinet }) {
 
 function SectionsEditor({ cabinet, setInterior, onAdd }: { cabinet: KitchenCabinet; setInterior: (i: Interior) => void; onAdd: (section: number, fitting: number) => void }) {
   const report = useEditorStore((s) => s.report);
+  const fmt = useFormatLength();
   const inside = insideOf(cabinet.dimensions);
   const widths = sectionWidths(cabinet.interior, inside.width);
   const n = cabinet.interior.sections.length;
@@ -181,7 +185,7 @@ function SectionsEditor({ cabinet, setInterior, onAdd }: { cabinet: KitchenCabin
         <div key={si} className="flex flex-col gap-1.5 rounded-md border p-2">
           <div className="flex items-center gap-2">
             <span className="text-xs font-medium">Section {si + 1}</span>
-            <span className="text-[11px] text-muted-foreground tabular-nums">{'widths' in widths ? `${Math.round(widths.widths[si]!)} mm wide` : ''}</span>
+            <span className="text-[11px] text-muted-foreground tabular-nums">{'widths' in widths ? `${fmt(Math.round(widths.widths[si]!))} wide` : ''}</span>
             {n > 1 && (
               <label className="ml-auto flex items-center gap-1 text-[11px]">
                 <input

@@ -35,7 +35,7 @@ interface Props {
 const OPEN_RATE = 9;
 
 /** A door, drawer or basket: animates towards its target opening about its hinge or slide. */
-function MoverGroup({ mover, target, handlers, children }: { mover: Mover; target: number; handlers: MoverHandlers | null; children: ReactNode }) {
+export function MoverGroup({ mover, target, handlers, children }: { mover: Mover; target: number; handlers: MoverHandlers | null; children: ReactNode }) {
   const inner = useRef<Group>(null);
   const current = useRef(target);
   useFrame((_, dt) => {
@@ -76,7 +76,7 @@ function MoverGroup({ mover, target, handlers, children }: { mover: Mover; targe
  */
 export const ElementModel = memo(function ElementModel({ element, carcassMaterialId, materials, selected, showInterior, handlers, openness, moverHandlers }: Props) {
   const { parts, movers } = useMemo(() => buildModel(element), [element]);
-  const shutter = isCabinet(element) ? materials.get(element.materialId) : materials.fixed.steel;
+  const shutter = 'materialId' in element ? materials.get(element.materialId) : materials.fixed.steel;
   const carcass = isCabinet(element) ? materials.get(carcassMaterialId) : materials.fixed.steel;
   const edges = materials.style !== 'realistic';
 

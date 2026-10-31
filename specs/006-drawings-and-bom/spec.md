@@ -1,7 +1,6 @@
 # 006 — Drawings and BOM
 
-**Status:** Partial (M6): plan view and basic BOM done; elevations, exportable drawings and cut
-lists not started.
+**Status:** Done (M6) — elevations, drawing sheets, cabinet schedule and cut list delivered in spec 013.
 
 ## User stories
 - As a designer, I switch to a dimensioned 2D plan of the kitchen.

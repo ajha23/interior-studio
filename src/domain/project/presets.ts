@@ -1,4 +1,5 @@
 /** Kitchen layout presets and new-project defaults. */
+import type { LengthUnit } from '@/engine/measurement/units';
 import type { Layout } from '../commands/schema';
 import { makeAppliance, makeCabinet, newId } from '../furniture/factory';
 import { CABINET_SPECS, COUNTERTOP_OVERHANG } from '../furniture/specs';
@@ -16,6 +17,17 @@ import {
 } from '../schema';
 
 export const DEFAULT_ROOM: Room = { width: 4200, length: 3200, height: 2700, wallThickness: 150 };
+
+/** Common room sizes to start from (width along the back wall × length of the side walls). */
+export const ROOM_PRESETS: { id: string; label: string; room: Room }[] = [
+  { id: 'compact', label: 'Compact kitchen', room: { width: 2400, length: 2400, height: 2700, wallThickness: 150 } },
+  { id: 'galley', label: 'Galley', room: { width: 2400, length: 4200, height: 2700, wallThickness: 150 } },
+  { id: 'standard', label: 'Standard kitchen', room: { width: 4200, length: 3200, height: 2700, wallThickness: 150 } },
+  { id: 'large', label: 'Large kitchen', room: { width: 4800, length: 4200, height: 2700, wallThickness: 150 } },
+  { id: 'open-plan', label: 'Open-plan kitchen-diner', room: { width: 6000, length: 4500, height: 2700, wallThickness: 150 } },
+  // 12 ft × 10 ft with an 8 ft ceiling, stored to the nearest millimetre.
+  { id: '12x10ft', label: '12 × 10 ft', room: { width: 3658, length: 3048, height: 2438, wallThickness: 114 } },
+];
 
 type Slot =
   | { kind: 'cabinet'; type: CabinetType; width: number }
@@ -58,7 +70,7 @@ function runsFor(layout: Layout): Run[] {
         {
           wallId: 'back',
           start: 0,
-          floor: [cab('corner', 900), cab('sink', 800), app('dishwasher', 600), cab('base', 600), cab('tall', 600)],
+          floor: [cab('corner', 1000), cab('sink', 800), app('dishwasher', 600), cab('base', 600), cab('tall', 600)],
           above: [
             { overSlot: 1, slot: cab('wall', 800) },
             { overSlot: 2, slot: cab('wall', 600) },
@@ -119,7 +131,7 @@ export function buildLayout(
   return { cabinets, appliances };
 }
 
-export function createProject(input: { name: string; room: Room; layout: Layout; id?: string }, makeId: (prefix: string) => string = newId): KitchenProject {
+export function createProject(input: { name: string; room: Room; layout: Layout; id?: string; unit?: LengthUnit }, makeId: (prefix: string) => string = newId): KitchenProject {
   return {
     schemaVersion: SCHEMA_VERSION,
     id: input.id ?? makeId('prj'),
@@ -128,6 +140,10 @@ export function createProject(input: { name: string; room: Room; layout: Layout;
     surfaces: { ...DEFAULT_SURFACES },
     materials: libraryMaterials(),
     viewpoints: [],
+    openings: [],
+    furniture: [],
+    preferences: { unit: input.unit ?? 'mm' },
+    production: {},
     ...buildLayout(input.room, input.layout, makeId),
   };
 }
@@ -136,6 +152,14 @@ export function createProject(input: { name: string; room: Room; layout: Layout;
 export function createExampleProject(makeId: (prefix: string) => string = newId): KitchenProject {
   const project = createProject({ name: 'Example L-shaped kitchen', room: { width: 3600, length: 3200, height: 2700, wallThickness: 150 }, layout: 'l-shaped' }, makeId);
   for (const c of project.cabinets) if (c.type !== 'wall' && c.type !== 'tall') c.materialId = 'shutter-sage';
+  // A window over the sink (in place of its wall cabinet) and a door on the free right wall.
+  const sink = project.cabinets.find((c) => c.type === 'sink' && c.wallId === 'back')!;
+  const sinkStart = sink.position.x - sink.dimensions.width / 2;
+  project.cabinets = project.cabinets.filter((c) => !(c.type === 'wall' && c.wallId === 'back' && c.position.x - c.dimensions.width / 2 === sinkStart));
+  project.openings = [
+    { id: makeId('opn'), kind: 'window', wallId: 'back', offset: sinkStart, width: sink.dimensions.width, height: 1000, sill: 1050, swing: 'none', hinge: 'left' },
+    { id: makeId('opn'), kind: 'door', wallId: 'right', offset: 1300, width: 900, height: 2100, sill: 0, swing: 'in', hinge: 'right' },
+  ];
   project.surfaces.countertop = 'counter-oak';
   project.surfaces.wall = 'wall-greige';
   return project;

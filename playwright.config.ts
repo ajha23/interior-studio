@@ -18,5 +18,6 @@ export default defineConfig({
       },
     },
   ],
-  webServer: { command: 'npm run dev -- --port 5174 --strictPort', url: 'http://localhost:5174', reuseExistingServer: !process.env.CI },
+  // The assistant endpoint uses the deterministic rule-based provider in tests, whatever the shell has configured.
+  webServer: { command: 'npm run dev -- --port 5174 --strictPort', url: 'http://localhost:5174', reuseExistingServer: !process.env.CI, env: { ASSISTANT_PROVIDER: 'rules', ANTHROPIC_API_KEY: '' } },
 });

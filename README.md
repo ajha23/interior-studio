@@ -30,6 +30,27 @@ Walk through it: press **V** to stand in the room at eye height (standing, seate
 press **F** (or double-click) on a unit to stand right in front of it — e.g. at the cooktop. Open,
 drag and edit everything from where you stand, and save named viewpoints to come back to.
 
+Doors, windows and openings: add them from the library (or `add door 900`), drag them along a wall on
+the plan, set width, height, sill, swing and hinge side. They cut into the 3D walls, show on the plan
+with door swings, and units are kept out of doorways, door swings and from covering windows.
+
+Design checks: the **Checks** panel (and the status bar) warns about doors, drawers and appliance
+doors that would hit something when opened, walkways under 900 mm, wall cabinets less than 450 mm
+above the worktop, a hood outside 650–750 mm above the hob, tall units beside the hob, and shows the
+sink–hob–fridge work triangle. Warnings never block an edit; the amber area shows the space involved.
+
+Units and views: show and type lengths in mm, cm, m, inches, feet or feet & inches (top bar);
+every field accepts any unit (`12' 6"`, `381 cm`, `3.81 m`) and geometry is always stored in whole
+millimetres. **Split** shows the plan and 3D side by side; the plan has a grid and wall labels; click
+a wall (plan or 3D) to inspect it. Room presets, plus dining tables, chairs and sofas. Below 1280 px
+the side panels become drawers.
+
+Drawings: the **Drawings** view is a set of A3 sheets with a title block — the plan, an elevation of
+every wall in use (fronts, handles, worktops, windows and doors, dimension chains and height marks),
+the cabinet schedule (units numbered C1…, A1… on every sheet) and the cut list with panels, edge
+banding, glass, worktops, hardware and a board estimate. Print or save as PDF, download SVG, or
+download the cut list as CSV for the workshop.
+
 ## Quick start
 
 ```bash
@@ -46,6 +67,7 @@ npm run dev            # http://localhost:5173
 | `npm test` | Vitest: domain, geometry, persistence, store and component tests |
 | `npm run e2e` | Playwright end-to-end tests (first run: `npx playwright install chromium`) |
 | `npm run check` | lint + typecheck + test + build |
+| `npm run build:vercel` | Build plus `.vercel/output` (static app and the `/api/assistant` function) |
 
 ## Stack
 
@@ -67,6 +89,31 @@ Lengths are integer millimetres everywhere in the domain and are converted to me
 `src/rendering/units.ts`. Read `AGENTS.md` before changing code, and `docs/` for the product,
 architecture and domain model.
 
+## Design assistant
+
+**Assistant** in the top bar opens a chat panel that edits the design from plain language (“Add a
+600 mm dishwasher next to the sink”). Every change is previewed (sizes and positions before → after,
+validation, warnings) and applied only when you approve, as one undo step. Out of the box the
+`/api/assistant` endpoint uses a deterministic rule-based provider; to use Claude, set
+`ASSISTANT_PROVIDER=anthropic` and `ANTHROPIC_API_KEY` on the server (`.env.local` for `npm run dev`,
+project environment variables on Vercel; see `.env.example`). Details: `docs/AI_ASSISTANT.md`.
+
+The microphone button in the panel lets you **speak** requests instead (Chrome, Edge, Safari); they
+go through exactly the same previews and approval, and you can say “apply” or “reject”. No setup
+or keys are needed. Details, browser support and privacy: `docs/VOICE.md`.
+
+Whole-layout goals work too (“Convert this L-shaped kitchen into a U-shaped kitchen, keep the sink
+wall, maximise storage”): a deterministic planner generates and checks alternatives you can compare,
+preview in the plan and 3D, and apply as one undoable step. See `docs/LAYOUT_AGENT.md`.
+
+## Deliverables
+
+**Deliverables** turns the design into a dimensioned floor plan, wall elevations, a cabinet schedule
+and a bill of materials, checks readiness for presentation, drawings and manufacturing, and exports
+PDF, SVG and CSV. Every file names the design revision it came from and shows as stale after a change.
+Manufacturing outputs need a construction method (Readiness › Manufacturing settings). Presentation
+mode shows the 3D model without editing tools. See `docs/DELIVERABLES.md`.
+
 ## Project files
 
 Projects are saved in this browser (IndexedDB). **Export** downloads a `.kitchen.json` file with a
@@ -75,6 +122,6 @@ validation first. Clearing site data deletes local projects, so export anything 
 
 ## Status
 
-Phase 1 (M0–M5) plus a basic plan and BOM from M6 are implemented. Not yet: snapping, wall
-openings, elevations, cut lists, cloud persistence, accounts and the AI copilot. See
+Phase 1 (M0–M6), the Phase 1 gaps, Phase 2 (chat-driven design editing), Phase 3 (voice) and a
+first version of Phase 4 (layout design agent) and Phase 5 (production deliverables) are implemented. Not yet: cloud persistence and accounts. See
 `docs/ROADMAP.md` and `docs/DECISIONS.md` (including where the previous Supabase-based app lives).

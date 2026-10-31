@@ -87,4 +87,20 @@ describe('command line', () => {
     expect(parseCommandLine('eye 1150', ctx)).toEqual({ kind: 'eye', mm: 1150 });
     expect(parseCommandLine('eye 50', ctx)).toMatchObject({ kind: 'error' });
   });
+
+  it('adds doors, windows and openings', () => {
+    expect(parseCommandLine('add door', ctx)).toEqual({ kind: 'design', command: { type: 'add_opening', kind: 'door' } });
+    expect(parseCommandLine('add window 1500', ctx)).toEqual({ kind: 'design', command: { type: 'add_opening', kind: 'window', width: 1500 } });
+    expect(parseCommandLine('add archway', ctx)).toMatchObject({ command: { kind: 'opening' } });
+  });
+
+  it('reads lengths in any unit, and bare numbers in the display unit', () => {
+    expect(parseCommandLine(`w 2' 6"`, ctx)).toMatchObject({ command: { dimensions: { width: 762 } } });
+    expect(parseCommandLine('w 76 cm', ctx)).toMatchObject({ command: { dimensions: { width: 760 } } });
+    const imperial = { project: { ...project, preferences: { unit: 'ft-in' as const } }, selectedId: base.id };
+    expect(parseCommandLine('w 30', imperial)).toMatchObject({ command: { dimensions: { width: 762 } } });
+    expect(parseCommandLine(`room 12' 10'`, imperial)).toMatchObject({ command: { room: { width: 3658, length: 3048 } } });
+    expect(parseCommandLine('units ft-in', ctx)).toEqual({ kind: 'design', command: { type: 'set_measurement_unit', unit: 'ft-in' } });
+    expect(parseCommandLine('units parsecs', ctx)).toMatchObject({ kind: 'error' });
+  });
 });

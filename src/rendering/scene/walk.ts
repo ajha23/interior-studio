@@ -2,7 +2,7 @@
  * First-person walking: poses, collisions and "stand in front of this unit". Pure maths in room
  * millimetres, so it is tested without WebGL. Yaw 0 looks towards the back wall (−z).
  */
-import { allElements, isCabinet, specFor, type KitchenElement, type KitchenProject } from '@/domain';
+import { allElements, specOf, type KitchenElement, type KitchenProject } from '@/domain';
 import { elementBox, type Box } from '@/engine/geometry/box';
 
 export interface WalkPose {
@@ -33,7 +33,7 @@ export function right(yaw: number): { x: number; z: number } {
 /** Floor-standing units block walking; wall-hung units are above head-height clearance. */
 export function obstacles(project: KitchenProject): Box[] {
   return allElements(project)
-    .filter((el) => specFor(isCabinet(el) ? 'cabinet' : 'appliance', el.type).mount === 'floor')
+    .filter((el) => specOf(el).mount === 'floor')
     .map(elementBox);
 }
 
@@ -76,7 +76,7 @@ export function standInFront(project: KitchenProject, el: KitchenElement, eye: n
   const r = (el.rotationY * Math.PI) / 180;
   const front = { x: Math.sin(r), z: Math.cos(r) };
   const centre = { x: el.position.x, z: el.position.z };
-  const mount = specFor(isCabinet(el) ? 'cabinet' : 'appliance', el.type).mount;
+  const mount = specOf(el).mount;
   const reach = mount === 'wall' ? 700 : el.dimensions.depth / 2 + 550;
   let spot = { x: centre.x + front.x * reach, z: centre.z + front.z * reach };
   for (let d = reach; blocked(project, spot.x, spot.z, boxes) && d < reach + 1500; d += 100) spot = { x: centre.x + front.x * d, z: centre.z + front.z * d };

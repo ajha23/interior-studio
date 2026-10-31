@@ -8,6 +8,9 @@ import { useThree } from '@react-three/fiber';
 import { useRef } from 'react';
 import { Vector3 } from 'three';
 import type { KitchenElement } from '@/domain';
+
+/** Anything with an id and a frame in the room: a unit, or a wall opening. */
+export type Placed = Pick<KitchenElement, 'id' | 'position' | 'rotationY'>;
 import { moverPoint, type Mover } from '@/engine/geometry/parts';
 import { localToRoom } from '@/engine/geometry/transform';
 import { MM_PER_WORLD_UNIT } from '../units';
@@ -43,7 +46,7 @@ export function useInteraction(callbacks: InteractCallbacks) {
   const get = useThree((s) => s.get);
   const pull = useRef<Pull | null>(null);
 
-  const toScreen = (el: KitchenElement, local: { x: number; y: number; z: number }) => {
+  const toScreen = (el: Placed, local: { x: number; y: number; z: number }) => {
     const { camera, size } = get();
     const r = localToRoom(el, local);
     const v = new Vector3(r.x / MM_PER_WORLD_UNIT, r.y / MM_PER_WORLD_UNIT, r.z / MM_PER_WORLD_UNIT).project(camera);
@@ -55,7 +58,7 @@ export function useInteraction(callbacks: InteractCallbacks) {
     if (c) c.enabled = enabled;
   };
 
-  return (el: KitchenElement, m: Mover) => ({
+  return (el: Placed, m: Mover) => ({
     onPointerDown: (e: ThreeEvent<PointerEvent>) => {
       if (e.button !== 0) return;
       e.stopPropagation();

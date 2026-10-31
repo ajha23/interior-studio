@@ -2,18 +2,20 @@
 import type { KitchenElement } from '@/domain/schema';
 
 type P = { x: number; y: number; z: number };
+/** Anything placed in the room with a frame: a unit, or a wall opening. */
+type Framed = Pick<KitchenElement, 'position' | 'rotationY'>;
 
-const turn = (el: KitchenElement) => {
+const turn = (el: Framed) => {
   const r = (el.rotationY * Math.PI) / 180;
   return { cos: Math.round(Math.cos(r)), sin: Math.round(Math.sin(r)) };
 };
 
-export function localToRoom(el: KitchenElement, p: P): P {
+export function localToRoom(el: Framed, p: P): P {
   const { cos, sin } = turn(el);
   return { x: el.position.x + p.x * cos + p.z * sin, y: el.position.y + p.y, z: el.position.z - p.x * sin + p.z * cos };
 }
 
-export function roomToLocal(el: KitchenElement, p: P): P {
+export function roomToLocal(el: Framed, p: P): P {
   const { cos, sin } = turn(el);
   const dx = p.x - el.position.x;
   const dz = p.z - el.position.z;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { APPLIANCE_SPECS, CABINET_SPECS, createProject, DEFAULT_ROOM, makeCabinet, type ApplianceType, type CabinetType } from '@/domain';
+import { APPLIANCE_SPECS, CABINET_SPECS, FURNITURE_SPECS, createProject, DEFAULT_ROOM, makeCabinet, type ApplianceType, type CabinetType } from '@/domain';
 import { makeAppliance } from '@/domain/furniture/factory';
 import { buildParts, type Part } from './parts';
 
@@ -32,6 +32,13 @@ describe('procedural geometry matches domain dimensions', () => {
     const a = makeAppliance(DEFAULT_ROOM, { id: 'a', type, wallId: 'back', offset: 0 });
     const b = bodyBounds(buildParts(a));
     expect([b.width, b.height, b.depth]).toEqual([a.dimensions.width, a.dimensions.height, a.dimensions.depth]);
+  });
+
+  it.each(['table', 'chair', 'sofa'] as const)('%s furniture at its default size', (type) => {
+    const d = FURNITURE_SPECS[type].defaults;
+    const f = { kind: 'furniture' as const, id: 'f', type, dimensions: d, position: { x: 1000, y: 0, z: 1000 }, rotationY: 0 as const, materialId: 'shutter-oak' };
+    const b = bodyBounds(buildParts(f));
+    expect([b.width, b.height, b.depth]).toEqual([d.width, d.height, d.depth]);
   });
 
   it('only floor units get a plinth, and it reaches exactly to the floor', () => {

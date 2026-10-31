@@ -1,20 +1,23 @@
 import { useMemo, type ReactNode } from 'react';
 import { computeBom } from '@/domain';
 import { useEditorStore } from '@/state/editorStore';
+import { useFormatDims, useFormatLength } from '@/state/units';
 
 /** Basic bill of materials, recomputed from the project on every edit. */
 export function BomPanel() {
   const project = useEditorStore((s) => s.project)!;
   const select = useEditorStore((s) => s.select);
   const bom = useMemo(() => computeBom(project), [project]);
+  const fmt = useFormatLength();
+  const fmtDims = useFormatDims();
 
   return (
     <div className="grid h-full gap-6 overflow-auto p-4 text-sm md:grid-cols-[1.4fr_1fr_1fr]" aria-label="Bill of materials">
-      <Table title={`Cabinets · ${bom.totals.cabinetCount}`} head={['Unit', 'W × H × D (mm)', 'Shutters', 'Qty']}>
+      <Table title={`Cabinets · ${bom.totals.cabinetCount}`} head={['Unit', 'W × H × D', 'Shutters', 'Qty']}>
         {bom.cabinets.map((r) => (
           <tr key={r.key} className="cursor-pointer hover:bg-muted" onClick={() => select(r.entityIds[0] ?? null)} data-testid={`bom-cabinet-${r.type}-${r.width}`}>
             <td>{r.label}</td>
-            <td className="tabular-nums">{r.width} × {r.height} × {r.depth}</td>
+            <td className="tabular-nums">{fmtDims(r)}</td>
             <td>{r.finish}</td>
             <td className="text-right tabular-nums">{r.quantity}</td>
           </tr>
@@ -25,16 +28,28 @@ export function BomPanel() {
           {bom.appliances.map((r) => (
             <tr key={r.key} className="cursor-pointer hover:bg-muted" onClick={() => select(r.entityIds[0] ?? null)}>
               <td>{r.label}</td>
-              <td className="tabular-nums">{r.width}</td>
+              <td className="tabular-nums">{fmt(r.width)}</td>
               <td className="text-right tabular-nums">{r.quantity}</td>
             </tr>
           ))}
         </Table>
-        <Table title={`Worktops · ${bom.totals.countertopLength} mm`} head={['Wall', 'L × D × T (mm)', 'Finish']}>
+        {bom.furniture.length > 0 && (
+          <Table title={`Furniture · ${bom.furniture.reduce((s, r) => s + r.quantity, 0)}`} head={['Item', 'W × H × D', 'Finish', 'Qty']}>
+            {bom.furniture.map((r) => (
+              <tr key={r.key} className="cursor-pointer hover:bg-muted" onClick={() => select(r.entityIds[0] ?? null)}>
+                <td>{r.label}</td>
+                <td className="tabular-nums">{fmtDims(r)}</td>
+                <td>{r.finish}</td>
+                <td className="text-right tabular-nums">{r.quantity}</td>
+              </tr>
+            ))}
+          </Table>
+        )}
+        <Table title={`Worktops · ${fmt(bom.totals.countertopLength)}`} head={['Wall', 'L × D × T', 'Finish']}>
           {bom.countertops.map((c) => (
             <tr key={c.id}>
               <td>{c.wall}</td>
-              <td className="tabular-nums">{c.length} × {c.depth} × {c.thickness}</td>
+              <td className="tabular-nums">{fmtDims({ width: c.length, height: c.depth, depth: c.thickness })}</td>
               <td>{c.finish}</td>
             </tr>
           ))}

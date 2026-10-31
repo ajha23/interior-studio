@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { offsetAlongWall, specFor, isCabinet, allElements, type Rotation } from '@/domain';
+import { offsetAlongWall, specOf, allElements, type Rotation } from '@/domain';
 import { saveCurrentProject } from '@/features/projects/projectActions';
 import { useEditorStore } from '@/state/editorStore';
 
@@ -76,10 +76,22 @@ export function useShortcuts(focusCommandLine: () => void) {
         s.setShowInteriors(!s.showInteriors);
         return;
       }
+      const opening = s.project && s.selectedId ? s.project.openings.find((o) => o.id === s.selectedId) : undefined;
+      if (opening) {
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+          e.preventDefault();
+          s.dispatch({ type: 'remove_opening', id: opening.id });
+        } else if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+          e.preventDefault();
+          const step = (e.shiftKey ? 100 : 10) * (e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 1);
+          if (opening.offset + step >= 0) s.dispatch({ type: 'update_opening', id: opening.id, offset: opening.offset + step });
+        }
+        return;
+      }
       const el = s.project && s.selectedId ? allElements(s.project).find((x) => x.id === s.selectedId) : undefined;
       if (!el) return;
       if (!mod && e.key.toLowerCase() === 'r') {
-        const spec = specFor(isCabinet(el) ? 'cabinet' : 'appliance', el.type);
+        const spec = specOf(el);
         if (spec.mount === 'wall') {
           s.report('error', `A ${spec.label.toLowerCase()} hangs on a wall and cannot be rotated.`);
           return;
@@ -93,7 +105,7 @@ export function useShortcuts(focusCommandLine: () => void) {
       } else if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
         e.preventDefault();
         const step = (e.shiftKey ? 100 : 10) * (e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 1);
-        const spec = specFor(isCabinet(el) ? 'cabinet' : 'appliance', el.type);
+        const spec = specOf(el);
         if (!el.wallId) {
           // Free-standing: arrows move in plan (left/right = x, up/down = towards the back/front).
           const horizontal = e.key === 'ArrowLeft' || e.key === 'ArrowRight';

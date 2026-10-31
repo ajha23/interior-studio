@@ -4,6 +4,11 @@ Source of truth: `src/domain/schema.ts` (Zod schemas; TypeScript types are infer
 
 ## Units and frames
 
+- **Display units** (`project.preferences.unit`: mm, cm, m, in, ft, ft-in) affect display and entry
+  only. Typed lengths are converted exactly (1 in = 25.4 mm, 1 ft = 304.8 mm) and rounded once to the
+  nearest millimetre, halves away from zero: 100 cm → 1000, 12 ft → 3657.6 → 3658, 12 ft 6 in → 3810.
+  Imperial values display to 1/16". Bare numbers use the display unit (inches in ft-in mode). See
+  `engine/measurement/units.ts`. Cut lists stay in millimetres for the workshop.
 - All lengths are **integer millimetres**. Non-integers are rejected, never rounded. Exception:
   footprint-centre `x`/`z` may be a multiple of 0.5 mm so odd widths keep whole-millimetre edges (D-009).
 - Room frame: origin at the inner corner of the back and left walls; **x** runs along the back wall,
@@ -34,6 +39,14 @@ Fitting        = shelf{y, glass} | drawer{y, height} | rail{y} | plate-rack{y, h
 Appliance      { id; type: fridge|range|dishwasher|hood; dimensions; position; rotationY; wallId? }
 KitchenMaterial{ id; name; category: shutter|carcass|countertop|floor|wall; color; roughness; metalness }
 ```
+
+Furniture      { kind: 'furniture'; id; type: table|chair|sofa; dimensions; position; rotationY; wallId?; materialId }
+Wall           derived from the room, stable ids wall-back | wall-left | wall-right | wall-front (length = room
+               width or length; height and thickness shared by all walls)
+Opening        { id; kind: door|window|opening; wallId; offset; width; height; sill; swing: in|out|none; hinge: left|right }
+Viewpoint      { id; name; x; z; yaw; pitch; eye }
+preferences    { unit: mm|cm|m|in|ft|ft-in }               // furniture, openings, viewpoints, preferences all default
+production     { constructionId?, hinge?, drawerRunner?, handle?, wastePercent?, prices? } // optional, defaulted {}
 
 Derived (never stored): worktops, procedural parts, labels, plan drawing, BOM, validation issues.
 
@@ -72,7 +85,11 @@ Loaded files are checked against the same rules and their issues are reported.
 `set_room`, `apply_layout`, `rename_project`, `add_cabinet`, `add_appliance`, `resize_cabinet`,
 `resize_appliance` (width only), `move_entity` (onto/along a wall), `place_entity` (free-standing
 x/z/rotation), `rotate_entity`, `set_interior`, `set_front_style`, `apply_interior_preset`,
-`set_material` (shutters, many targets), `set_surface_material`, `remove_entity`.
+`set_material` (shutters, many targets), `set_surface_material`, `remove_entity`,
+`set_production_settings` (merge; `clear` removes fields).
+
+`executeBatch(project, commands)` runs commands in order as one transaction: if any is rejected the
+original project is returned unchanged (used by the design assistant and `applyTransaction`).
 
 Behaviour worth knowing:
 

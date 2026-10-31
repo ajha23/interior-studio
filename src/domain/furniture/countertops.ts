@@ -6,8 +6,8 @@
  */
 import { elementBox, type Box } from '@/engine/geometry/box';
 import { WALLS, spanAlongWall, wallAxis } from '../room/walls';
-import { isCabinet, type KitchenElement, type KitchenProject, type WallId } from '../schema';
-import { COUNTERTOP_OVERHANG, COUNTERTOP_THICKNESS, specFor } from './specs';
+import { type KitchenElement, type KitchenProject, type WallId } from '../schema';
+import { COUNTERTOP_OVERHANG, COUNTERTOP_THICKNESS, specOf } from './specs';
 
 export interface Countertop {
   /** Derived from the first unit in the run, so it is stable while that unit exists. */
@@ -26,7 +26,7 @@ export interface Countertop {
 const JOIN_TOLERANCE = 1;
 
 function supportsCountertop(el: KitchenElement): boolean {
-  return specFor(isCabinet(el) ? 'cabinet' : 'appliance', el.type).supportsCountertop;
+  return specOf(el).supportsCountertop;
 }
 
 export function deriveCountertops(project: KitchenProject): Countertop[] {
