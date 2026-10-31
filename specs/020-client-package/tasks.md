@@ -8,3 +8,4 @@
 - [x] Unit, storage and e2e tests; docs
 - [x] Chat/voice package edits: schema + tool, planner, approvals, rules provider, tests
 - [x] Named 3D views: stored camera, standard views in one step, stale recapture, chat capture requests
+- [x] Leader arrows on notes (draggable tip, chat "pointing at C3") and snap guides while dragging notes

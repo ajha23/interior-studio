@@ -50,6 +50,7 @@ export function PackageInspector({ pkg, page, composed }: { pkg: ClientPackage; 
   const selection = usePackageStore((s) => s.selection);
   const handle = composed.handles.find((h) => h.key === selection);
   if (handle?.kind === 'note') return <NoteProps page={page} id={handle.key} />;
+  if (handle?.kind === 'leader') return <NoteProps page={page} id={handle.key.replace(/:tip$/, '')} />;
   if (handle && (handle.kind === 'dim' || handle.kind === 'tag' || handle.kind === 'text' || handle.kind === 'marker')) return <GeneratedProps pkg={pkg} page={page} handle={handle} />;
   if (handle?.kind === 'card') return <CardProps page={page} id={handle.key} />;
   return <PageProps pkg={pkg} page={page} composed={composed} />;
@@ -59,7 +60,7 @@ function NoteProps({ page, id }: { page: Page; id: string }) {
   const dispatch = usePackageStore((s) => s.dispatch);
   const note = page.notes.find((n) => n.id === id);
   if (!note) return null;
-  const update = (patch: Partial<Omit<Note, 'id'>>) => dispatch({ type: 'update-note', pageId: page.id, noteId: id, patch });
+  const update = (patch: Partial<Omit<Note, 'id' | 'leader'>> & { leader?: Note['leader'] | null }) => dispatch({ type: 'update-note', pageId: page.id, noteId: id, patch });
   return (
     <Section title="Note">
       <Field label="Text" value={note.text} multiline onCommit={(text) => update({ text })} testId="note-text" />
@@ -82,9 +83,21 @@ function NoteProps({ page, id }: { page: Page; id: string }) {
         </label>
       </div>
       <p className="text-[11px] text-muted-foreground tabular-nums">At {note.x} × {note.y} mm on the paper. Drag it on the page or use the arrow keys.</p>
-      <Button size="xs" variant="outline" className="justify-self-start" onClick={() => dispatch({ type: 'remove-note', pageId: page.id, noteId: id })}>
-        <Trash2 /> Delete note
-      </Button>
+      <div className="flex flex-wrap gap-1">
+        {note.leader ? (
+          <Button size="xs" variant="outline" onClick={() => update({ leader: null })} data-testid="remove-arrow">
+            <MoveRight /> Remove arrow
+          </Button>
+        ) : (
+          <Button size="xs" variant="outline" onClick={() => update({ leader: { x: note.x + 20, y: note.y + 15 } })} data-testid="add-arrow">
+            <MoveRight /> Add arrow
+          </Button>
+        )}
+        <Button size="xs" variant="outline" onClick={() => dispatch({ type: 'remove-note', pageId: page.id, noteId: id })}>
+          <Trash2 /> Delete note
+        </Button>
+      </div>
+      {note.leader && <p className="text-[11px] text-muted-foreground tabular-nums">Arrow points at {note.leader.x} × {note.leader.y} mm: drag its tip on the page. Moving the note keeps the tip where it is.</p>}
     </Section>
   );
 }

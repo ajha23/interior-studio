@@ -25,7 +25,8 @@ export type PackageCommand =
   | { type: 'set-wall'; pageId: string; wallId: WallId }
   | { type: 'regenerate-page'; pageId: string }
   | { type: 'add-note'; pageId: string; note: Partial<Omit<Note, 'id'>> & { text: string; x: number; y: number } }
-  | { type: 'update-note'; pageId: string; noteId: string; patch: Partial<Omit<Note, 'id'>> }
+  /** `leader: null` removes the note's arrow. */
+  | { type: 'update-note'; pageId: string; noteId: string; patch: Partial<Omit<Note, 'id' | 'leader'>> & { leader?: Note['leader'] | null } }
   | { type: 'remove-note'; pageId: string; noteId: string }
   | { type: 'set-override'; pageId: string; key: string; override: Override | null }
   | { type: 'discard-orphans'; pageId: string; keys: string[] }
@@ -240,7 +241,7 @@ export function executePackageCommand(pkg: ClientPackage, cmd: PackageCommand, e
         const text = cleanText(cmd.note.text).trim();
         if (!text) return void (error = 'A note needs some text.');
         if (page.notes.length >= 100) return void (error = 'At most 100 notes per page.');
-        page.notes.push({ id: env.newId('note'), text: text.slice(0, 400), x: cmd.note.x, y: cmd.note.y, size: cmd.note.size ?? 3, bold: cmd.note.bold ?? true, color: cmd.note.color ?? 'red' });
+        page.notes.push({ id: env.newId('note'), text: text.slice(0, 400), x: cmd.note.x, y: cmd.note.y, size: cmd.note.size ?? 3, bold: cmd.note.bold ?? true, color: cmd.note.color ?? 'red', ...(cmd.note.leader ? { leader: cmd.note.leader } : {}) });
         message = 'Note added.';
         break;
       }
@@ -259,6 +260,13 @@ export function executePackageCommand(pkg: ClientPackage, cmd: PackageCommand, e
         }
         if (rest.x !== undefined && !Number.isFinite(rest.x)) return void (error = 'Invalid position.');
         if (rest.y !== undefined && !Number.isFinite(rest.y)) return void (error = 'Invalid position.');
+        if ('leader' in rest) {
+          const { leader } = rest;
+          delete rest.leader;
+          if (leader === undefined || leader === null) delete note.leader;
+          else if (!Number.isFinite(leader.x) || !Number.isFinite(leader.y)) return void (error = 'Invalid arrow position.');
+          else note.leader = { x: Math.round(leader.x * 10) / 10, y: Math.round(leader.y * 10) / 10 };
+        }
         Object.assign(note, rest);
         message = 'Note updated.';
         break;

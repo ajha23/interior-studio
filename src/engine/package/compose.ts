@@ -49,7 +49,7 @@ export const STATUS_LABEL: Record<PageStatus, string> = {
   'missing-source': 'Missing source data',
 };
 
-export type HandleKind = 'note' | 'dim' | 'tag' | 'text' | 'marker' | 'card' | 'snapshot';
+export type HandleKind = 'note' | 'leader' | 'dim' | 'tag' | 'text' | 'marker' | 'card' | 'snapshot';
 
 export interface Handle {
   key: string;
@@ -78,6 +78,8 @@ export interface PackageContext {
 
 export interface ComposedPage {
   sheet: Sheet;
+  /** The drawing area (paper mm): inside the border, below the heading, above the title block. */
+  area: Area;
   handles: Handle[];
   status: PageStatus;
   /** Why the page is not simply current. */
@@ -244,7 +246,7 @@ function viewHandles(view: View, scale: number, area: Area, hiddenKeys: string[]
 // ── Notes and title block ──────────────────────────────────────────────────────────────────────
 
 export function sheetNote(n: Note): SheetNote {
-  return { key: n.id, at: { x: n.x, y: n.y + n.size }, lines: wrapText(n.text, n.size, 120, n.bold), size: n.size, bold: n.bold, color: n.color === 'red' ? NOTE_RED : undefined };
+  return { key: n.id, at: { x: n.x, y: n.y + n.size }, lines: wrapText(n.text, n.size, 120, n.bold), size: n.size, bold: n.bold, color: n.color === 'red' ? NOTE_RED : undefined, ...(n.leader ? { leader: n.leader } : {}) };
 }
 
 function clientTitle(pkg: ClientPackage, scale: string): ClientTitle {
@@ -367,7 +369,11 @@ export function composePage(pkg: ClientPackage, page: Page, ctx: PackageContext)
   }
 
   const notes = page.notes.map(sheetNote);
-  for (const n of notes) handles.push({ key: n.key, kind: 'note', label: n.lines.join(' '), box: noteBox(n) });
+  for (const n of notes) {
+    handles.push({ key: n.key, kind: 'note', label: n.lines.join(' '), box: noteBox(n) });
+    // The arrow tip is its own handle, dragged independently of the note.
+    if (n.leader) handles.push({ key: `${n.key}:tip`, kind: 'leader', label: 'Arrow tip', box: { x: n.leader.x - 1.5, y: n.leader.y - 1.5, w: 3, h: 3 } });
+  }
   const short = pkg.projectId.replace(/[^a-z0-9]/gi, '').slice(-4).toUpperCase() || 'PRJ';
   const title: TitleBlock = {
     project: pkg.info.projectTitle || ctx.current.name,
@@ -382,7 +388,7 @@ export function composePage(pkg: ClientPackage, page: Page, ctx: PackageContext)
     sheet: `${index + 1} of ${pkg.pages.length}`,
   };
   const sheet: Sheet = { id: page.id, paper: page.paper, orientation: page.orientation, title, client: clientTitle(pkg, scaleLabel), heading: page.heading || undefined, body, notes };
-  return { sheet, handles, status, reasons, orphaned };
+  return { sheet, area, handles, status, reasons, orphaned };
 }
 
 function placeholder(page: Page): SheetBody {
@@ -395,3 +401,28 @@ export function composePackage(pkg: ClientPackage, ctx: PackageContext): Compose
 
 /** Default page title for an elevation. */
 export const elevationTitle = (label: string, wallId: WallId) => `Elevation ${label} — ${WALL_LABEL[wallId]}`;
+
+const SNAP = 1.5;
+
+/**
+ * Snaps a note being moved by (dx, dy) paper mm to the edges and centres of the other notes and of
+ * the drawing area, within 1.5 mm. Returns the snapped move and the guide lines to show.
+ */
+export function snapMove(handle: Handle, dx: number, dy: number, page: ComposedPage): { dx: number; dy: number; guides: { x?: number; y?: number }[] } {
+  const b = { x: handle.box.x + dx, y: handle.box.y + dy, w: handle.box.w, h: handle.box.h };
+  const others = page.handles.filter((h) => h.kind === 'note' && h.key !== handle.key).map((h) => h.box);
+  const a = page.area;
+  const xs = [a.x, a.x + a.w, a.x + a.w / 2, ...others.flatMap((o) => [o.x, o.x + o.w, o.x + o.w / 2])];
+  const ys = [a.y, a.y + a.h, a.y + a.h / 2, ...others.flatMap((o) => [o.y, o.y + o.h, o.y + o.h / 2])];
+  const best = (edges: number[], targets: number[]) => {
+    let hit: { shift: number; at: number } | null = null;
+    for (const e of edges) for (const t of targets) if (Math.abs(t - e) <= SNAP && (!hit || Math.abs(t - e) < Math.abs(hit.shift))) hit = { shift: t - e, at: t };
+    return hit;
+  };
+  const sx = best([b.x, b.x + b.w, b.x + b.w / 2], xs);
+  const sy = best([b.y, b.y + b.h, b.y + b.h / 2], ys);
+  const guides: { x?: number; y?: number }[] = [];
+  if (sx) guides.push({ x: sx.at });
+  if (sy) guides.push({ y: sy.at });
+  return { dx: dx + (sx?.shift ?? 0), dy: dy + (sy?.shift ?? 0), guides };
+}

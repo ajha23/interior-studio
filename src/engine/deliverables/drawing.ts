@@ -125,6 +125,8 @@ export interface SheetNote {
   bold?: boolean;
   /** Hex colour; black when not given. */
   color?: string;
+  /** Tip of a leader arrow from the note (paper mm). */
+  leader?: Pt;
 }
 
 /** The studio title block of a client package: details table, revision table and studio name. */
@@ -323,7 +325,7 @@ export function chooseScale(view: View, paper: Paper, choice: ScaleChoice, area:
 // ── Rendering through a painter ────────────────────────────────────────────────────────────────
 
 export interface Painter {
-  line(a: Pt, b: Pt, width: number, dash?: number[]): void;
+  line(a: Pt, b: Pt, width: number, dash?: number[], color?: string): void;
   rect(x: number, y: number, w: number, h: number, stroke: { width: number; dash?: number[] } | null, fill: string | null): void;
   poly(pts: Pt[], closed: boolean, stroke: { width: number; dash?: number[] } | null, fill: string | null): void;
   arc(c: Pt, r: number, a0: number, a1: number, width: number, dash?: number[]): void;
@@ -542,6 +544,29 @@ function renderImage(b: Extract<SheetBody, { kind: 'image' }>, area: Area, p: Pa
 
 function renderNote(n: SheetNote, p: Painter) {
   n.lines.forEach((line, i) => p.text({ x: n.at.x, y: n.at.y + i * n.size * 1.3 }, line, n.size, 'start', 0, n.bold, n.color));
+  const l = n.leader ? leaderLine(n) : null;
+  if (l) {
+    p.line(l.from, l.tip, 0.25, undefined, n.color);
+    p.poly(l.head, true, null, n.color ?? '#000000');
+  }
+}
+
+/**
+ * A note's leader: from the nearest point of the note's box to the tip, with an arrowhead at the tip.
+ * Null when the tip is inside or right next to the box.
+ */
+export function leaderLine(n: SheetNote): { from: Pt; tip: Pt; head: Pt[] } | null {
+  const tip = n.leader!;
+  const b = noteBox(n);
+  const from = { x: Math.min(Math.max(tip.x, b.x), b.x + b.w), y: Math.min(Math.max(tip.y, b.y), b.y + b.h) };
+  const dx = tip.x - from.x;
+  const dy = tip.y - from.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 2.5) return null;
+  const u = { x: dx / len, y: dy / len };
+  const back = { x: tip.x - u.x * 2, y: tip.y - u.y * 2 };
+  const head = [tip, { x: back.x - u.y * 0.7, y: back.y + u.x * 0.7 }, { x: back.x + u.y * 0.7, y: back.y - u.x * 0.7 }].map((q) => ({ x: round(q.x), y: round(q.y) }));
+  return { from: { x: round(from.x), y: round(from.y) }, tip: { x: round(tip.x), y: round(tip.y) }, head };
 }
 
 /** Paper-mm box of a note (for selection handles). */

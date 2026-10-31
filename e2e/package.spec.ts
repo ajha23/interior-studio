@@ -43,6 +43,17 @@ test('Client package: pages, notes, label edits, stale detection, regeneration, 
   await page.getByTestId('note-text').fill('NOTE: LED strip will be installed after the kitchen is completed');
   await page.getByTestId('note-text').blur();
   await expect(sheet).toContainText('LED strip will be installed');
+  // An arrow from the note, its tip dragged on its own; snapping shows a guide while a note moves.
+  await page.getByTestId('add-arrow').click();
+  const tip = page.locator('[data-kind="leader"]');
+  await expect(tip).toHaveCount(1);
+  const tb = (await tip.boundingBox())!;
+  await page.mouse.move(tb.x + tb.width / 2, tb.y + tb.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(tb.x + 60, tb.y + 40, { steps: 4 });
+  await page.mouse.up();
+  await expect(page.getByTestId('package-message')).toContainText('Note updated');
+  await expect(sheet.locator('polygon[fill="#c8102e"]')).toHaveCount(1);
   const dim = page.locator('[data-handle^="dim:segment:x:1000,"]').first();
   const box = (await dim.boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);

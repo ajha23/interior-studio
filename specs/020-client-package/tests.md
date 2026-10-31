@@ -12,3 +12,4 @@
   refusal of outdated approvals; status and regeneration; title block fields.
 - `e2e/package.spec.ts` also adds a note, asks for outdated pages and approves an all-pages edit from chat.
 - Named 3D views: `engine/package/package.test.ts` (views, stored camera, caption keeps revision), `state/packageAssistant.test.ts` (capture planning), `e2e/package.spec.ts` (standard views captured, stale, captured again).
+- Arrows and snapping: `engine/package/package.test.ts` (SVG/PDF arrow, tip independent of the note, removal, snapMove), `state/packageAssistant.test.ts` ("pointing at C3"), `e2e/package.spec.ts` (add and drag an arrow tip).

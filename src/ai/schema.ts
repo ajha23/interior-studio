@@ -257,7 +257,8 @@ export const PaperPositionSchema = z.enum(['top-left', 'top-right', 'bottom-left
 export const PackageOpSchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('status') }).strict(),
   z.object({ op: z.literal('open') }).strict(),
-  z.object({ op: z.literal('add_note'), text: z.string().trim().min(1).max(400), position: PaperPositionSchema.optional(), color: z.enum(['red', 'black']).optional() }).strict(),
+  /** `pointTo`: a reference tag on the page ("C3") the note's arrow points at. */
+  z.object({ op: z.literal('add_note'), text: z.string().trim().min(1).max(400), position: PaperPositionSchema.optional(), color: z.enum(['red', 'black']).optional(), pointTo: z.string().trim().min(1).max(20).optional() }).strict(),
   /** Moves the newest note, or the note containing `match`. */
   z.object({ op: z.literal('move_note'), match: z.string().trim().max(80).optional(), position: PaperPositionSchema }).strict(),
   z.object({ op: z.literal('set_orientation'), orientation: z.enum(['landscape', 'portrait']) }).strict(),

@@ -163,6 +163,20 @@ describe('client package from chat and voice', () => {
     expect(plan({ page: 'layout', ops: [{ op: 'capture_view' }] })).toMatchObject({ kind: 'question', text: expect.stringContaining('is not a 3D view page') });
   });
 
+  it('adds a note with an arrow to a reference on the page', async () => {
+    const r = interpret(request('Add a note “VISIBLE SIDE” pointing at C3'));
+    expect(r.kind === 'package' && r.request.ops).toEqual([{ op: 'add_note', text: 'VISIBLE SIDE', pointTo: 'C3' }]);
+    pkgStore().createStarter();
+    openPage(/Elevation A/);
+    const m = await say('Add a note “VISIBLE SIDE” pointing at C3');
+    expect(m.reply.lines[0]).toBe('Elevation A — Back wall: note “VISIBLE SIDE” added with an arrow to C3.');
+    const note = page(/Elevation A/).notes[0]!;
+    const tag = composePage(pkg(), page(/Elevation A/), packageContext()!).handles.find((h) => h.label === 'C3')!;
+    expect(note.leader!.x).toBeCloseTo(tag.box.x + tag.box.w / 2, 0);
+    expect(note.leader!.y).toBeLessThan(tag.box.y);
+    expect((await say('Add a note “FILLER” pointing at C99')).reply.lines[0]).toMatch(/shows no reference C99\. References on this page: C\d/);
+  });
+
   it('fills the studio title block on every page', async () => {
     pkgStore().createStarter();
     const m = await say('Set the client to Dr. Example');

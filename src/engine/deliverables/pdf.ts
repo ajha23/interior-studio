@@ -37,7 +37,7 @@ function pageContent(sheet: Sheet, images: Map<string, ImageRef>): string {
   const strokeStyle = (width: number, dash?: number[]) => `${f(width * PT)} w [${(dash ?? []).map((d) => f(d * PT)).join(' ')}] 0 d 0 0 0 RG`;
   const pathOf = (pts: Pt[]) => pts.map((p, i) => `${X(p.x)} ${Y(p.y)} ${i ? 'l' : 'm'}`).join(' ');
   const painter: Painter = {
-    line: (a, b, width, dash) => ops.push(`${strokeStyle(width, dash)} ${X(a.x)} ${Y(a.y)} m ${X(b.x)} ${Y(b.y)} l S`),
+    line: (a, b, width, dash, color) => ops.push(`${strokeStyle(width, dash)}${color && /^#[0-9a-f]{6}$/i.test(color) ? ` ${hexToRgb(color)} RG` : ''} ${X(a.x)} ${Y(a.y)} m ${X(b.x)} ${Y(b.y)} l S`),
     rect: (x, y, w, rh, stroke, fill) => {
       const r = `${X(x)} ${Y(y + rh)} ${f(w * PT)} ${f(rh * PT)} re`;
       if (fill && fill !== '#ffffff') ops.push(`${hexToRgb(fill)} rg ${r} f`);

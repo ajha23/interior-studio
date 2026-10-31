@@ -201,9 +201,23 @@ export function planPackageRequest(pkg: ClientPackage, req: PackageRequest, env:
     switch (op.op) {
       case 'add_note': {
         const note = { text: op.text, size: 3, bold: true };
-        const at = notePosition(page, note, op.position ?? 'top-left');
-        const err = run({ type: 'add-note', pageId: page.id, note: { ...note, ...at, color: op.color ?? 'red' } });
-        if (!err) lines.push(`${page.name}: note “${op.text}” added${op.position ? ` (${op.position})` : ''}.`);
+        let at = notePosition(page, note, op.position ?? 'top-left');
+        let leader: { x: number; y: number } | undefined;
+        if (op.pointTo) {
+          const ref = op.pointTo.toUpperCase().replace(/\s+/g, '');
+          const composed = composePage(work, page, env.ctx);
+          const tag = composed.handles.find((h) => (h.kind === 'tag' || h.kind === 'marker') && !h.hidden && h.label.toUpperCase() === ref);
+          if (!tag) return `${page.name} shows no reference ${ref}. References on this page: ${composed.handles.filter((h) => h.kind === 'tag').map((h) => h.label).join(', ') || 'none'}.`;
+          // Tip at the tag's edge; the note above and to the left, kept inside the drawing area.
+          const c = { x: tag.box.x + tag.box.w / 2, y: tag.box.y + tag.box.h / 2 };
+          leader = { x: Math.round(c.x * 10) / 10, y: Math.round((tag.box.y - 0.3) * 10) / 10 };
+          if (!op.position) {
+            const a = composed.area;
+            at = { x: Math.round(Math.min(Math.max(c.x - 25, a.x + 2), a.x + a.w - 40)), y: Math.round(Math.max(c.y - 22, a.y + 2)) };
+          }
+        }
+        const err = run({ type: 'add-note', pageId: page.id, note: { ...note, ...at, color: op.color ?? 'red', ...(leader ? { leader } : {}) } });
+        if (!err) lines.push(`${page.name}: note “${op.text}” added${op.pointTo ? ` with an arrow to ${op.pointTo.toUpperCase()}` : op.position ? ` (${op.position})` : ''}.`);
         return err;
       }
       case 'move_note': {

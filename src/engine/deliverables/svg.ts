@@ -26,7 +26,7 @@ export function sheetToSvg(sheet: Sheet): string {
   const { w, h } = sheetSize(sheet);
   const out: string[] = [];
   const painter: Painter = {
-    line: (a, b, width, dash) => out.push(`<line x1="${n(a.x)}" y1="${n(a.y)}" x2="${n(b.x)}" y2="${n(b.y)}" stroke="#000" stroke-width="${n(width)}"${dashAttr(dash)}/>`),
+    line: (a, b, width, dash, color) => out.push(`<line x1="${n(a.x)}" y1="${n(a.y)}" x2="${n(b.x)}" y2="${n(b.y)}" stroke="${color ? hexColor(color) : '#000'}" stroke-width="${n(width)}"${dashAttr(dash)}/>`),
     rect: (x, y, rw, rh, stroke, fill) =>
       out.push(`<rect x="${n(x)}" y="${n(y)}" width="${n(rw)}" height="${n(rh)}" fill="${fill ?? 'none'}"${stroke ? ` stroke="#000" stroke-width="${n(stroke.width)}"${dashAttr(stroke.dash)}` : ''}/>`),
     poly: (pts, closed, stroke, fill) =>

@@ -42,6 +42,8 @@ export const NoteSchema = z.object({
   size: z.number().min(1.5).max(12),
   bold: z.boolean(),
   color: z.enum(['black', 'red']),
+  /** Tip of a leader arrow (paper mm); optional, so packages saved before arrows load unchanged. */
+  leader: z.object({ x: Num, y: Num }).optional(),
 });
 export type Note = z.infer<typeof NoteSchema>;
 

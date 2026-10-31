@@ -748,6 +748,11 @@ function packageRequest(t: string, raw: string): AssistantResponse | null {
 
   const note = /^(?:please\s+)?add (?:a |an )?note(?: (?:to|on) (.+?))?(?:\s+(?:that|saying|which says))?\s*[:,]?\s+(.+)$/i.exec(raw);
   if (note && /^add (a |an )?note\b/.test(t)) {
+    const arrow = /^(.+?)\s+(?:pointing|with an arrow|arrow)\s+(?:at|to)\s+([a-z]{1,2}\d{0,3})\.?$/i.exec(note[2]!.trim());
+    if (arrow) {
+      const text = arrow[1]!.trim().replace(/^["'“]|["'”.]$/g, '');
+      return pkg([{ op: 'add_note', text, pointTo: arrow[2]!.toUpperCase() }], note[1] ? pageRefIn(note[1].toLowerCase()) : undefined);
+    }
     let text = note[2]!.trim().replace(/^["'“]|["'”.]$/g, '');
     if (!/^note\b/i.test(text)) text = `NOTE: ${text.charAt(0).toUpperCase()}${text.slice(1)}`;
     return pkg([{ op: 'add_note', text }], note[1] ? pageRefIn(note[1].toLowerCase()) : undefined);

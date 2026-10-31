@@ -84,6 +84,7 @@ export function PackageStudio() {
       } else if (page && selection && (e.key === 'Delete' || e.key === 'Backspace')) {
         const h = current?.handles.find((x) => x.key === selection);
         if (h?.kind === 'note') dispatch({ type: 'remove-note', pageId: page.id, noteId: h.key });
+        else if (h?.kind === 'leader') dispatch({ type: 'update-note', pageId: page.id, noteId: h.key.replace(/:tip$/, ''), patch: { leader: null } });
         else if (h?.kind === 'card') dispatch({ type: 'remove-card', pageId: page.id, cardId: h.key });
       } else if (e.key === 'Escape') select(null);
     };

@@ -7,7 +7,7 @@ import { sheetsToPdf } from '../deliverables/pdf';
 import { designRevision } from '../deliverables/revision';
 import { sheetToSvg } from '../deliverables/svg';
 import { createPackage, executePackageCommand, type PackageCommand, type PackageEnv } from './commands';
-import { composePackage, composePage, dragOverride, type PackageContext } from './compose';
+import { composePackage, composePage, dragOverride, snapMove, type PackageContext } from './compose';
 import { parsePackageFile, serializePackage, type ClientPackage } from './schema';
 import { cameraAvailable, presentationViews, viewKeyOf } from './views';
 
@@ -202,6 +202,53 @@ describe('client package', () => {
     pkg = run(pkg, { type: 'set-snapshot-caption', pageId: view.id, caption: 'Kitchen — overall' }, env(edited));
     expect(pkg.pages[5]!.snapshot).toMatchObject({ caption: 'Kitchen — overall', revision: designRevision(p) });
     expect(composePage(pkg, pkg.pages[5]!, ctx(edited, assets)).status).toBe('stale');
+  });
+
+  it('draws notes with leader arrows whose tip moves on its own', () => {
+    const p = lKitchen12x10();
+    const e = env(p);
+    let pkg = createPackage(e);
+    const id = pkg.pages[1]!.id;
+    pkg = run(pkg, { type: 'add-note', pageId: id, note: { text: 'VISIBLE SIDE', x: 40, y: 40, leader: { x: 90, y: 80 } } }, e);
+    const noteId = pkg.pages[1]!.notes[0]!.id;
+    let page = composePage(pkg, pkg.pages[1]!, ctx(p));
+    expect(page.handles.find((h) => h.key === `${noteId}:tip`)).toMatchObject({ kind: 'leader', box: { x: 88.5, y: 78.5 } });
+    const svg = sheetToSvg(page.sheet);
+    expect(svg).toMatch(/<line [^>]*x2="90" y2="80" stroke="#c8102e"/);
+    expect(svg).toMatch(/<polygon points="90,80 [^"]+" fill="#c8102e"\/>/);
+    // Moving the note keeps the tip; null removes the arrow.
+    pkg = run(pkg, { type: 'update-note', pageId: id, noteId, patch: { x: 50 } }, e);
+    expect(pkg.pages[1]!.notes[0]).toMatchObject({ x: 50, leader: { x: 90, y: 80 } });
+    expect(parsePackageFile(serializePackage(pkg, NOW))).toMatchObject({ ok: true });
+    pkg = run(pkg, { type: 'update-note', pageId: id, noteId, patch: { leader: null } }, e);
+    expect(pkg.pages[1]!.notes[0]!.leader).toBeUndefined();
+    page = composePage(pkg, pkg.pages[1]!, ctx(p));
+    expect(page.handles.some((h) => h.kind === 'leader')).toBe(false);
+    expect(executePackageCommand(pkg, { type: 'update-note', pageId: id, noteId, patch: { leader: { x: Number.NaN, y: 1 } } }, e).ok).toBe(false);
+    // The PDF draws the arrow in the note's colour.
+    pkg = run(pkg, { type: 'update-note', pageId: id, noteId, patch: { leader: { x: 90, y: 80 } } }, e);
+    expect(sheetsToPdf([composePage(pkg, pkg.pages[1]!, ctx(p)).sheet], { title: 't', subject: 's', created: NOW })).toMatch(/0\.784 0\.063 0\.18 RG [\d.]+ [\d.]+ m 255\.118/);
+  });
+
+  it('snaps a moved note to other notes and the drawing area, within 1.5 mm', () => {
+    const p = lKitchen12x10();
+    const e = env(p);
+    let pkg = createPackage(e);
+    const id = pkg.pages[1]!.id;
+    pkg = run(pkg, { type: 'add-note', pageId: id, note: { text: 'First', x: 60, y: 40 } }, e);
+    pkg = run(pkg, { type: 'add-note', pageId: id, note: { text: 'A much longer second note', x: 100, y: 80 } }, e);
+    const page = composePage(pkg, pkg.pages[1]!, ctx(p));
+    const second = page.handles.find((h) => h.label === 'A much longer second note')!;
+    const first = page.handles.find((h) => h.label === 'First')!;
+    // 39 mm left lands 1 mm from the first note's left edge: snapped onto it, with a guide there.
+    const m = snapMove(second, first.box.x - second.box.x + 1, 0, page);
+    expect(second.box.x + m.dx).toBeCloseTo(first.box.x);
+    expect(m.guides).toContainEqual({ x: first.box.x });
+    // Far from everything: unchanged, no guide.
+    expect(snapMove(second, 7.3, 13.1, page)).toEqual({ dx: 7.3, dy: 13.1, guides: [] });
+    // The drawing area's left edge.
+    const toMargin = snapMove(second, page.area.x - second.box.x + 0.8, 0, page);
+    expect(second.box.x + toMargin.dx).toBeCloseTo(page.area.x);
   });
 
   it('names reproducible 3D views and stores the camera with the snapshot', () => {

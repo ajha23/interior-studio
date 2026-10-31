@@ -29,12 +29,13 @@ ever changing the design or falsifying a measurement.
    table, studio) on every page; nothing about the client or studio is invented.
 8. One vector PDF for the whole package (images embedded once as JPEG), SVG per page; stale pages
    carry "STALE" in the title block and the PDF subject. No handles or UI in exports.
-9. Artifact-level undo/redo, separate from design undo.
+9. Artifact-level undo/redo, separate from design undo. Notes can have leader arrows; dragged
+   notes snap to other notes and the drawing area (Alt for free placement).
 10. Chat and voice: a typed `client_package` tool (and the rule-based provider) for page, note,
     label-position, title-block, page-management, regeneration and status requests; resolved against
     the real package, questions for ambiguity, Apply for broad/destructive/approved-revision edits.
 
 ## Not done (later slices)
-Adding reference images from chat; resizing/snap guides/multi-select; island and run-cropped elevations
+Adding reference images from chat; resizing and multi-select; island and run-cropped elevations
 and section views (018 limitation: elevations are per wall); server-side storage and sharing;
 schedule column choice per page; cut lists in the package.

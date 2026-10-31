@@ -86,6 +86,9 @@ kitchen layout with elevation markers, elevations A, B, … per wall, hardware &
 3D view, cabinet schedule, all with the studio title block (filled in by the designer; nothing is
 invented). Each page is edited on its own: notes, dimension/tag positions (drag or arrow keys), hidden
 labels, images, captions, paper and orientation. Package edits have their own undo/redo.
+Notes can carry a leader arrow (Add arrow; drag its tip, which stays put when the note moves), and
+while a note is dragged it snaps to other notes and to the drawing area's edges and centre (hold Alt
+to place it freely).
 - Technical pages are pinned to the design revision they were generated from (the package keeps that
   project file) and are drawn from it until regenerated. A design change makes only the pages whose
   content changed **stale**; **Regenerate** pins the page to the current design and keeps compatible
@@ -104,7 +107,8 @@ labels, images, captions, paper and orientation. Package edits have their own un
   "change this page to landscape", "move the 900 mm dimension away from the cabinet", "make the
   hardware reference images larger", "create an elevation for the left wall", "regenerate elevation B
   using the latest approved model", "which pages are outdated?", "add the standard 3D views",
-  "capture the stale 3D views again", "capture the back wall view". One-page edits apply at once;
+  "capture the stale 3D views again", "capture the back wall view", "add a note “VISIBLE SIDE”
+  pointing at C3" (the arrow points at that reference tag on the page). One-page edits apply at once;
   several pages, deletions and approved-revision regeneration wait for Apply (docs/AI_ASSISTANT.md).
 - Code: `engine/package/*` (schema, commands, composition), `state/packageStore.ts`,
   `state/packageAssistant.ts`, `ai/packagePlan.ts`, `features/deliverables/package/*`.
