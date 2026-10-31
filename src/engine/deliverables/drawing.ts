@@ -33,6 +33,10 @@ export interface Dimension {
   role: DimensionRole;
   /** Measure only along x or y (otherwise along a→b). */
   axis?: 'x' | 'y';
+  /** Stable key for presentation edits (client packages); never part of the measurement. */
+  key?: string;
+  /** Paper mm the text is slid along the dimension line (a presentation edit). */
+  shift?: number;
 }
 
 export type Prim =
@@ -42,9 +46,9 @@ export type Prim =
   /** Arc from angle a0 to a1 (radians, y-down so positive = clockwise on paper). */
   | { t: 'arc'; c: Pt; r: number; a0: number; a1: number; stroke: Stroke }
   /** A reference tag: circle with text, radius in paper mm. */
-  | { t: 'tag'; at: Pt; text: string; r: number }
+  | { t: 'tag'; at: Pt; text: string; r: number; key?: string }
   /** Text: size in paper mm, rotation in degrees (counter-clockwise on paper). */
-  | { t: 'text'; at: Pt; text: string; size: number; anchor: 'start' | 'middle' | 'end'; rotate?: number; bold?: boolean }
+  | { t: 'text'; at: Pt; text: string; size: number; anchor: 'start' | 'middle' | 'end'; rotate?: number; bold?: boolean; key?: string }
   | Dimension;
 
 export interface Bounds {
@@ -64,7 +68,14 @@ export interface View {
 }
 
 export type Paper = 'A3' | 'A4';
+/** Landscape sizes; portrait swaps width and height. */
 export const PAPER: Record<Paper, { w: number; h: number }> = { A3: { w: 420, h: 297 }, A4: { w: 297, h: 210 } };
+export type Orientation = 'landscape' | 'portrait';
+
+export function paperOf(paper: Paper, orientation: Orientation = 'landscape'): { w: number; h: number } {
+  const { w, h } = PAPER[paper];
+  return orientation === 'portrait' ? { w: h, h: w } : { w, h };
+}
 export const SCALES = [5, 10, 20, 25, 50, 100] as const;
 export type ScaleChoice = 'fit' | (typeof SCALES)[number];
 
@@ -88,13 +99,65 @@ export interface TableColumn {
   align?: 'left' | 'right';
 }
 
+/** A JPEG image (uploaded reference or 3D snapshot); written as an image in SVG and PDF. */
+export interface ImageRef {
+  id: string;
+  /** Pixel size. */
+  w: number;
+  h: number;
+  /** JPEG bytes (baseline, RGB). */
+  data: Uint8Array;
+}
+
+export interface BoardCard {
+  key: string;
+  image: ImageRef | null;
+  caption: string;
+  spec: string;
+}
+
+/** A free note placed on the paper (paper mm); `lines` are drawn below each other. */
+export interface SheetNote {
+  key: string;
+  at: Pt;
+  lines: string[];
+  size: number;
+  bold?: boolean;
+  /** Hex colour; black when not given. */
+  color?: string;
+}
+
+/** The studio title block of a client package: details table, revision table and studio name. */
+export interface ClientTitle {
+  /** Label/value pairs, filled column-wise into two columns of four rows. */
+  cells: [string, string][];
+  revisions: { no: string; date: string; description: string }[];
+  studio: string;
+  studioLines: string[];
+}
+
+export type SheetBody =
+  | { kind: 'view'; view: View; scale: number }
+  | { kind: 'table'; heading: string; columns: TableColumn[]; rows: string[][]; notes: string[] }
+  | { kind: 'board'; columns: number; cards: BoardCard[] }
+  | { kind: 'image'; image: ImageRef | null; caption: string };
+
 export interface Sheet {
   id: string;
   paper: Paper;
+  orientation?: Orientation;
   title: TitleBlock;
-  /** A drawing at a scale, or a table page. */
-  body: { kind: 'view'; view: View; scale: number } | { kind: 'table'; heading: string; columns: TableColumn[]; rows: string[][]; notes: string[] };
+  /** Studio title block (client packages) instead of the technical one. */
+  client?: ClientTitle;
+  /** Large heading across the top of the drawing area. */
+  heading?: string;
+  /** A drawing at a scale, a table, an image board or a single image. */
+  body: SheetBody;
+  /** Designer notes placed on the paper. */
+  notes?: SheetNote[];
 }
+
+export const sheetSize = (sheet: Sheet) => paperOf(sheet.paper, sheet.orientation);
 
 // ── Text metrics (Helvetica, used by both writers so layout is identical) ──────────────────────
 
@@ -179,7 +242,8 @@ export function dimensionGeometry(d: Dimension, scale: number): DimensionGeometr
   const up = { x: -Math.sin(rad), y: -Math.cos(rad) };
   const lift = toModel(TEXT_LIFT);
   const mid = { x: (la.x + lb.x) / 2, y: (la.y + lb.y) / 2 };
-  let text = { x: mid.x + up.x * lift, y: mid.y + up.y * lift };
+  const slide = toModel(d.shift ?? 0);
+  let text = { x: mid.x + up.x * lift + reading.x * slide, y: mid.y + up.y * lift + reading.y * slide };
   let outside = false;
   if (!fits) {
     // Too short: put the text beyond the end of the line, in reading direction.
@@ -187,7 +251,7 @@ export function dimensionGeometry(d: Dimension, scale: number): DimensionGeometr
     const along = (q: Pt) => q.x * reading.x + q.y * reading.y;
     const end = along(lb) >= along(la) ? lb : la;
     const push = toModel(TICK + 1) + textLen / 2;
-    text = { x: end.x + reading.x * push + up.x * lift, y: end.y + reading.y * push + up.y * lift };
+    text = { x: end.x + reading.x * (push + slide) + up.x * lift, y: end.y + reading.y * (push + slide) + up.y * lift };
   }
   return { ext, line: [la, lb], ticks, text, rotate, outside };
 }
@@ -221,17 +285,31 @@ export function boundsOf(prims: Prim[], marginPaper = 0, scale = 1 / 25): Bounds
   return { minX: b.minX - m, minY: b.minY - m, maxX: b.maxX + m, maxY: b.maxY + m };
 }
 
+export interface Area {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 /** The drawing area of a sheet (paper mm), inside the border and above the title block. */
-export function drawingArea(paper: Paper): { x: number; y: number; w: number; h: number } {
-  const { w, h } = PAPER[paper];
-  return { x: 15, y: 10, w: w - 25, h: h - 10 - 10 - TITLE_H };
+export function drawingArea(paper: Paper, orientation: Orientation = 'landscape', titleH = TITLE_H): Area {
+  const { w, h } = paperOf(paper, orientation);
+  return { x: 15, y: 10, w: w - 25, h: h - 10 - 10 - titleH };
 }
 
 export const TITLE_H = 24;
+export const CLIENT_TITLE_H = 30;
+const HEADING_H = 12;
+
+/** The drawing area of a given sheet: below its heading and above its title block. */
+export function sheetArea(sheet: Pick<Sheet, 'paper' | 'orientation' | 'client' | 'heading'>): Area {
+  const a = drawingArea(sheet.paper, sheet.orientation, sheet.client ? CLIENT_TITLE_H : TITLE_H);
+  return sheet.heading ? { x: a.x, y: a.y + HEADING_H, w: a.w, h: a.h - HEADING_H } : a;
+}
 
 /** The largest standard scale (1:n) at which the view fits the drawing area, or the chosen one. */
-export function chooseScale(view: View, paper: Paper, choice: ScaleChoice): { scale: number; label: string; fits: boolean } {
-  const area = drawingArea(paper);
+export function chooseScale(view: View, paper: Paper, choice: ScaleChoice, area: Area = drawingArea(paper)): { scale: number; label: string; fits: boolean } {
   const fitsAt = (n: number) => {
     const s = 1 / n;
     const b = boundsOf(view.prims, 3, s);
@@ -250,7 +328,9 @@ export interface Painter {
   poly(pts: Pt[], closed: boolean, stroke: { width: number; dash?: number[] } | null, fill: string | null): void;
   arc(c: Pt, r: number, a0: number, a1: number, width: number, dash?: number[]): void;
   circle(c: Pt, r: number, width: number, fill: string | null): void;
-  text(at: Pt, text: string, size: number, anchor: 'start' | 'middle' | 'end', rotate?: number, bold?: boolean): void;
+  text(at: Pt, text: string, size: number, anchor: 'start' | 'middle' | 'end', rotate?: number, bold?: boolean, color?: string): void;
+  /** A JPEG image filling the box (the caller keeps the aspect ratio). */
+  image(x: number, y: number, w: number, h: number, image: ImageRef): void;
 }
 
 /** Line weights and dashes on paper (mm). */
@@ -278,21 +358,36 @@ export const FILLS: Record<Fill, string | null> = {
   header: '#eeeeee',
 };
 
-/** Draws a sheet: border, view (or table) and title block, all in paper millimetres. */
+export const NOTE_RED = '#c8102e';
+
+/** Draws a sheet: border, heading, body, notes and title block, all in paper millimetres. */
 export function renderSheet(sheet: Sheet, p: Painter): void {
-  const { w, h } = PAPER[sheet.paper];
+  const { w, h } = sheetSize(sheet);
   p.rect(10, 5, w - 15, h - 10, { width: 0.5 }, null);
-  const area = drawingArea(sheet.paper);
-  if (sheet.body.kind === 'view') renderView(sheet.body.view, sheet.body.scale, area, p);
-  else renderTable(sheet.body, area, p);
-  renderTitle(sheet, p);
+  const area = sheetArea(sheet);
+  if (sheet.heading) {
+    p.text({ x: area.x + area.w / 2, y: area.y - 4 }, sheet.heading, 6, 'middle', 0, true);
+    p.line({ x: area.x, y: area.y - 2 }, { x: area.x + area.w, y: area.y - 2 }, 0.35);
+  }
+  const body = sheet.body;
+  if (body.kind === 'view') renderView(body.view, body.scale, area, p);
+  else if (body.kind === 'table') renderTable(body, area, p);
+  else if (body.kind === 'board') renderBoard(body, area, p);
+  else renderImage(body, area, p);
+  for (const n of sheet.notes ?? []) renderNote(n, p);
+  if (sheet.client) renderClientTitle(sheet, p);
+  else renderTitle(sheet, p);
 }
 
-function renderView(view: View, scale: number, area: { x: number; y: number; w: number; h: number }, p: Painter) {
+/** Where a view's model origin lands on paper when it is centred in an area. */
+export function viewOrigin(view: View, scale: number, area: Area): Pt {
   const b = view.bounds;
+  return { x: area.x + (area.w - (b.maxX - b.minX) * scale) / 2 - b.minX * scale, y: area.y + (area.h - (b.maxY - b.minY) * scale) / 2 - b.minY * scale };
+}
+
+function renderView(view: View, scale: number, area: Area, p: Painter) {
   // Centre the view in the drawing area.
-  const ox = area.x + (area.w - (b.maxX - b.minX) * scale) / 2 - b.minX * scale;
-  const oy = area.y + (area.h - (b.maxY - b.minY) * scale) / 2 - b.minY * scale;
+  const { x: ox, y: oy } = viewOrigin(view, scale, area);
   const P = (q: Pt): Pt => ({ x: round(ox + q.x * scale), y: round(oy + q.y * scale) });
   const S = (s: Stroke | null) => (s ? STROKES[s] : null);
   for (const prim of view.prims) {
@@ -340,12 +435,11 @@ function renderView(view: View, scale: number, area: { x: number; y: number; w: 
 const ROW_H = 5;
 
 /** How many table rows fit on one sheet. */
-export function rowsPerSheet(paper: Paper, notes: number): number {
-  const area = drawingArea(paper);
+export function rowsPerSheet(paper: Paper, notes: number, area: Area = drawingArea(paper)): number {
   return Math.max(1, Math.floor((area.h - 8 - ROW_H - notes * 3.2) / ROW_H));
 }
 
-function renderTable(t: Extract<Sheet['body'], { kind: 'table' }>, area: { x: number; y: number; w: number; h: number }, p: Painter) {
+function renderTable(t: Extract<SheetBody, { kind: 'table' }>, area: Area, p: Painter) {
   p.text({ x: area.x, y: area.y + 4 }, t.heading, 3.5, 'start', 0, true);
   const total = t.columns.reduce((s, c) => s + c.width, 0);
   const xs: number[] = [area.x];
@@ -375,6 +469,87 @@ function renderTable(t: Extract<Sheet['body'], { kind: 'table' }>, area: { x: nu
   }
 }
 
+/** Card boxes of an image board (paper mm), row by row. */
+export function boardLayout(area: Area, count: number, columns: number): Area[] {
+  const cols = Math.max(1, Math.min(columns, Math.max(1, count)));
+  const rows = Math.max(1, Math.ceil(count / cols));
+  const gap = 4;
+  const w = (area.w - gap * (cols - 1)) / cols;
+  const h = Math.min((area.h - gap * (rows - 1)) / rows, w * 1.1);
+  return Array.from({ length: count }, (_, i) => ({ x: area.x + (i % cols) * (w + gap), y: area.y + Math.floor(i / cols) * (h + gap), w, h }));
+}
+
+/** The largest box with the image's aspect ratio inside a box, centred. */
+export function containBox(box: Area, image: { w: number; h: number }): Area {
+  const k = Math.min(box.w / image.w, box.h / image.h);
+  const w = image.w * k;
+  const h = image.h * k;
+  return { x: box.x + (box.w - w) / 2, y: box.y + (box.h - h) / 2, w, h };
+}
+
+function placeImage(image: ImageRef | null, box: Area, p: Painter) {
+  if (!image) {
+    // Never silently drop a missing picture: say so on the sheet.
+    p.rect(box.x, box.y, box.w, box.h, { width: 0.18, dash: [1.5, 1] }, '#f4f4f4');
+    p.text({ x: box.x + box.w / 2, y: box.y + box.h / 2 }, 'Image missing', 2.5, 'middle');
+    return;
+  }
+  const b = containBox(box, image);
+  p.image(round(b.x), round(b.y), round(b.w), round(b.h), image);
+}
+
+/** Wraps text into lines that fit a width (paper mm); explicit line breaks are kept. */
+export function wrapText(text: string, size: number, width: number, bold = false): string[] {
+  const out: string[] = [];
+  for (const para of text.split('\n')) {
+    let line = '';
+    for (const word of para.split(/\s+/).filter(Boolean)) {
+      const next = line ? `${line} ${word}` : word;
+      if (line && textWidth(next, size, bold) > width) {
+        out.push(line);
+        line = word;
+      } else line = next;
+    }
+    out.push(line);
+  }
+  return out;
+}
+
+function renderBoard(b: Extract<SheetBody, { kind: 'board' }>, area: Area, p: Painter) {
+  boardLayout(area, b.cards.length, b.columns).forEach((box, i) => {
+    const card = b.cards[i]!;
+    p.rect(box.x, box.y, box.w, box.h, { width: 0.25 }, null);
+    const captionLines = wrapText(card.caption.toUpperCase(), 2.6, box.w - 4, true).slice(0, 2);
+    const specLines = card.spec ? wrapText(card.spec, 2.1, box.w - 4).slice(0, 3) : [];
+    const textH = captionLines.length * 3.3 + specLines.length * 2.7 + 3;
+    placeImage(card.image, { x: box.x + 3, y: box.y + 3, w: box.w - 6, h: Math.max(5, box.h - textH - 6) }, p);
+    let y = box.y + box.h - textH + 2.5;
+    for (const l of captionLines) {
+      p.text({ x: box.x + box.w / 2, y }, l, 2.6, 'middle', 0, true, NOTE_RED);
+      y += 3.3;
+    }
+    for (const l of specLines) {
+      p.text({ x: box.x + box.w / 2, y }, l, 2.1, 'middle');
+      y += 2.7;
+    }
+  });
+}
+
+function renderImage(b: Extract<SheetBody, { kind: 'image' }>, area: Area, p: Painter) {
+  placeImage(b.image, { x: area.x, y: area.y, w: area.w, h: area.h - 8 }, p);
+  p.text({ x: area.x + area.w / 2, y: area.y + area.h - 2.5 }, b.caption, 3, 'middle', 0, true);
+}
+
+function renderNote(n: SheetNote, p: Painter) {
+  n.lines.forEach((line, i) => p.text({ x: n.at.x, y: n.at.y + i * n.size * 1.3 }, line, n.size, 'start', 0, n.bold, n.color));
+}
+
+/** Paper-mm box of a note (for selection handles). */
+export function noteBox(n: SheetNote): Area {
+  const w = Math.max(4, ...n.lines.map((l) => textWidth(l, n.size, n.bold)));
+  return { x: n.at.x - 0.5, y: n.at.y - n.size, w: w + 1, h: n.size * 1.3 * n.lines.length + 0.5 };
+}
+
 /** Shortens text with an ellipsis to fit a width (paper mm). */
 export function fitText(text: string, size: number, width: number, bold = false): string {
   if (textWidth(text, size, bold) <= width) return text;
@@ -384,7 +559,7 @@ export function fitText(text: string, size: number, width: number, bold = false)
 }
 
 function renderTitle(sheet: Sheet, p: Painter) {
-  const { w, h } = PAPER[sheet.paper];
+  const { w, h } = sheetSize(sheet);
   const t = sheet.title;
   const y0 = h - 5 - TITLE_H;
   p.line({ x: 10, y: y0 }, { x: w - 5, y: y0 }, 0.35);
@@ -410,3 +585,56 @@ function renderTitle(sheet: Sheet, p: Painter) {
 }
 
 export const round = (v: number) => Math.round(v * 100) / 100;
+
+/** The studio title block: details (two label/value columns), revisions, and studio and drawing. */
+function renderClientTitle(sheet: Sheet, p: Painter) {
+  const c = sheet.client!;
+  const t = sheet.title;
+  const { w, h } = sheetSize(sheet);
+  const width = w - 15;
+  const y0 = h - 5 - CLIENT_TITLE_H;
+  const rowH = (CLIENT_TITLE_H - 6) / 4;
+  p.line({ x: 10, y: y0 }, { x: w - 5, y: y0 }, 0.35);
+  const detailsW = width * 0.56;
+  const revW = width * 0.25;
+  const colW = detailsW / 2;
+  const labelW = colW * 0.36;
+  for (let r = 1; r < 4; r++) p.line({ x: 10, y: y0 + r * rowH }, { x: 10 + detailsW, y: y0 + r * rowH }, 0.13);
+  p.line({ x: 10, y: y0 + 4 * rowH }, { x: w - 5, y: y0 + 4 * rowH }, 0.13);
+  c.cells.slice(0, 8).forEach(([label, value], i) => {
+    const col = Math.floor(i / 4);
+    const row = i % 4;
+    const x = 10 + col * colW;
+    const y = y0 + row * rowH + rowH / 2 + 1;
+    p.text({ x: x + 1.5, y }, fitText(`${label.toUpperCase()}:`, 2.3, labelW - 2, true), 2.3, 'start', 0, true);
+    p.text({ x: x + labelW + 1, y }, fitText(value, 2.5, colW - labelW - 2), 2.5, 'start');
+  });
+  for (const x of [10 + labelW, 10 + colW, 10 + colW + labelW]) p.line({ x, y: y0 }, { x, y: y0 + 4 * rowH }, 0.13);
+  // Revisions.
+  const rx = 10 + detailsW;
+  p.line({ x: rx, y: y0 }, { x: rx, y: h - 5 }, 0.25);
+  p.text({ x: rx + 1.5, y: y0 + 3 }, 'DRAWING REVISIONS', 2, 'start', 0, true);
+  const rcols = [rx, rx + revW * 0.14, rx + revW * 0.36, rx + revW];
+  const rh = (CLIENT_TITLE_H - 6 - 4) / 4;
+  const ry = y0 + 4;
+  p.line({ x: rx, y: ry }, { x: rx + revW, y: ry }, 0.13);
+  ['NO.', 'DATE', 'DESCRIPTION'].forEach((l, i) => p.text({ x: rcols[i]! + 1, y: ry + rh - 1 }, l, 1.9, 'start', 0, true));
+  for (let r = 1; r <= 4; r++) p.line({ x: rx, y: ry + r * rh }, { x: rx + revW, y: ry + r * rh }, 0.1);
+  for (const x of rcols.slice(1, 3)) p.line({ x, y: ry }, { x, y: y0 + 4 * rowH }, 0.1);
+  c.revisions.slice(-3).forEach((rev, i) => {
+    const y = ry + (i + 2) * rh - 1;
+    p.text({ x: rcols[0]! + 1, y }, fitText(rev.no, 2, rcols[1]! - rcols[0]! - 2), 2, 'start');
+    p.text({ x: rcols[1]! + 1, y }, fitText(rev.date, 2, rcols[2]! - rcols[1]! - 2), 2, 'start');
+    p.text({ x: rcols[2]! + 1, y }, fitText(rev.description, 2, rcols[3]! - rcols[2]! - 2), 2, 'start');
+  });
+  // Studio and drawing.
+  const sx = rx + revW;
+  const sw = w - 5 - sx;
+  p.line({ x: sx, y: y0 }, { x: sx, y: h - 5 }, 0.25);
+  p.text({ x: sx + sw / 2, y: y0 + 6 }, fitText(c.studio, 4, sw - 4, true), 4, 'middle', 0, true);
+  c.studioLines.slice(0, 2).forEach((l, i) => p.text({ x: sx + sw / 2, y: y0 + 9.5 + i * 2.6 }, fitText(l, 1.9, sw - 4), 1.9, 'middle'));
+  p.text({ x: sx + sw / 2, y: y0 + 18 }, fitText(t.title, 2.6, sw - 4, true), 2.6, 'middle', 0, true);
+  p.text({ x: sx + sw / 2, y: y0 + 21.5 }, fitText(`${t.drawingNo} · ${t.sheet}`, 2.1, sw - 4), 2.1, 'middle');
+  // Traceability line under the tables.
+  p.text({ x: 12, y: h - 6.5 }, fitText(`Revision ${t.revision} · ${t.status} · generated ${t.generated} · dimensions in ${t.units} from the design model`, 1.9, detailsW + revW - 4), 1.9, 'start');
+}

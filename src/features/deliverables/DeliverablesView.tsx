@@ -1,4 +1,4 @@
-import { CheckCircle2, Download, FileSpreadsheet, FileText, History, MonitorPlay, RefreshCw, ShieldCheck, Table2 } from 'lucide-react';
+import { BookOpen, CheckCircle2, Download, FileSpreadsheet, FileText, History, MonitorPlay, RefreshCw, ShieldCheck, Table2 } from 'lucide-react';
 import { useMemo, type ReactNode } from 'react';
 import { buildBom } from '@/engine/deliverables/bom';
 import { SCALES, type Paper, type ScaleChoice } from '@/engine/deliverables/drawing';
@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 import { configFor, downloadFile, drawingSetFor, isStale, KIND_LABEL, sourceProject, useDeliverablesStore, type DeliverableKind } from '@/state/deliverablesStore';
 import { useEditorStore } from '@/state/editorStore';
 import { BomTable } from './BomTable';
+import { PackageStudio } from './package/PackageStudio';
 import { ReadinessPanel } from './ReadinessPanel';
 import { ScheduleTable } from './ScheduleTable';
 
@@ -26,6 +27,19 @@ export function DeliverablesView() {
   const src = useMemo(() => sourceProject(source, approvals), [project, source, approvals]); // eslint-disable-line react-hooks/exhaustive-deps
   const rows = useMemo(() => (src ? scheduleRows(src.project, src.revision) : []), [src]);
   const bom = useMemo(() => (src ? buildBom(src.project) : null), [src]);
+  if (section === 'package') {
+    return (
+      <div className="flex size-full min-h-0 flex-col" data-testid="drawings-view">
+        <div className="flex items-center gap-2 border-b bg-card px-3 py-1 text-xs">
+          <Button size="xs" variant="ghost" onClick={() => setSection('readiness')}>← Technical deliverables</Button>
+          <span className="font-medium">Client package</span>
+        </div>
+        <div className="min-h-0 flex-1">
+          <PackageStudio />
+        </div>
+      </div>
+    );
+  }
   if (!set || !src || !bom) return <p className="p-6 text-sm">The approved revision could not be loaded.</p>;
 
   const viewSheets = set.sheets.filter((s) => s.body.kind === 'view');
@@ -57,6 +71,7 @@ export function DeliverablesView() {
         {nav('schedule', 'Cabinet schedule', <Table2 className="size-3.5 text-muted-foreground" />)}
         {nav('bom', 'Bill of materials', !bom.complete ? <span className="text-[10px] text-amber-600">partial</span> : undefined)}
         <h3 className="px-2 pt-3 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">Share</h3>
+        {nav('package', 'Client package', <BookOpen className="size-3.5 text-muted-foreground" />)}
         {nav('history', 'Generated files', history.some((r) => isStale(r, approvals)) ? <span className="text-[10px] text-amber-600">stale</span> : <History className="size-3.5 text-muted-foreground" />)}
         {nav('presentation', 'Client presentation', <MonitorPlay className="size-3.5 text-muted-foreground" />)}
       </nav>

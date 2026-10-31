@@ -3,18 +3,27 @@
  * it prints at the drawing scale). All text and attributes are escaped; nothing from the project is
  * inserted as markup. Scale, units, revision and project id are in <title>/<desc> and data attributes.
  */
-import { PAPER, renderSheet, type Painter, type Pt, type Sheet } from './drawing';
+import { renderSheet, sheetSize, type Painter, type Pt, type Sheet } from './drawing';
 
 export function escapeXml(s: string): string {
   // eslint-disable-next-line no-control-regex
   return s.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
 }
 
+/** Only #rrggbb colours reach the markup. */
+const hexColor = (c: string) => (/^#[0-9a-f]{6}$/i.test(c) ? c : '#000000');
+
+export function base64(bytes: Uint8Array): string {
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+
 const n = (v: number) => String(Math.round(v * 100) / 100);
 const dashAttr = (dash?: number[]) => (dash ? ` stroke-dasharray="${dash.map(n).join(' ')}"` : '');
 
 export function sheetToSvg(sheet: Sheet): string {
-  const { w, h } = PAPER[sheet.paper];
+  const { w, h } = sheetSize(sheet);
   const out: string[] = [];
   const painter: Painter = {
     line: (a, b, width, dash) => out.push(`<line x1="${n(a.x)}" y1="${n(a.y)}" x2="${n(b.x)}" y2="${n(b.y)}" stroke="#000" stroke-width="${n(width)}"${dashAttr(dash)}/>`),
@@ -31,10 +40,12 @@ export function sheetToSvg(sheet: Sheet): string {
       out.push(`<path d="M ${n(p0.x)} ${n(p0.y)} A ${n(r)} ${n(r)} 0 0 ${d > 0 ? 1 : 0} ${n(p1.x)} ${n(p1.y)}" fill="none" stroke="#000" stroke-width="${n(width)}"${dashAttr(dash)}/>`);
     },
     circle: (c, r, width, fill) => out.push(`<circle cx="${n(c.x)}" cy="${n(c.y)}" r="${n(r)}" fill="${fill ?? 'none'}" stroke="#000" stroke-width="${n(width)}"/>`),
-    text: (at, text, size, anchor, rotate, bold) =>
+    text: (at, text, size, anchor, rotate, bold, color) =>
       out.push(
-        `<text x="${n(at.x)}" y="${n(at.y)}" font-size="${n(size)}" text-anchor="${anchor}"${bold ? ' font-weight="bold"' : ''}${rotate ? ` transform="rotate(${n(-rotate)} ${n(at.x)} ${n(at.y)})"` : ''}>${escapeXml(text)}</text>`,
+        `<text x="${n(at.x)}" y="${n(at.y)}" font-size="${n(size)}" text-anchor="${anchor}"${bold ? ' font-weight="bold"' : ''}${color ? ` fill="${hexColor(color)}"` : ''}${rotate ? ` transform="rotate(${n(-rotate)} ${n(at.x)} ${n(at.y)})"` : ''}>${escapeXml(text)}</text>`,
       ),
+    image: (x, y, iw, ih, img) =>
+      out.push(`<image x="${n(x)}" y="${n(y)}" width="${n(iw)}" height="${n(ih)}" preserveAspectRatio="none" href="data:image/jpeg;base64,${base64(img.data)}"/>`),
   };
   renderSheet(sheet, painter);
   const t = sheet.title;
