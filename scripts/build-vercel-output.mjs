@@ -17,6 +17,8 @@ if (!existsSync(`${root}dist/index.html`)) throw new Error('Run `npm run build` 
 rmSync(out, { recursive: true, force: true });
 mkdirSync(`${out}/static`, { recursive: true });
 cpSync(`${root}dist`, `${out}/static`, { recursive: true });
+// Unknown /api paths get a JSON 404 instead of the app's HTML fallback.
+writeFileSync(`${out}/static/api-not-found.json`, JSON.stringify({ ok: false, error: { code: 'bad_request', message: 'Unknown API endpoint.', retryable: false } }));
 
 const func = `${out}/functions/api/assistant.func`;
 await build({
@@ -45,7 +47,7 @@ writeFileSync(
       routes: [
         { src: '/(.*)', headers, continue: true },
         { handle: 'filesystem' },
-        { src: '/api/(.*)', status: 404, dest: '/404' },
+        { src: '/api/(.*)', status: 404, dest: '/api-not-found.json' },
         { src: '/((?!assets/).*)', dest: '/index.html' },
       ],
     },
