@@ -48,7 +48,7 @@ writeFileSync(
         { src: '/(.*)', headers, continue: true },
         { handle: 'filesystem' },
         { src: '/api/(.*)', status: 404, dest: '/api-not-found.json' },
-        { src: '/((?!assets/).*)', dest: '/index.html' },
+        { src: '/((?!assets/|api/).*)', dest: '/index.html' },
       ],
     },
     null,
