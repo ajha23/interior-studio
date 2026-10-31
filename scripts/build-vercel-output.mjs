@@ -2,8 +2,12 @@
  * Writes `.vercel/output` (Vercel Build Output API v3) after `npm run build`:
  *   static/                         the built app (dist/)
  *   functions/api/assistant.func/   /api/assistant as one self-contained Node bundle
+ *   functions/api/speech.func/      /api/speech (reply voices), likewise
+ *   functions/api/live-token.func/  /api/live-token (realtime voice tokens), likewise
+ *   functions/api/render.func/      /api/render (AI photoreal renders), likewise
+ *   functions/api/reference.func/   /api/reference (reading reference photos/video), likewise
  *   config.json                     security headers, filesystem, SPA fallback
- * The function is bundled with Vite (Rolldown), so path aliases and extensionless imports work and
+ * Each function is bundled with Vite (Rolldown), so path aliases and extensionless imports work and
  * no node_modules are needed at runtime. Server-only settings are read from the environment there.
  */
 import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -20,23 +24,25 @@ cpSync(`${root}dist`, `${out}/static`, { recursive: true });
 // Unknown /api paths get a JSON 404 instead of the app's HTML fallback.
 writeFileSync(`${out}/static/api-not-found.json`, JSON.stringify({ ok: false, error: { code: 'bad_request', message: 'Unknown API endpoint.', retryable: false } }));
 
-const func = `${out}/functions/api/assistant.func`;
-await build({
-  configFile: false,
-  logLevel: 'warn',
-  resolve: { alias: { '@': `${root}src` } },
-  ssr: { noExternal: true, target: 'node' },
-  build: {
-    ssr: `${root}src/server/vercel.ts`,
-    outDir: func,
-    emptyOutDir: true,
-    minify: false,
-    target: 'node22',
-    rolldownOptions: { output: { format: 'es', entryFileNames: 'index.mjs', codeSplitting: false } },
-  },
-});
-writeFileSync(`${func}/package.json`, JSON.stringify({ type: 'module' }));
-writeFileSync(`${func}/.vc-config.json`, JSON.stringify({ runtime: 'nodejs22.x', handler: 'index.mjs', launcherType: 'Nodejs', shouldAddHelpers: false, maxDuration: 60 }, null, 2));
+for (const [name, entry] of [['assistant', 'vercel.ts'], ['speech', 'vercelSpeech.ts'], ['live-token', 'vercelLiveToken.ts'], ['render', 'vercelRender.ts'], ['reference', 'vercelReference.ts']]) {
+  const func = `${out}/functions/api/${name}.func`;
+  await build({
+    configFile: false,
+    logLevel: 'warn',
+    resolve: { alias: { '@': `${root}src` } },
+    ssr: { noExternal: true, target: 'node' },
+    build: {
+      ssr: `${root}src/server/${entry}`,
+      outDir: func,
+      emptyOutDir: true,
+      minify: false,
+      target: 'node22',
+      rolldownOptions: { output: { format: 'es', entryFileNames: 'index.mjs', codeSplitting: false } },
+    },
+  });
+  writeFileSync(`${func}/package.json`, JSON.stringify({ type: 'module' }));
+  writeFileSync(`${func}/.vc-config.json`, JSON.stringify({ runtime: 'nodejs22.x', handler: 'index.mjs', launcherType: 'Nodejs', shouldAddHelpers: false, maxDuration: 60 }, null, 2));
+}
 
 const headers = { 'X-Frame-Options': 'DENY', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'strict-origin-when-cross-origin' };
 writeFileSync(
@@ -55,4 +61,4 @@ writeFileSync(
     2,
   ),
 );
-console.log(`Wrote ${out} (static app + /api/assistant function)`);
+console.log(`Wrote ${out} (static app + /api/assistant, speech, live-token, render and reference functions)`);

@@ -100,16 +100,20 @@ export class GeminiProvider extends ToolLoopProvider {
 
 export function toProviderError(e: unknown): ProviderError {
   if (e instanceof ProviderError) return e;
-  if (e instanceof Error && (e.name === 'AbortError' || e.name === 'TimeoutError' || /aborted|timed? ?out/i.test(e.message)) && !(e instanceof ApiError)) return new ProviderError('timeout', 'The AI provider did not respond in time.', true);
-  if (e instanceof ApiError) {
-    if (e.status === 429) return new ProviderError('rate_limited', 'Gemini is rate-limiting requests or the quota is used up. Try again shortly.', true, retryAfter(e.message));
-    if (e.status === 401 || e.status === 403) return new ProviderError('unavailable', 'Gemini rejected the server’s credentials.', false);
-    if (e.status === 404) return new ProviderError('provider_error', 'That Gemini model is not available to this API key.', false);
-    if (e.status === 400) return new ProviderError('provider_error', 'Gemini rejected the request.', false);
-    if (e.status >= 500) return new ProviderError('provider_error', 'Gemini is having problems (overloaded or down). Try again shortly.', true);
-    return new ProviderError('provider_error', `Gemini returned an error (${e.status}).`, false);
+  // generateContent throws ApiError; the Interactions API (speech) throws its own error class. Both carry the HTTP status.
+  const raw = e instanceof ApiError ? e.status : e instanceof Error ? (e as Error & { status?: unknown }).status : undefined;
+  const status = typeof raw === 'number' ? raw : undefined;
+  if (status === undefined) {
+    if (e instanceof Error && (e.name === 'AbortError' || e.name === 'TimeoutError' || /aborted|timed? ?out/i.test(e.message))) return new ProviderError('timeout', 'The AI provider did not respond in time.', true);
+    return new ProviderError('unavailable', 'Could not reach Gemini.', true);
   }
-  return new ProviderError('unavailable', 'Could not reach Gemini.', true);
+  const message = e instanceof Error ? e.message : '';
+  if (status === 429) return new ProviderError('rate_limited', 'Gemini is rate-limiting requests or the quota is used up. Try again shortly.', true, retryAfter(message));
+  if (status === 401 || status === 403) return new ProviderError('unavailable', 'Gemini rejected the server’s credentials.', false);
+  if (status === 404) return new ProviderError('provider_error', 'That Gemini model is not available to this API key.', false);
+  if (status === 400) return new ProviderError('provider_error', 'Gemini rejected the request.', false);
+  if (status >= 500) return new ProviderError('provider_error', 'Gemini is having problems (overloaded or down). Try again shortly.', true);
+  return new ProviderError('provider_error', `Gemini returned an error (${status}).`, false);
 }
 
 /** Gemini puts a retry delay like "retryDelay": "17s" in 429 error details. */

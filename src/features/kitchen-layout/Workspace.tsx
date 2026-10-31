@@ -1,4 +1,4 @@
-import { PanelLeft, PanelRight } from 'lucide-react';
+import { PanelLeft, PanelLeftClose, PanelLeftOpen, PanelRight, PanelRightClose, PanelRightOpen } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -11,12 +11,12 @@ import { ChecksPanel } from '@/features/checks/ChecksPanel';
 import { PlanView } from '@/features/drawings/PlanView';
 import { DeliverablesView } from '@/features/deliverables/DeliverablesView';
 import { PresentationOverlay } from '@/features/deliverables/PresentationOverlay';
-import { AssistantPanel } from '@/features/assistant/AssistantPanel';
+import { AssistantLauncher } from '@/features/assistant/AssistantLauncher';
+import { RenderDialog } from '@/features/vision/RenderDialog';
 import { RoomPanel } from '@/features/room-editor/RoomPanel';
 import { OpeningInspector } from '@/features/room-editor/OpeningInspector';
 import { WallInspector, wallFromId } from '@/features/room-editor/WallInspector';
 import { CandidateBanner } from '@/features/assistant/CandidateBanner';
-import { useAssistantStore } from '@/state/assistantStore';
 import { selectIsDirty, useEditorStore, useSelectedElement, useSelectedOpening } from '@/state/editorStore';
 import { ElementInspector } from './ElementInspector';
 import { FeedbackBanner } from './FeedbackBanner';
@@ -24,7 +24,49 @@ import { SceneOutline } from './SceneOutline';
 import { useShortcuts } from './useShortcuts';
 import { Viewport3D } from './Viewport3D';
 
-/** CAD-style workspace: library left, viewport centre, inspector right, assistant beside it, BOM below. */
+const WIDE = 1280;
+const PANELS_KEY = 'interior-studio:panels';
+
+/** Whether each side panel is shown. Remembered on wide screens; narrow screens start with both closed (drawers). */
+function initialPanels(): { library: boolean; properties: boolean } {
+  if (typeof window === 'undefined' || window.innerWidth < WIDE) return { library: false, properties: false };
+  try {
+    const saved = JSON.parse(localStorage.getItem(PANELS_KEY) ?? '{}') as { library?: boolean; properties?: boolean };
+    return { library: saved.library !== false, properties: saved.properties !== false };
+  } catch {
+    return { library: true, properties: true };
+  }
+}
+
+/** A collapsed side panel on a wide screen: a slim strip with a button to bring it back. */
+function PanelRail({ side, label, onOpen }: { side: 'left' | 'right'; label: string; onOpen: () => void }) {
+  const Icon = side === 'left' ? PanelLeftOpen : PanelRightOpen;
+  return (
+    <div className={cn('hidden min-h-0 flex-col items-center gap-2 bg-card py-2 xl:flex', side === 'left' ? 'border-r' : 'border-l')}>
+      <Button size="icon-sm" variant="ghost" aria-label={`Show ${label.toLowerCase()}`} title={`Show ${label.toLowerCase()}`} onClick={onOpen}>
+        <Icon />
+      </Button>
+      <button type="button" onClick={onOpen} className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase [writing-mode:vertical-rl] hover:text-foreground" tabIndex={-1}>
+        {label}
+      </button>
+    </div>
+  );
+}
+
+/** The title row of a side panel, with the button that hides it. */
+function PanelHeader({ side, label, onClose }: { side: 'left' | 'right'; label: string; onClose: () => void }) {
+  const Icon = side === 'left' ? PanelLeftClose : PanelRightClose;
+  return (
+    <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-card/95 px-3 py-1.5 backdrop-blur">
+      <span className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">{label}</span>
+      <Button size="icon-sm" variant="ghost" aria-label={`Hide ${label.toLowerCase()}`} title={`Hide ${label.toLowerCase()}`} onClick={onClose}>
+        <Icon />
+      </Button>
+    </div>
+  );
+}
+
+/** CAD-style workspace: library left, viewport centre, inspector right, BOM below; the assistant floats bottom right. */
 export function Workspace() {
   const view = useEditorStore((s) => s.view);
   const showBom = useEditorStore((s) => s.showBom);
@@ -32,24 +74,40 @@ export function Workspace() {
   const selected = useSelectedElement();
   const selectedOpening = useSelectedOpening();
   const selectedWall = wallFromId(useEditorStore((s) => s.selectedId));
-  const assistantOpen = useAssistantStore((s) => s.open);
-  const setAssistantOpen = useAssistantStore((s) => s.setOpen);
   const presenting = useEditorStore((s) => s.presenting);
   // Deliverables are documents: they take the full width (the assistant stays available).
   const documents = view === 'drawings';
   const commandLine = useRef<CommandLineHandle>(null);
   const focusCommandLine = useCallback(() => commandLine.current?.focus(), []);
   useShortcuts(focusCommandLine);
-  // Below 1280 px the side panels become drawers; selecting something opens the properties drawer.
-  const [libraryOpen, setLibraryOpen] = useState(false);
-  const [propertiesOpen, setPropertiesOpen] = useState(false);
+  // Either side panel can be hidden. Wide screens dock them (a hidden one leaves a slim strip);
+  // below 1280 px they are drawers over the viewport, and selecting something opens the properties drawer.
+  const [panels, setPanels] = useState(initialPanels);
+  const libraryOpen = panels.library;
+  const propertiesOpen = panels.properties;
+  const setPanel = useCallback((key: 'library' | 'properties', open: boolean | ((v: boolean) => boolean)) => {
+    setPanels((p) => {
+      const next = { ...p, [key]: typeof open === 'function' ? open(p[key]) : open };
+      if (window.innerWidth >= WIDE) {
+        try {
+          localStorage.setItem(PANELS_KEY, JSON.stringify(next));
+        } catch {
+          // A convenience only.
+        }
+      }
+      return next;
+    });
+  }, []);
+  const setLibraryOpen = (open: boolean | ((v: boolean) => boolean)) => setPanel('library', open);
+  const setPropertiesOpen = (open: boolean | ((v: boolean) => boolean)) => setPanel('properties', open);
   useEffect(
     () =>
       useEditorStore.subscribe((s, prev) => {
-        if (s.selectedId && s.selectedId !== prev.selectedId && window.innerWidth < 1280) setPropertiesOpen(true);
+        if (s.selectedId && s.selectedId !== prev.selectedId && window.innerWidth < WIDE) setPanel('properties', true);
       }),
-    [],
+    [setPanel],
   );
+  const columns = `${libraryOpen ? '280px' : '40px'} minmax(0,1fr) ${propertiesOpen ? '300px' : '40px'}`;
 
   useEffect(() => {
     const warn = (e: BeforeUnloadEvent) => {
@@ -71,11 +129,16 @@ export function Workspace() {
         </Button>
       </div>
       {/* Presentation hides every editing panel but keeps the 3D canvas mounted (and its camera). */}
-      <div className={cn('relative grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)]', !presenting && (documents ? (assistantOpen ? 'xl:grid-cols-[minmax(0,1fr)_340px]' : '') : assistantOpen ? 'xl:grid-cols-[280px_minmax(0,1fr)_300px_340px]' : 'xl:grid-cols-[280px_minmax(0,1fr)_300px]'))}>
+      <div
+        className={cn('relative grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)]', !presenting && !documents && 'xl:grid-cols-[var(--workspace-columns)]')}
+        style={{ '--workspace-columns': columns } as React.CSSProperties}
+      >
+        {!libraryOpen && !presenting && !documents && <PanelRail side="left" label="Library" onOpen={() => setLibraryOpen(true)} />}
         <aside
-          className={cn('min-h-0 overflow-y-auto border-r bg-card max-xl:absolute max-xl:inset-y-0 max-xl:left-0 max-xl:z-30 max-xl:w-[280px] max-xl:shadow-xl', !libraryOpen && 'max-xl:hidden', (presenting || documents) && 'hidden')}
+          className={cn('min-h-0 overflow-y-auto border-r bg-card max-xl:absolute max-xl:inset-y-0 max-xl:left-0 max-xl:z-30 max-xl:w-[280px] max-xl:shadow-xl', !libraryOpen && 'hidden', (presenting || documents) && 'hidden')}
           aria-label="Library"
         >
+          <PanelHeader side="left" label="Library" onClose={() => setLibraryOpen(false)} />
           <CatalogPanel />
           <SceneOutline />
         </aside>
@@ -114,9 +177,10 @@ export function Workspace() {
           {!presenting && !documents && <CommandLine ref={commandLine} />}
         </main>
         <aside
-          className={cn('min-h-0 overflow-y-auto border-l bg-card max-xl:absolute max-xl:inset-y-0 max-xl:right-0 max-xl:z-30 max-xl:w-[320px] max-xl:shadow-xl', !propertiesOpen && 'max-xl:hidden', (presenting || documents) && 'hidden')}
+          className={cn('min-h-0 overflow-y-auto border-l bg-card max-xl:absolute max-xl:inset-y-0 max-xl:right-0 max-xl:z-30 max-xl:w-[320px] max-xl:shadow-xl', !propertiesOpen && 'hidden', (presenting || documents) && 'hidden')}
           aria-label="Properties panel"
         >
+          <PanelHeader side="right" label="Properties" onClose={() => setPropertiesOpen(false)} />
           <FeedbackBanner />
           {selected ? (
             <ElementInspector key={selected.id} element={selected} />
@@ -128,12 +192,10 @@ export function Workspace() {
             <RoomPanel />
           )}
         </aside>
-        {assistantOpen && !presenting && (
-          <aside className="min-h-0 border-l max-xl:absolute max-xl:inset-y-0 max-xl:right-0 max-xl:z-40 max-xl:w-[min(380px,100%)] max-xl:shadow-xl" aria-label="Assistant panel">
-            <AssistantPanel onClose={() => setAssistantOpen(false)} />
-          </aside>
-        )}
+        {!propertiesOpen && !presenting && !documents && <PanelRail side="right" label="Properties" onOpen={() => setPropertiesOpen(true)} />}
       </div>
+      {!presenting && <AssistantLauncher />}
+      <RenderDialog />
       {!presenting && <StatusBar />}
     </div>
   );

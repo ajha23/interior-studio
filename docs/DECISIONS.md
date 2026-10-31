@@ -203,3 +203,59 @@ catalogued models (no arbitrary model ids, which would bypass cost control), and
 key answers with the built-in rules and says so instead of failing, so the panel works on any
 deployment. Keys stay server-side (D-021).
 
+## D-028 — Reply voices from the AI vendors, with the browser's voice as the fallback
+
+Designers can have replies spoken by Gemini's or ChatGPT's voices instead of the browser's, which
+vary in quality between systems. Synthesis runs on the server (`/api/speech`) with the same keys as
+the assistant, so keys never reach the browser, and accepts only listed voices and short lines.
+Speech is a convenience, never a dependency: any failure (no key, quota, blocked autoplay) speaks the
+line with the browser's voice and says why. OpenAI's speech endpoint is being retired, so its voices
+come from its current audio model instructed to read verbatim.
+
+## D-029 — Hands-free conversation is a loop over single utterances
+
+A voice conversation reuses the single-utterance pipeline (browser recognition → the same `send` →
+preview → approval) and only adds a loop: listen again after each reply, listen during a reply for
+barge-in, and end on a phrase, End, silence or a time limit. Realtime speech-to-speech models were
+not used: they would bypass the typed operations, validation and approval that every edit goes
+through (D-020), and would need audio streamed to the server. Barge-in filters echo by comparing what
+was heard with the reply being spoken, because browser recognition gives no access to echo
+cancellation for the page's own audio.
+
+## D-030 — Realtime voice uses a speech-to-speech model through the same tools (revises D-029)
+
+The listen → whole answer → whole TTS clip loop took 15 s or more per turn, and listening during a
+reply made the assistant hear itself (Chrome's echo cancellation ignores page audio). Voice
+conversations now default to Gemini Live: audio streams both ways, the model detects turns and
+barge-in, and the browser connects to Google directly with a single-use token that locks the model,
+instructions and tools (the key stays on the server). D-029's concern still holds and is met
+differently: the realtime model does not edit anything itself — it calls the same typed tools, and
+proposals go through `Conversation.send` (validation, preview, approval; approving needs the
+designer's own words). Echo is removed at the source by routing playback through a WebRTC loopback so
+it becomes the echo canceller's reference. The standard loop remains for other providers, now
+half-duplex.
+
+## D-031 — Realism from generated textures and an AI render, not downloaded assets or path tracing
+
+Real-time realism comes from textures generated in the browser (no asset downloads, licences or
+bundle growth), image-based light and ambient occlusion, with a Fast quality chosen automatically on
+software GPUs. Photographic output comes from Gemini's image model restyling the captured 3D view;
+it is labelled an AI visualisation because it can invent small details, so dimensions stay with the
+drawings. A browser path tracer was evaluated and dropped: slower, and less convincing to clients.
+
+## D-032 — The assistant can act in the space; acting is not editing
+
+Opening doors, walking to a unit or changing the view are `act` replies carried out at once by the
+editor: they never change the design, so they need no approval and add no undo step. Edits keep
+the preview-and-approve path (D-020). Reference photos and video feed the same path: the vision
+model only describes the reference; deterministic code turns that into operations.
+
+## D-033 — A home is rooms on a plan, each a full room design
+
+Whole homes reuse the single-room model instead of replacing it: every room of a home is a complete
+room design in the existing format, placed on a plan with a use and a level. All room tools —
+editing, validation, walk-through, deliverables, renders and the assistant — work on a room
+unchanged, and existing projects are untouched. The generator is deterministic (zoned bands,
+typical room sizes, furnishing rules) and builds every room through the domain's commands, so a
+generated home is valid by construction; an AI model only fills in the brief.
+

@@ -33,7 +33,9 @@
         "category": "shutter",
         "color": "#b98c5d",
         "roughness": 0.55,
-        "metalness": 0
+        "metalness": 0,
+        "texture": "wood",
+        "textureScale": 600
       },
       "shutter-walnut": {
         "id": "shutter-walnut",
@@ -41,7 +43,9 @@
         "category": "shutter",
         "color": "#6a4a34",
         "roughness": 0.5,
-        "metalness": 0
+        "metalness": 0,
+        "texture": "wood",
+        "textureScale": 600
       },
       "shutter-sage": {
         "id": "shutter-sage",
@@ -97,7 +101,9 @@
         "category": "countertop",
         "color": "#ebe9e4",
         "roughness": 0.25,
-        "metalness": 0
+        "metalness": 0,
+        "texture": "marble",
+        "textureScale": 1200
       },
       "counter-black-granite": {
         "id": "counter-black-granite",
@@ -105,7 +111,9 @@
         "category": "countertop",
         "color": "#27282b",
         "roughness": 0.3,
-        "metalness": 0
+        "metalness": 0,
+        "texture": "stone",
+        "textureScale": 600
       },
       "counter-oak": {
         "id": "counter-oak",
@@ -113,7 +121,9 @@
         "category": "countertop",
         "color": "#a97a4b",
         "roughness": 0.5,
-        "metalness": 0
+        "metalness": 0,
+        "texture": "wood",
+        "textureScale": 600
       },
       "counter-concrete": {
         "id": "counter-concrete",
@@ -121,7 +131,9 @@
         "category": "countertop",
         "color": "#9c9a95",
         "roughness": 0.75,
-        "metalness": 0
+        "metalness": 0,
+        "texture": "concrete",
+        "textureScale": 1500
       },
       "floor-oak": {
         "id": "floor-oak",
@@ -129,7 +141,9 @@
         "category": "floor",
         "color": "#c7a27b",
         "roughness": 0.6,
-        "metalness": 0
+        "metalness": 0,
+        "texture": "planks",
+        "textureScale": 180
       },
       "floor-grey-tile": {
         "id": "floor-grey-tile",
@@ -137,7 +151,9 @@
         "category": "floor",
         "color": "#b8b6b1",
         "roughness": 0.4,
-        "metalness": 0
+        "metalness": 0,
+        "texture": "tile",
+        "textureScale": 600
       },
       "floor-terrazzo": {
         "id": "floor-terrazzo",
@@ -145,7 +161,19 @@
         "category": "floor",
         "color": "#d9d4ca",
         "roughness": 0.45,
-        "metalness": 0
+        "metalness": 0,
+        "texture": "terrazzo",
+        "textureScale": 800
+      },
+      "floor-marble": {
+        "id": "floor-marble",
+        "name": "White marble",
+        "category": "floor",
+        "color": "#e9e6df",
+        "roughness": 0.2,
+        "metalness": 0,
+        "texture": "marble",
+        "textureScale": 800
       },
       "wall-warm-white": {
         "id": "wall-warm-white",
@@ -153,7 +181,9 @@
         "category": "wall",
         "color": "#f3f0e9",
         "roughness": 0.9,
-        "metalness": 0
+        "metalness": 0,
+        "texture": "plaster",
+        "textureScale": 2000
       },
       "wall-sage": {
         "id": "wall-sage",
@@ -161,7 +191,9 @@
         "category": "wall",
         "color": "#c8d2c2",
         "roughness": 0.9,
-        "metalness": 0
+        "metalness": 0,
+        "texture": "plaster",
+        "textureScale": 2000
       },
       "wall-greige": {
         "id": "wall-greige",
@@ -169,7 +201,19 @@
         "category": "wall",
         "color": "#d8d1c6",
         "roughness": 0.9,
-        "metalness": 0
+        "metalness": 0,
+        "texture": "plaster",
+        "textureScale": 2000
+      },
+      "wall-exposed-brick": {
+        "id": "wall-exposed-brick",
+        "name": "Exposed brick",
+        "category": "wall",
+        "color": "#a35d43",
+        "roughness": 0.85,
+        "metalness": 0,
+        "texture": "brick",
+        "textureScale": 300
       }
     },
     "viewpoints": [],
@@ -201,6 +245,7 @@
     "preferences": {
       "unit": "mm"
     },
+    "production": {},
     "cabinets": [
       {
         "id": "corner",

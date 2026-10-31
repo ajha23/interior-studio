@@ -2,11 +2,24 @@
 import { newId, parseProjectFile, serializeProject, type KitchenProject } from '@/domain';
 import { loadProject, listProjects, saveProject } from '@/persistence/projectDb';
 import { useEditorStore } from '@/state/editorStore';
+import { useHomeStore } from '@/state/homeStore';
 import { navigate } from '@/app/router';
 
 export async function saveCurrentProject(): Promise<boolean> {
   const { project, markSaved, report } = useEditorStore.getState();
   if (!project) return false;
+  // A room of a home: save the whole home (the room's edits are already in it).
+  const home = useHomeStore.getState();
+  if (home.home && home.roomId) {
+    try {
+      await home.save();
+      report('info', `Saved “${home.home.name}”`);
+      return true;
+    } catch (e) {
+      report('error', `Could not save: ${e instanceof Error ? e.message : String(e)}`);
+      return false;
+    }
+  }
   try {
     await saveProject(project);
     markSaved(project);

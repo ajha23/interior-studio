@@ -5,7 +5,7 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
 /**
- * Serves `/api/assistant` from the dev server with the same handler as production. Server-only
+ * Serves the `/api/*` endpoints (assistant, speech, live-token, render, reference) from the dev server with the same handler as production. Server-only
  * settings (ASSISTANT_* and the provider keys) come from the shell or `.env.local`; they are not
  * VITE_-prefixed, so they never reach the browser bundle.
  */
@@ -18,12 +18,14 @@ function assistantApi(mode: string): Plugin {
       const keys = ['ANTHROPIC_API_KEY', 'GEMINI_API_KEY', 'GOOGLE_API_KEY', 'OPENAI_API_KEY'];
       const fileEnv = loadEnv(mode, process.cwd(), ['ASSISTANT_', ...keys]);
       const env = { ...fileEnv, ...Object.fromEntries(Object.entries(process.env).filter(([k]) => k.startsWith('ASSISTANT_') || keys.includes(k))) };
-      server.middlewares.use('/api/assistant', (req, res, next) => {
-        server
-          .ssrLoadModule('/src/server/node.ts')
-          .then((mod) => (mod as { nodeHandler: NodeHandlerFactory }).nodeHandler(env)(Object.assign(req, { url: '/api/assistant' }), res))
-          .catch(next);
-      });
+      for (const [path, factory] of [['/api/assistant', 'nodeHandler'], ['/api/speech', 'speechNodeHandler'], ['/api/live-token', 'liveTokenNodeHandler'], ['/api/render', 'renderNodeHandler'], ['/api/reference', 'referenceNodeHandler']] as const) {
+        server.middlewares.use(path, (req, res, next) => {
+          server
+            .ssrLoadModule('/src/server/node.ts')
+            .then((mod) => (mod as Record<typeof factory, NodeHandlerFactory>)[factory](env)(Object.assign(req, { url: path }), res))
+            .catch(next);
+        });
+      }
     },
   };
 }

@@ -42,8 +42,9 @@ sink–hob–fridge work triangle. Warnings never block an edit; the amber area 
 Units and views: show and type lengths in mm, cm, m, inches, feet or feet & inches (top bar);
 every field accepts any unit (`12' 6"`, `381 cm`, `3.81 m`) and geometry is always stored in whole
 millimetres. **Split** shows the plan and 3D side by side; the plan has a grid and wall labels; click
-a wall (plan or 3D) to inspect it. Room presets, plus dining tables, chairs and sofas. Below 1280 px
-the side panels become drawers.
+a wall (plan or 3D) to inspect it. Room presets, plus dining tables, chairs and sofas. The Library
+and Properties panels can each be hidden (the button in their header) and shown again from the slim
+strip left behind; the choice is remembered. Below 1280 px the side panels become drawers.
 
 Drawings: the **Drawings** view is a set of A3 sheets with a title block — the plan, an elevation of
 every wall in use (fronts, handles, worktops, windows and doors, dimension chains and height marks),
@@ -89,10 +90,27 @@ Lengths are integer millimetres everywhere in the domain and are converted to me
 `src/rendering/units.ts`. Read `AGENTS.md` before changing code, and `docs/` for the product,
 architecture and domain model.
 
+## Whole homes
+
+**New home** on the projects page (or “design a 3BHK apartment” to the assistant) plans and
+furnishes a complete 1–6 BHK apartment or two-floor villa in one style: bedrooms with beds,
+wardrobes and baths, living, dining, kitchen, utility, pooja room, balcony, staircase. See it as a
+floor plan or a 3D dollhouse, restyle every room at once, change any room's size, name or use, and
+open any room in the full editor to refine it. Details: `docs/HOMES.md`.
+
+## Realistic look
+
+The 3D view renders textured finishes (wood, planks, marble, tile, terrazzo, plaster…) at real size
+with soft image-based light and ambient occlusion (High quality; Fast for slower computers). **Photo**
+in the 3D toolbar makes an AI photoreal render of the current view for clients. Attach photos or a
+video of a look you like in the assistant chat, and it proposes matching finishes (or layout, or
+room size). The assistant can also act in the room: “open the fridge”, “walk to the sink”, “show the
+top view”. Details: `docs/REALISM.md`.
+
 ## Design assistant
 
-**Assistant** in the top bar opens a chat panel that edits the design from plain language (“Add a
-600 mm dishwasher next to the sink”). Every change is previewed (sizes and positions before → after,
+The round **assistant button** in the bottom-right corner opens a chat window that edits the design
+from plain language (“Add a 600 mm dishwasher next to the sink”). Every change is previewed (sizes and positions before → after,
 validation, warnings) and applied only when you approve, as one undo step. Pick the AI provider —
 Google Gemini (default), Anthropic Claude or OpenAI — and one of its five listed models in the panel
 settings. Each needs its key on the server (`GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`
@@ -100,8 +118,15 @@ in `.env.local` for `npm run dev`, project environment variables on Vercel; see 
 without a key the built-in rules answer and the panel says so. Details: `docs/AI_ASSISTANT.md`.
 
 The microphone button in the panel lets you **speak** requests instead (Chrome, Edge, Safari); they
-go through exactly the same previews and approval, and you can say “apply” or “reject”. No setup
-or keys are needed. Details, browser support and privacy: `docs/VOICE.md`.
+go through exactly the same previews and approval, and you can say “apply” or “reject”. Replies
+are spoken in a voice you pick in the settings: Gemini voices (default), ChatGPT voices or the
+browser's own; the first two use the server's Gemini / OpenAI key, and the browser's voice steps in
+without one. The conversation button next to the microphone starts a **hands-free voice
+conversation** (like Gemini Live or ChatGPT voice): with a Gemini key on the server it streams speech
+both ways with Gemini Live (replies start about a second after you stop talking, you can talk over
+them, and the assistant cannot hear itself); every spoken edit is still previewed and needs your
+“apply”. It ends when you press End, say “goodbye”, or stay quiet for a while.
+Details, browser support and privacy: `docs/VOICE.md`.
 
 Whole-layout goals work too (“Convert this L-shaped kitchen into a U-shaped kitchen, keep the sink
 wall, maximise storage”): a deterministic planner generates and checks alternatives you can compare,

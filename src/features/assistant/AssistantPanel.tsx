@@ -15,7 +15,9 @@ import { useFormatDims, useFormatLength } from '@/state/units';
 import { ChangePreview } from './ChangePreview';
 import { DeliverableMessage } from './DeliverableMessage';
 import { LayoutOptions } from './LayoutOptions';
-import { MicButton, VoiceSettings, VoiceStatusBar } from './VoiceControls';
+import { ConversationButton, MicButton, VoiceSettings, VoiceStatusBar } from './VoiceControls';
+import { AttachButton, AttachmentStrip } from '@/features/vision/Attachments';
+import { useVisionStore } from '@/state/visionStore';
 
 const modelLabel = (provider: AiProviderId, model: string) => PROVIDER_CATALOG[provider].models.find((m) => m.id === model)?.label ?? model;
 
@@ -78,10 +80,18 @@ export function AssistantPanel({ onClose }: { onClose?: () => void }) {
     list.current?.scrollTo?.({ top: list.current.scrollHeight });
   }, [messages.length, busy]);
 
+  const attachments = useVisionStore((s) => s.attachments);
   const submit = (e?: FormEvent) => {
     e?.preventDefault();
     const text = draft.trim();
-    if (!text || busy) return;
+    if (busy) return;
+    // With a photo or video attached, the reference is read first; the text says what to take from it.
+    if (attachments) {
+      setDraft('');
+      void useVisionStore.getState().sendReference(text);
+      return;
+    }
+    if (!text) return;
     setDraft('');
     void send(text);
   };
@@ -167,6 +177,7 @@ export function AssistantPanel({ onClose }: { onClose?: () => void }) {
       <ContextBar focus={focus} protect={protect} />
       <VoiceStatusBar />
       <form onSubmit={submit} className="flex flex-col gap-1 border-t p-2">
+        <AttachmentStrip />
         <div className="flex items-end gap-1.5">
           <textarea
             ref={input}
@@ -179,13 +190,15 @@ export function AssistantPanel({ onClose }: { onClose?: () => void }) {
             aria-label="Message the design assistant"
             className="min-h-[2.5rem] flex-1 resize-none rounded-md border border-input bg-background px-2.5 py-1.5 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
           />
+          <AttachButton />
           <MicButton />
+          <ConversationButton />
           {busy ? (
             <Button size="icon-sm" variant="outline" aria-label="Stop" onClick={cancel}>
               <Square />
             </Button>
           ) : (
-            <Button size="icon-sm" type="submit" aria-label="Send" disabled={!draft.trim()}>
+            <Button size="icon-sm" type="submit" aria-label="Send" disabled={!draft.trim() && !attachments}>
               <Send />
             </Button>
           )}
@@ -252,7 +265,16 @@ function Message({ message: m }: { message: ChatMessage }) {
     return (
       <div className="ml-6 flex items-start gap-1.5 self-end rounded-lg bg-primary px-2.5 py-1.5 text-[13px] text-primary-foreground" data-testid="user-message" data-source={m.source ?? 'text'}>
         {m.source === 'voice' && <Mic className="mt-0.5 size-3 shrink-0 opacity-70" aria-label="Spoken" />}
-        <span>{m.text}</span>
+        <span className="flex flex-col gap-1">
+          {m.attachments && (
+            <span className="flex flex-wrap gap-1" data-testid="message-attachments">
+              {m.attachments.map((src, i) => (
+                <img key={i} src={src} alt={`Reference ${i + 1}`} className="h-12 rounded object-cover" />
+              ))}
+            </span>
+          )}
+          <span>{m.text}</span>
+        </span>
       </div>
     );
   }

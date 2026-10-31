@@ -1,23 +1,27 @@
 import { Canvas } from '@react-three/fiber';
-import { BrickWall, Crosshair, DoorClosed, DoorOpen, Footprints, Grid3x3, Hand, Maximize2, PanelsTopLeft } from 'lucide-react';
+import { BrickWall, Camera, Crosshair, DoorClosed, DoorOpen, Footprints, Grid3x3, Hand, Maximize2, PanelsTopLeft } from 'lucide-react';
 import { Select } from '@/components/ui/select';
 import { EYE_HEIGHTS } from '@/rendering/scene/walk';
 import { formatLength } from '@/engine/measurement/units';
 import { ViewpointsMenu } from './ViewpointsMenu';
 import { wallFromId } from '@/features/room-editor/WallInspector';
 import { WalkMinimap } from './WalkMinimap';
-import { useMemo, useRef, type ReactNode } from 'react';
+import { lazy, Suspense, useMemo, useRef, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import { CameraRig } from '@/rendering/scene/CameraRig';
 import { KitchenScene } from '@/rendering/scene/KitchenScene';
 import { RenderedMarker } from '@/rendering/scene/RenderedMarker';
+import { useVisionStore } from '@/state/visionStore';
 import { sceneLabels } from '@/rendering/selection/labels';
 import { LabelProjector } from '@/rendering/selection/LabelProjector';
-import { useEditorStore, type CameraPreset, type VisualStyle } from '@/state/editorStore';
+import { isSoftwareRenderer, useEditorStore, type CameraPreset, type VisualStyle } from '@/state/editorStore';
 import { openKey } from '@/state/openings';
 import { useSelectedChecks } from '@/features/checks/useDesignChecks';
+
+// Ambient occlusion pulls in the post-processing libraries: load them only when they are used.
+const Effects = lazy(() => import('@/rendering/scene/Effects'));
 
 const VIEWS: { preset: CameraPreset; label: string; title: string }[] = [
   { preset: 'iso', label: 'Iso', title: 'Isometric view' },
@@ -83,9 +87,28 @@ export function Viewport3D({ active = true }: { active?: boolean }) {
 
   return (
     <div className="relative size-full" data-testid="viewport-3d">
-      <Canvas frameloop={active ? 'always' : 'never'} shadows dpr={[1, 2]} onPointerMissed={(e) => e.button === 0 && s.select(null)} gl={{ preserveDrawingBuffer: true, antialias: true }}>
-        <color attach="background" args={['#e8eaee']} />
-        <KitchenScene project={project} selectedId={s.selectedId} showGrid={s.showGrid} visualStyle={s.visualStyle} autoHideWalls={s.autoHideWalls} showInteriors={s.showInteriors} interactMode={s.interactMode} walking={s.navMode === 'walk'} openness={s.openness} preview={s.preview} zones={zones} selectedWall={wallFromId(s.selectedId)} callbacks={callbacks} />
+      <Canvas
+        frameloop={active ? 'always' : 'never'}
+        shadows
+        dpr={[1, 2]}
+        onPointerMissed={(e) => e.button === 0 && s.select(null)}
+        gl={{ preserveDrawingBuffer: true, antialias: true }}
+        onCreated={({ gl }) => {
+          // A CPU rasteriser cannot keep up with textures and ambient occlusion: start in fast quality.
+          const ctx = gl.getContext();
+          const info = ctx.getExtension('WEBGL_debug_renderer_info');
+          const renderer = String(info ? ctx.getParameter(info.UNMASKED_RENDERER_WEBGL) : ctx.getParameter(ctx.RENDERER));
+          let saved: string | null = null;
+          try {
+            saved = localStorage.getItem('interior-studio:render-quality');
+          } catch {
+            // Treated as no saved choice.
+          }
+          if (!saved && isSoftwareRenderer(renderer)) useEditorStore.setState({ renderQuality: 'fast' });
+        }}
+      >
+        <color attach="background" args={[s.visualStyle === 'realistic' ? '#dcdad6' : '#e8eaee']} />
+        <KitchenScene project={project} selectedId={s.selectedId} showGrid={s.showGrid} visualStyle={s.visualStyle} textured={s.renderQuality === 'high'} autoHideWalls={s.autoHideWalls} showInteriors={s.showInteriors} interactMode={s.interactMode} walking={s.navMode === 'walk'} openness={s.openness} preview={s.preview} zones={zones} selectedWall={wallFromId(s.selectedId)} callbacks={callbacks} />
         <CameraRig
           project={project}
           request={s.camera.request}
@@ -95,6 +118,11 @@ export function Viewport3D({ active = true }: { active?: boolean }) {
         />
         <LabelProjector labels={labels} overlay={overlay} />
         <RenderedMarker />
+        {s.visualStyle === 'realistic' && s.renderQuality === 'high' && (
+          <Suspense fallback={null}>
+            <Effects />
+          </Suspense>
+        )}
       </Canvas>
 
       <div ref={overlay} className="pointer-events-none absolute inset-0 overflow-hidden">
@@ -150,6 +178,11 @@ export function Viewport3D({ active = true }: { active?: boolean }) {
           )}
           <ViewpointsMenu />
         </Toolbar>
+        <Toolbar label="Render">
+          <Button size="xs" variant="ghost" onClick={() => useVisionStore.getState().openRender(true)} title="Photoreal render: an AI photograph of this view, with real light and materials" aria-label="Render photo">
+            <Camera /> Photo
+          </Button>
+        </Toolbar>
         <Toolbar label="Interaction">
           <Button
             size="xs"
@@ -178,6 +211,12 @@ export function Viewport3D({ active = true }: { active?: boolean }) {
               {v.label}
             </Button>
           ))}
+          {s.visualStyle === 'realistic' && (
+            <Select aria-label="Render quality" title="High: textures, soft light and contact shadows · Fast: plain colours for slower computers" value={s.renderQuality} onChange={(e) => s.setRenderQuality(e.target.value as 'high' | 'fast')} className="h-6 w-20 text-[11px]">
+              <option value="high">High</option>
+              <option value="fast">Fast</option>
+            </Select>
+          )}
           <Separator vertical className="mx-0.5" />
           <Button
             size="xs"

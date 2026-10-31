@@ -142,6 +142,11 @@ unknown ids are sent back once for repair. Adapters, each through the vendor's o
 - **OpenAI** (`openai.ts`, `openai`): Responses API, stateless (`store: false`) with encrypted
   reasoning items passed back each turn; refusals and truncated output are detected.
 
+## Acting in the space, references and renders
+See `docs/REALISM.md`: the `interact` tool (open/close, walk, look, views — no approval needed, no
+undo step), `create_finish` for new finishes, reference photos/video (`/api/reference`) and the
+photoreal render deliverable (`/api/render`).
+
 ## Security
 - Model output is untrusted data: it can only produce schema-valid operations, which are compiled to
   domain commands and validated like any other edit. No code, SQL or HTML from the model is executed

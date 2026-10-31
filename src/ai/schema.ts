@@ -11,6 +11,8 @@ import {
   FrontStyleSchema,
   FurnitureTypeSchema,
   KitchenProjectSchema,
+  MaterialCategorySchema,
+  MaterialTextureSchema,
   OpeningKindSchema,
   SurfaceSchema,
   WallIdSchema,
@@ -136,6 +138,15 @@ export const OperationSchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('delete'), target: TargetSchema }).strict(),
   z.object({ op: z.literal('set_finish'), target: TargetSchema, finish }).strict(),
   z.object({ op: z.literal('set_surface_finish'), surface: SurfaceSchema, finish }).strict(),
+  /** A new finish (e.g. from a reference photo); later operations can use it by name. */
+  z.object({
+    op: z.literal('create_finish'),
+    name: z.string().trim().min(1).max(40),
+    category: MaterialCategorySchema,
+    color: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'colour must be #rrggbb'),
+    texture: MaterialTextureSchema.optional(),
+    roughness: z.number().min(0).max(1).optional(),
+  }).strict(),
   z.object({ op: z.literal('set_front_style'), target: TargetSchema, style: FrontStyleSchema }).strict(),
   z.object({ op: z.literal('set_room'), width: LengthSchema.optional(), length: LengthSchema.optional(), height: LengthSchema.optional(), wallThickness: LengthSchema.optional() }).strict(),
   z.object({ op: z.literal('update_opening'), target: TargetSchema, swing: z.enum(['in', 'out', 'none']).optional(), hinge: z.enum(['left', 'right']).optional(), sill: LengthSchema.optional() }).strict(),
@@ -224,7 +235,7 @@ export const RefineSchema = z
 /** A request for drawings, schedules, BOM, readiness, exports or a presentation. */
 export const DeliverableRequestSchema = z
   .object({
-    action: z.enum(['plan', 'elevations', 'schedule', 'bom', 'readiness', 'export-pdf', 'export-csv', 'regenerate', 'present']),
+    action: z.enum(['plan', 'elevations', 'schedule', 'bom', 'readiness', 'export-pdf', 'export-csv', 'regenerate', 'present', 'render']),
     /** Elevations of these walls; with `kitchenWalls`, every wall that has units. */
     walls: z.array(WallIdSchema).max(4).optional(),
     kitchenWalls: z.boolean().optional(),
@@ -236,6 +247,40 @@ export const DeliverableRequestSchema = z
   .strict();
 export type DeliverableRequest = z.infer<typeof DeliverableRequestSchema>;
 
+/**
+ * Things a person does in the space without changing the design: open and close doors and drawers,
+ * walk to a unit, look from a view, switch views. Carried out at once (nothing to approve or undo).
+ * `part` picks one moving part by its label ("top drawer", "left door"); without it, all of them.
+ * `walk` coordinates are measured from the left wall (x) and the back wall (z).
+ */
+export const SceneActionSchema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('open'), target: TargetSchema.optional(), part: z.string().trim().max(40).optional(), all: z.boolean().optional() }).strict(),
+  z.object({ action: z.literal('close'), target: TargetSchema.optional(), part: z.string().trim().max(40).optional(), all: z.boolean().optional() }).strict(),
+  z.object({ action: z.literal('walk_to'), target: TargetSchema }).strict(),
+  z.object({ action: z.literal('walk'), x: LengthSchema, z: LengthSchema }).strict(),
+  z.object({ action: z.literal('look'), view: z.enum(['iso', 'top', 'front', 'left', 'right', 'fit']) }).strict(),
+  z.object({ action: z.literal('focus'), target: TargetSchema }).strict(),
+  z.object({ action: z.literal('view'), mode: z.enum(['3d', 'plan', 'split']) }).strict(),
+  z.object({ action: z.literal('viewpoint'), name: z.string().trim().min(1).max(60) }).strict(),
+  z.object({ action: z.literal('select'), target: TargetSchema }).strict(),
+  z.object({ action: z.literal('style'), style: z.enum(['realistic', 'edges', 'xray']) }).strict(),
+  z.object({ action: z.literal('start_walking') }).strict(),
+  z.object({ action: z.literal('stop_walking') }).strict(),
+]);
+export type SceneAction = z.infer<typeof SceneActionSchema>;
+
+/** What a whole home should be; the app's generator does the planning (src/engine/home). */
+export const HomeBriefSchema = z
+  .object({
+    bhk: z.number().int().min(1).max(6),
+    kind: z.enum(['apartment', 'villa']),
+    carpetAreaSqft: z.number().int().min(300).max(20000).optional(),
+    style: z.enum(['modern', 'warm', 'japandi', 'industrial']).optional(),
+    name: z.string().trim().min(1).max(120).optional(),
+  })
+  .strict();
+export type HomeBriefInput = z.infer<typeof HomeBriefSchema>;
+
 export const AssistantResponseSchema = z.discriminatedUnion('kind', [
   PlanSchema,
   z.object({ kind: z.literal('clarify'), question: z.string().trim().min(1).max(400), options: z.array(z.string().trim().min(1).max(120)).max(6).default([]) }),
@@ -245,6 +290,10 @@ export const AssistantResponseSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('design'), explanation: z.string().trim().min(1).max(600), objective: DesignObjectiveSchema, refine: RefineSchema.optional() }),
   /** Deliverables are computed by the app; the model only says which. */
   z.object({ kind: z.literal('deliverable'), request: DeliverableRequestSchema }),
+  /** A whole home (apartment or villa) to generate and open; the app plans and furnishes it. */
+  z.object({ kind: z.literal('home'), brief: HomeBriefSchema }),
+  /** Interacting with the space (doors, drawers, walking, views); never changes the design. */
+  z.object({ kind: z.literal('act'), explanation: z.string().trim().max(400).default(''), actions: z.array(SceneActionSchema).min(1).max(8) }),
 ]);
 export type AssistantResponse = z.infer<typeof AssistantResponseSchema>;
 

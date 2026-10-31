@@ -110,6 +110,8 @@ export function deliverableReply(req: DeliverableRequest): DeliverableReply {
         revision: src.revision,
       };
     }
+    case 'render':
+      return { title: 'Photoreal render', lines: ['An AI photograph of the current 3D view: same layout, finishes and colours, with real light and materials. It is an illustration for clients, not a measured drawing.'], actions: [{ label: 'Render photo', action: 'render' }], revision: src.revision };
     case 'present':
       return { title: 'Client presentation', lines: [`The live 3D model of ${rev} with editing tools hidden. ${r.outputs.presentation.label}.`], actions: [{ label: 'Start presentation', action: 'present' }], revision: src.revision };
   }

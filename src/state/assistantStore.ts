@@ -12,6 +12,10 @@ import { RuleBasedProvider } from '@/ai/providers/rules';
 import type { AssistantProvider } from '@/ai/providers/types';
 import { formatLength } from '@/engine/measurement/units';
 import { deliverableReply } from './deliverableAssistant';
+import { runSceneAction } from './sceneActions';
+import { homeCommand } from './homeCommands';
+import { useHomeStore } from './homeStore';
+import { navigate } from '@/app/router';
 import { useEditorStore } from './editorStore';
 
 /** The AI provider and model the designer picked; "rules" runs in the browser without a server. */
@@ -69,6 +73,15 @@ export function editorPort(): EditorPort {
     select: (id) => editor().select(id),
     fmt: (mm) => formatLength(mm, editor().project?.preferences.unit ?? 'mm'),
     deliverable: (request) => deliverableReply(request),
+    scene: (action, ids) => runSceneAction(action, ids),
+    homeCommand: (text) => homeCommand(text),
+    home: (brief) => {
+      void useHomeStore
+        .getState()
+        .create(brief)
+        .then((home) => navigate({ name: 'house', homeId: home.id }));
+      return `Designing a ${brief.bhk}BHK ${brief.kind}${brief.carpetAreaSqft ? ` of about ${brief.carpetAreaSqft} sq ft` : ''}: rooms, doors and windows, furniture and finishes. It opens in a moment; then open any room to refine it.`;
+    },
   };
 }
 
@@ -86,6 +99,8 @@ interface AssistantStore {
   conversation: ConversationState;
   prefs: AssistantPrefs;
   open: boolean;
+  /** A reply arrived while the window was closed. */
+  unread: boolean;
   /** The message box contents (shared so a voice transcript can be placed there for review). */
   draft: string;
   setDraft: (text: string) => void;
@@ -116,8 +131,9 @@ const conversation = new Conversation(editorPort(), providerFor(prefs.provider),
 export const useAssistantStore = create<AssistantStore>()((set, get) => ({
   conversation: conversation.state,
   prefs,
-  // Open by default where there is room for it beside the side panels.
-  open: typeof window !== 'undefined' && window.innerWidth >= 1600,
+  // A floating chat window: closed until the designer opens it from the button.
+  open: false,
+  unread: false,
   draft: '',
   setDraft: (draft) => set({ draft }),
   send: (text, options) => conversation.send(text, options),
@@ -160,14 +176,18 @@ export const useAssistantStore = create<AssistantStore>()((set, get) => ({
   },
   serverStatus: null,
   loadServerStatus: async () => set({ serverStatus: await http.status() }),
-  setOpen: (open) => set({ open }),
+  setOpen: (open) => set(open ? { open, unread: false } : { open }),
   reset: () => conversation.reset(),
 }));
 
 /** The conversation behind the panel, for the voice controller (same instance, same pipeline). */
 export const assistantConversation = () => conversation;
 
-conversation.subscribe((state) => useAssistantStore.setState({ conversation: state }));
+conversation.subscribe((state) => {
+  const s = useAssistantStore.getState();
+  const replied = state.messages.length > s.conversation.messages.length && state.messages.at(-1)?.role === 'assistant';
+  useAssistantStore.setState({ conversation: state, ...(replied && !s.open ? { unread: true } : {}) });
+});
 
 useEditorStore.subscribe((s) => {
   if (s.preview?.kind !== 'candidate' && useAssistantStore.getState().previewing) useAssistantStore.setState({ previewing: null });

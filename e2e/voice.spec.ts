@@ -130,3 +130,86 @@ test('browsers without speech recognition get text-only operation', async ({ pag
   await box.press('Enter');
   await expect(page.getByTestId('assistant-answer')).toBeVisible();
 });
+
+test('choose a Gemini or ChatGPT reply voice; without a server key the browser voice speaks and says why', async ({ page }) => {
+  await page.addInitScript(FAKE_SPEECH);
+  await newProject(page);
+  await page.getByRole('button', { name: 'Assistant settings' }).click();
+
+  const source = page.getByLabel('Reply voice source');
+  const voice = page.getByLabel('Voice', { exact: true });
+  await expect(source).toHaveValue('gemini');
+  await expect(voice).toHaveValue('Kore');
+  await expect(voice.locator('option')).toHaveCount(30);
+  await expect(voice.locator('option').first()).toHaveText('Kore — Firm');
+  await expect(page.getByTestId('voice-not-configured')).toContainText('GEMINI_API_KEY');
+
+  await source.selectOption('openai');
+  await expect(voice).toHaveValue('marin');
+  await expect(voice.locator('option')).toHaveCount(10);
+  await voice.selectOption('cedar');
+
+  // The test server has no OpenAI key: the preview is spoken by the browser and the reason is shown.
+  await page.getByRole('button', { name: 'Preview voice' }).click();
+  await expect(page.getByTestId('voice-fallback-notice')).toContainText('OPENAI_API_KEY');
+  await expect.poll(() => page.evaluate('window.__spoken.length')).toBe(1);
+
+  await source.selectOption('browser');
+  await expect(voice).toHaveValue('');
+  await expect(page.getByTestId('voice-fallback-notice')).toHaveCount(0);
+
+  // Remembered for next time.
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('interior-studio:voice') ?? '{}').replyVoice)).toEqual({ engine: 'browser', voice: '' });
+});
+
+test('hands-free conversation: talk, hear the reply, apply by voice, then say goodbye', async ({ page }) => {
+  await page.addInitScript(FAKE_SPEECH);
+  await newProject(page);
+  await page.getByRole('button', { name: 'Start voice conversation' }).click();
+  const bar = page.getByTestId('conversation-bar');
+  const state = page.getByTestId('conversation-status');
+  await expect(bar).toBeVisible();
+  await expect(page.getByTestId('mic-button')).toHaveCount(0);
+  // The test server has no Gemini key: realtime is unavailable, so the standard loop runs and says why.
+  await expect(page.getByTestId('conversation-mode')).toHaveText('Standard');
+  await expect(page.getByTestId('conversation-notice')).toContainText('GEMINI_API_KEY');
+
+  /** Speak one utterance into whichever recognition session is listening now. */
+  const utter = async (text: string) => {
+    await expect(state).toHaveText(/Listening|Speaking/);
+    await rec(page, 'window.__voice.onstart()');
+    await rec(page, result(text, true));
+    await rec(page, 'window.__voice.onend()');
+  };
+
+  await utter('create a nine hundred millimetre base cabinet');
+  await expect(page.getByTestId('change-preview').last().getByTestId('proposal-status')).toHaveText('Validated · awaiting approval');
+  await expect.poll(() => page.evaluate('window.__spoken.at(-1)')).toMatch(/^The change is ready to preview/);
+  // After the reply it listens again by itself.
+  await expect(state).toHaveText('Voice conversation · Listening');
+
+  await utter('apply');
+  await expect(page.getByTestId('change-preview').last().getByTestId('proposal-status')).toHaveText('Applied');
+  await expect.poll(() => page.evaluate('window.__spoken.at(-1)')).toBe('The change was applied.');
+  await expect(state).toHaveText('Voice conversation · Listening');
+
+  // Hold pauses the microphone; Resume carries on.
+  await page.getByRole('button', { name: 'Hold conversation' }).click();
+  await expect(state).toHaveText('Voice conversation · On hold');
+  await page.getByRole('button', { name: 'Resume conversation' }).click();
+  await expect(state).toHaveText('Voice conversation · Listening');
+
+  await utter('okay goodbye');
+  await expect(bar).toHaveCount(0);
+  await expect(page.getByTestId('conversation-ended')).toHaveText('Voice conversation ended.');
+  await expect(page.getByTestId('mic-button')).toBeVisible();
+});
+
+test('a voice conversation ends with End', async ({ page }) => {
+  await page.addInitScript(FAKE_SPEECH);
+  await newProject(page);
+  await page.getByRole('button', { name: 'Start voice conversation' }).click();
+  await expect(page.getByTestId('conversation-status')).toHaveText('Voice conversation · Listening');
+  await page.getByRole('button', { name: 'End conversation' }).click();
+  await expect(page.getByTestId('conversation-ended')).toHaveText('Voice conversation ended.');
+});

@@ -130,12 +130,14 @@ export function normaliseSpokenRequest(transcript: string): string {
   return normaliseUnits(spokenNumbersToDigits(t));
 }
 
-export type VoiceIntent = 'stop' | 'cancel' | 'approve' | 'reject' | null;
+export type VoiceIntent = 'stop' | 'cancel' | 'approve' | 'reject' | 'end' | null;
 
 /** Voice-only control phrases, handled before anything reaches the assistant. */
 export function voiceIntent(transcript: string): VoiceIntent {
   const t = transcript.toLowerCase().replace(/[.,!?]/g, '').replace(/\s+/g, ' ').trim();
-  if (/^(stop listening|stop|that's all|that is all)$/.test(t)) return 'stop';
+  if (/^(stop listening|stop|stop talking|hold on|wait)$/.test(t)) return 'stop';
+  // Ends a hands-free conversation (in a single request it is the same as stop).
+  if (/^((ok(ay)? |thanks |thank you )?(end|stop|finish) (the |this |our )?(conversation|chat|call|session)|(ok(ay)? |thanks |thank you )?(good ?bye|bye( bye)?)|(ok(ay)? |thanks |thank you )?that's all( for now| thanks| thank you)?|that is all|we're done|i'm done|that's it for now)$/.test(t)) return 'end';
   if (/^(cancel|never ?mind|forget it|cancel that)$/.test(t)) return 'cancel';
   if (/^(apply|apply it|apply that|apply the change|yes apply( it)?|approve|approve it|confirm|go ahead|do it|yes do it)$/.test(t)) return 'approve';
   if (/^(reject|reject it|reject that|no don't|don't apply( it)?|discard( it)?|no thanks)$/.test(t)) return 'reject';

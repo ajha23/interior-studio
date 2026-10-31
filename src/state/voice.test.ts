@@ -341,3 +341,225 @@ describe('voice uses the Phase 2 pipeline', () => {
     expect(voice.state.error).toMatchObject({ code: 'project-changed' });
   });
 });
+
+describe('hands-free conversation', () => {
+  let now = 0;
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    now = 1_000_000;
+    voice.dispose();
+    voice = createVoiceController({ provider: speech, tts, language: () => 'en-GB', relistenDelayMs: 0, now: () => now });
+  });
+  afterEach(() => vi.useRealTimers());
+
+  /** One utterance on the session that is currently listening. */
+  async function utter(text: string) {
+    speech.open();
+    speech.final(text);
+    speech.end();
+    await settle();
+  }
+
+  it('listens again after each reply, never while a reply plays, and applies by voice', async () => {
+    await voice.startConversation();
+    expect(voice.state).toMatchObject({ status: 'listening', conversation: { active: true, held: false, mode: 'standard' } });
+    await utter('create a nine hundred millimetre base cabinet');
+    expect(voice.state.status).toBe('speaking');
+    // Half-duplex: the microphone stays off while the reply plays, so the assistant cannot hear itself.
+    expect(speech.starts).toBe(1);
+    tts.finish();
+    expect(voice.state.status).toBe('listening');
+    expect(speech.starts).toBe(2);
+    await utter('apply');
+    expect(tts.spoken.at(-1)).toBe('The change was applied.');
+    expect(allElements(project())).toHaveLength(1);
+    tts.finish();
+    expect(voice.state.status).toBe('listening');
+    expect(voice.state.conversation.active).toBe(true);
+  });
+
+  it('Stop interrupts a reply and listens again', async () => {
+    await voice.startConversation();
+    await utter('create a nine hundred millimetre base cabinet');
+    expect(voice.state.status).toBe('speaking');
+    voice.stopSpeaking();
+    expect(tts.speaking).toBe(false);
+    expect(voice.state.status).toBe('listening');
+    expect(speech.starts).toBe(2);
+  });
+
+  it('treats silence as waiting, warns, then ends after the idle limit', async () => {
+    voice.setPrefs({ idleTimeoutMs: 60_000 });
+    await voice.startConversation();
+    speech.open();
+    speech.error('no-speech');
+    speech.end();
+    expect(voice.state).toMatchObject({ status: 'listening', error: null, conversation: { active: true } });
+    expect(speech.starts).toBe(2);
+    now += 50_000;
+    vi.advanceTimersByTime(1000);
+    expect(voice.state.conversation.idleSecondsLeft).toBe(10);
+    now += 11_000;
+    vi.advanceTimersByTime(1000);
+    expect(voice.state.conversation).toMatchObject({ active: false, ended: { reason: 'idle', message: 'Voice conversation ended after 1 minute without speech.' } });
+    expect(voice.state.status).toBe('idle');
+    speech.end();
+    expect(speech.starts).toBe(2);
+  });
+
+  it('time spent waiting for or hearing a reply does not count as inactivity', async () => {
+    await voice.startConversation();
+    await utter('create a nine hundred millimetre base cabinet');
+    now += 120_000; // a long reply
+    vi.advanceTimersByTime(1000);
+    expect(voice.state.conversation.active).toBe(true);
+  });
+
+  it('ends on a spoken goodbye, on End, and on a microphone error', async () => {
+    await voice.startConversation();
+    await utter('okay goodbye');
+    expect(voice.state.conversation).toMatchObject({ active: false, ended: { reason: 'voice' } });
+    expect(tts.spoken.at(-1)).toBe('Okay. Talk to you later.');
+    tts.finish();
+    expect(speech.starts).toBe(1);
+
+    await voice.startConversation();
+    voice.endConversation();
+    expect(voice.state.conversation).toMatchObject({ active: false, ended: { reason: 'user' } });
+
+    await voice.startConversation();
+    speech.error('permission-denied');
+    expect(voice.state).toMatchObject({ status: 'error', conversation: { active: false, ended: { reason: 'error', message: expect.stringMatching(/Microphone access is blocked/) } } });
+  });
+
+  it('holds without listening and resumes', async () => {
+    await voice.startConversation();
+    voice.hold();
+    expect(voice.state).toMatchObject({ status: 'idle', conversation: { active: true, held: true } });
+    now += 600_000;
+    vi.advanceTimersByTime(1000);
+    expect(voice.state.conversation.active).toBe(true);
+    const before = speech.starts;
+    voice.resume();
+    expect(speech.starts).toBe(before + 1);
+    expect(voice.state).toMatchObject({ status: 'listening', conversation: { held: false } });
+  });
+
+  it('ends at the maximum length and stops after repeated instant microphone failures', async () => {
+    voice.dispose();
+    voice = createVoiceController({ provider: speech, tts, language: () => 'en-GB', relistenDelayMs: 0, now: () => now, maxConversationMs: 5_000 });
+    await voice.startConversation();
+    now += 6_000;
+    vi.advanceTimersByTime(1000);
+    expect(voice.state.conversation.ended?.reason).toBe('limit');
+
+    await voice.startConversation();
+    for (let i = 0; i < 5; i++) speech.end();
+    expect(voice.state.conversation).toMatchObject({ active: false, ended: { reason: 'error', message: expect.stringMatching(/keeps stopping/) } });
+  });
+});
+
+describe('realtime conversation (Gemini Live)', () => {
+  type Cb = import('@/voice/live/session').LiveCallbacks;
+  let cb: Cb | null;
+  let handle: { closed: boolean; paused: boolean; echoCancelled: boolean };
+  let tools: { name: string; userText: string }[];
+  let logged: [string, string][];
+  let startError: Error | null;
+
+  function realtime() {
+    voice.dispose();
+    cb = null;
+    tools = [];
+    logged = [];
+    handle = { closed: false, paused: false, echoCancelled: true };
+    voice = createVoiceController({
+      provider: speech,
+      tts,
+      language: () => 'en-GB',
+      relistenDelayMs: 0,
+      live: {
+        enabled: () => true,
+        start: async (callbacks) => {
+          if (startError) throw startError;
+          cb = callbacks;
+          callbacks.onPhase('listening');
+          return { model: 'gemini-3.8-live', voice: 'Kore', get echoCancelled() { return handle.echoCancelled; }, pause: () => void (handle.paused = true), resume: () => void (handle.paused = false), close: () => void (handle.closed = true) };
+        },
+        runTool: async (call, turn) => (tools.push({ name: call.name, userText: turn.userText }), { output: 'ok' }),
+        context: () => ({ key: '1', text: 'state' }),
+        logExchange: (u, m) => void logged.push([u, m]),
+      },
+    });
+  }
+  beforeEach(() => {
+    startError = null;
+    realtime();
+  });
+
+  it('uses the streamed session: captions, phases, tool calls and chat logging', async () => {
+    await voice.startConversation();
+    expect(voice.state).toMatchObject({ status: 'listening', conversation: { active: true, mode: 'realtime' } });
+    expect(speech.starts).toBe(0); // the browser recogniser is not used
+    cb!.onUserSpeech('how many cabinets');
+    expect(voice.state.interim).toBe('how many cabinets');
+    cb!.onPhase('thinking');
+    expect(voice.state.status).toBe('processing');
+    expect(await cb!.onToolCall({ id: '1', name: 'list_objects', args: {} }, { userText: 'how many cabinets' })).toEqual({ output: 'ok' });
+    cb!.onPhase('speaking');
+    cb!.onModelSpeech('There are nine cabinets.');
+    expect(voice.state).toMatchObject({ status: 'speaking', conversation: { reply: 'There are nine cabinets.' } });
+    cb!.onTurnComplete({ userText: 'how many cabinets', modelText: 'There are nine cabinets.', toolUsed: false });
+    expect(logged).toEqual([['how many cabinets', 'There are nine cabinets.']]);
+    cb!.onPhase('listening');
+    expect(voice.state).toMatchObject({ status: 'listening', heard: 'how many cabinets' });
+    expect(tools).toEqual([{ name: 'list_objects', userText: 'how many cabinets' }]);
+  });
+
+  it('ends after the goodbye has been spoken, and on End', async () => {
+    await voice.startConversation();
+    cb!.onPhase('speaking');
+    await cb!.onToolCall({ id: '2', name: 'end_conversation', args: {} }, { userText: 'bye' });
+    cb!.onTurnComplete({ userText: 'bye', modelText: 'Goodbye!', toolUsed: true });
+    expect(voice.state.conversation.active).toBe(true);
+    cb!.onPhase('listening');
+    expect(voice.state.conversation).toMatchObject({ active: false, ended: { reason: 'voice' } });
+    expect(handle.closed).toBe(true);
+
+    realtime();
+    await voice.startConversation();
+    voice.endConversation();
+    expect(handle.closed).toBe(true);
+  });
+
+  it('holds and resumes the session, and ends with the reason when the connection drops', async () => {
+    await voice.startConversation();
+    voice.hold();
+    expect(handle.paused).toBe(true);
+    expect(voice.state.conversation.held).toBe(true);
+    voice.resume();
+    expect(handle.paused).toBe(false);
+    cb!.onClose({ kind: 'error', message: 'The realtime session closed (1011).' });
+    expect(voice.state.conversation).toMatchObject({ active: false, ended: { reason: 'error', message: 'Voice conversation ended: The realtime session closed (1011).' } });
+  });
+
+  it('falls back to the standard loop when the server has no Gemini key, and says so', async () => {
+    startError = Object.assign(new Error('Realtime voice needs GEMINI_API_KEY on the server.'), { code: 'unavailable' });
+    await voice.startConversation();
+    expect(voice.state).toMatchObject({ status: 'listening', conversation: { active: true, mode: 'standard', notice: expect.stringContaining('GEMINI_API_KEY') } });
+    expect(speech.starts).toBe(1);
+  });
+
+  it('a blocked microphone ends the conversation with the reason', async () => {
+    startError = Object.assign(new Error('Microphone access is blocked.'), { code: 'permission-denied' });
+    await voice.startConversation();
+    expect(voice.state).toMatchObject({ status: 'error', error: { code: 'permission-denied' }, conversation: { active: false, ended: { reason: 'error' } } });
+  });
+
+  it('says when echo cancellation is unavailable', async () => {
+    handle.echoCancelled = false;
+    await voice.startConversation();
+    expect(voice.state.conversation.notice).toMatch(/Headphones work best/);
+  });
+});
+

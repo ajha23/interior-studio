@@ -17,6 +17,21 @@ const HISTORY_LIMIT = 100;
 export type ViewMode = '3d' | 'plan' | 'split' | 'drawings';
 export type CameraPreset = 'iso' | 'top' | 'front' | 'left' | 'right';
 export type VisualStyle = 'realistic' | 'edges' | 'xray';
+export type RenderQuality = 'high' | 'fast';
+
+const QUALITY_KEY = 'interior-studio:render-quality';
+
+/** The saved choice, else high; the 3D view switches to fast when it finds a software renderer. */
+function initialQuality(): RenderQuality {
+  try {
+    return localStorage.getItem(QUALITY_KEY) === 'fast' ? 'fast' : 'high';
+  } catch {
+    return 'high';
+  }
+}
+
+/** Whether a renderer string names a CPU (software) rasteriser. */
+export const isSoftwareRenderer = (renderer: string) => /swiftshader|llvmpipe|software|basic render/i.test(renderer);
 export type Projection = 'perspective' | 'orthographic';
 export type NavMode = 'orbit' | 'walk';
 
@@ -77,6 +92,8 @@ export interface EditorState {
   showChecks: boolean;
   showGrid: boolean;
   visualStyle: VisualStyle;
+  /** high: textures, image-based light and ambient occlusion · fast: plain colours (slow or software GPUs). */
+  renderQuality: RenderQuality;
   projection: Projection;
   /** Hide walls that stand between the camera and the room. */
   autoHideWalls: boolean;
@@ -119,6 +136,7 @@ export interface EditorState {
   /** Selects the next (or previous) element in wall/run order and frames it. */
   cycleSelection: (direction: 1 | -1) => void;
   setVisualStyle: (style: VisualStyle) => void;
+  setRenderQuality: (quality: RenderQuality) => void;
   setProjection: (projection: Projection) => void;
   toggleAutoHideWalls: () => void;
   setShowInteriors: (show: boolean) => void;
@@ -175,6 +193,7 @@ export const useEditorStore = create<EditorState>()(
     showChecks: false,
     showGrid: true,
     visualStyle: 'realistic',
+    renderQuality: initialQuality(),
     projection: 'perspective',
     autoHideWalls: true,
     showInteriors: false,
@@ -348,6 +367,15 @@ export const useEditorStore = create<EditorState>()(
         else s.camera = { request: { kind: 'focus', id: next.id }, nonce: s.camera.nonce + 1 };
       }),
     setVisualStyle: (style) => set((s) => void (s.visualStyle = style)),
+    setRenderQuality: (quality) =>
+      set((s) => {
+        s.renderQuality = quality;
+        try {
+          localStorage.setItem(QUALITY_KEY, quality);
+        } catch {
+          // A convenience only.
+        }
+      }),
     setProjection: (projection) =>
       set((s) => {
         s.projection = projection;

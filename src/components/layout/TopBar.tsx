@@ -1,14 +1,14 @@
 import { useState } from 'react';
-import { Bot, Box, ChevronLeft, Columns2, Download, FileText, Map as MapIcon, Redo2, Save, ShieldCheck, Table2, Undo2 } from 'lucide-react';
+import { Box, ChevronLeft, Columns2, Download, FileText, Map as MapIcon, Redo2, Save, ShieldCheck, Table2, Undo2 } from 'lucide-react';
 import { useDesignChecks } from '@/features/checks/useDesignChecks';
 import { navigate } from '@/app/router';
+import { useHomeStore } from '@/state/homeStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { LENGTH_UNITS, UNIT_LABEL, type LengthUnit } from '@/engine/measurement/units';
 import { Separator } from '@/components/ui/separator';
 import { exportProject, saveCurrentProject } from '@/features/projects/projectActions';
-import { useAssistantStore } from '@/state/assistantStore';
 import { selectIsDirty, useEditorStore } from '@/state/editorStore';
 
 export function TopBar() {
@@ -23,8 +23,6 @@ export function TopBar() {
   const showChecks = useEditorStore((s) => s.showChecks);
   const warningCount = useDesignChecks().filter((c) => c.severity === 'warning').length;
   const { undo, redo, setView, toggleBom, toggleChecks, dispatch } = useEditorStore.getState();
-  const assistantOpen = useAssistantStore((s) => s.open);
-  const setAssistantOpen = useAssistantStore((s) => s.setOpen);
   const [name, setName] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -33,15 +31,21 @@ export function TopBar() {
     setName(null);
   };
 
+  const inHome = useHomeStore((s) => (s.roomId ? s.home : null));
   const leave = () => {
+    // A room's edits stay in its home (unsaved until Save), so going back to the plan loses nothing.
+    if (inHome) {
+      navigate({ name: 'house', homeId: inHome.id });
+      return;
+    }
     if (dirty && !window.confirm('You have unsaved changes. Leave without saving?')) return;
     navigate({ name: 'home' });
   };
 
   return (
     <header className="flex h-12 shrink-0 items-center gap-2 overflow-x-auto border-b bg-card px-2">
-      <Button variant="ghost" size="sm" onClick={leave} aria-label="All projects">
-        <ChevronLeft /> Projects
+      <Button variant="ghost" size="sm" onClick={leave} aria-label={inHome ? `Back to ${inHome.name}` : 'All projects'}>
+        <ChevronLeft /> {inHome ? 'Home plan' : 'Projects'}
       </Button>
       <Separator vertical />
       <Input
@@ -90,9 +94,6 @@ export function TopBar() {
         </Button>
       </div>
 
-      <Button size="sm" variant={assistantOpen ? 'selected' : 'ghost'} aria-pressed={assistantOpen} onClick={() => setAssistantOpen(!assistantOpen)} title="Design assistant: edit the design by describing changes">
-        <Bot /> Assistant
-      </Button>
       <Select
         aria-label="Units"
         title="Display units — lengths can be typed in any unit; geometry is stored in millimetres"

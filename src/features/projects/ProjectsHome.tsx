@@ -3,7 +3,8 @@ import { Download, FolderOpen, Plus, Sparkles, Trash2, Upload } from 'lucide-rea
 import { createExampleProject, createProject, DEFAULT_ROOM, layoutFitErrors, ROOM_PRESETS, RoomSchema, zodMessages, type Layout, type Room } from '@/domain';
 import { Select } from '@/components/ui/select';
 import { LENGTH_UNITS, UNIT_LABEL, type LengthUnit } from '@/engine/measurement/units';
-import { deleteProject, listProjects, loadProject, type ProjectSummary } from '@/persistence/projectDb';
+import { deleteHome, deleteProject, listHomes, listProjects, loadProject, type HomeSummary, type ProjectSummary } from '@/persistence/projectDb';
+import { NewHomeCard } from '@/features/home/NewHomeCard';
 import { navigate } from '@/app/router';
 import { formatLength } from '@/engine/measurement/units';
 import { Button } from '@/components/ui/button';
@@ -31,8 +32,10 @@ export function ProjectsHome({ notice }: { notice?: string | null }) {
   const [busy, setBusy] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
+  const [homes, setHomes] = useState<HomeSummary[] | null>(null);
   const refresh = useCallback(() => {
     listProjects().then(setProjects, (e: unknown) => setLoadError(e instanceof Error ? e.message : String(e)));
+    listHomes().then(setHomes, () => setHomes([]));
   }, []);
   useEffect(refresh, [refresh]);
 
@@ -85,6 +88,8 @@ export function ProjectsHome({ notice }: { notice?: string | null }) {
       </header>
 
       <div className="mx-auto grid max-w-6xl gap-6 px-6 py-8 lg:grid-cols-[minmax(0,420px)_1fr]">
+        <div className="flex flex-col gap-6">
+        <NewHomeCard />
         <Card>
           <CardHeader>
             <CardTitle>New project</CardTitle>
@@ -149,8 +154,46 @@ export function ProjectsHome({ notice }: { notice?: string | null }) {
             </div>
           </CardContent>
         </Card>
+        </div>
 
         <section aria-labelledby="projects-h" className="flex flex-col gap-3">
+          {homes && homes.length > 0 && (
+            <>
+              <h2 className="text-sm font-semibold">Your homes</h2>
+              <ul className="grid gap-3 sm:grid-cols-2" aria-label="Your homes">
+                {homes.map((h) => (
+                  <li key={h.id}>
+                    <Card className="flex h-full flex-col gap-3 p-4">
+                      <div className="min-w-0">
+                        <h3 className="truncate font-medium">{h.name}</h3>
+                        <p className="text-xs text-muted-foreground">
+                          {h.bhk}BHK {h.kind} · {h.rooms} rooms · {h.carpetSqft.toLocaleString()} sq ft · saved {new Date(h.updatedAt).toLocaleString()}
+                        </p>
+                      </div>
+                      <div className="mt-auto flex gap-1.5">
+                        <Button size="sm" onClick={() => navigate({ name: 'house', homeId: h.id })} aria-label={`Open ${h.name}`}>
+                          <FolderOpen /> Open
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="ml-auto text-destructive"
+                          aria-label={`Delete ${h.name}`}
+                          onClick={async () => {
+                            if (!window.confirm(`Delete “${h.name}” from this device? This cannot be undone.`)) return;
+                            await deleteHome(h.id);
+                            refresh();
+                          }}
+                        >
+                          <Trash2 />
+                        </Button>
+                      </div>
+                    </Card>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
           <h2 id="projects-h" className="text-sm font-semibold">Your projects</h2>
           {notice && <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 p-2.5 text-sm text-destructive">{notice}</p>}
           {loadError && <p role="alert" className="text-sm text-destructive">Local storage is unavailable: {loadError}</p>}

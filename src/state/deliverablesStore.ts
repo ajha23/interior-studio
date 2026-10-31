@@ -7,6 +7,7 @@
  * Approvals and history are kept in this browser (localStorage, per project), like the projects
  * themselves; the files are downloaded, not stored.
  */
+import { useVisionStore } from './visionStore';
 import { create } from 'zustand';
 import { parseProjectFile, serializeProject, type KitchenProject, type WallId } from '@/domain';
 import { buildBom } from '@/engine/deliverables/bom';
@@ -273,6 +274,10 @@ export function runDeliverableAction(action: string): GeneratedFile | null {
   const editor = useEditorStore.getState();
   if (action === 'present') {
     editor.setPresenting(true);
+    return null;
+  }
+  if (action === 'render') {
+    useVisionStore.getState().openRender(true);
     return null;
   }
   const [verb, ...rest] = action.split(':');

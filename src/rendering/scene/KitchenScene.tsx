@@ -11,6 +11,8 @@ import { useDirectEdit, type DirectEditCallbacks } from '../selection/directEdit
 import { useInteraction, type InteractCallbacks } from '../selection/interaction';
 import { InvalidGhost, ResizeGrips } from '../selection/Grips';
 import { toWorld } from '../units';
+import { WorldUVs } from '../materials/worldUVs';
+import { Lighting } from './Lighting';
 import { RoomShell } from './RoomShell';
 
 const NONE: Record<string, number> = {};
@@ -20,6 +22,8 @@ interface Props {
   selectedId: string | null;
   showGrid: boolean;
   visualStyle: VisualStyle;
+  /** Textured finishes (high) or plain colours (fast). */
+  textured?: boolean;
   autoHideWalls: boolean;
   showInteriors: boolean;
   interactMode: boolean;
@@ -36,9 +40,9 @@ interface Props {
  * The whole kitchen, derived from the project on every change. While a drag is in progress the
  * dry-run result is shown instead, so neighbours and worktops move live.
  */
-export function KitchenScene({ project, selectedId, showGrid, visualStyle, autoHideWalls, showInteriors, interactMode, walking, openness, preview, zones, callbacks, selectedWall }: Props) {
+export function KitchenScene({ project, selectedId, showGrid, visualStyle, textured = true, autoHideWalls, showInteriors, interactMode, walking, openness, preview, zones, callbacks, selectedWall }: Props) {
   const shown = preview?.project ?? project;
-  const materials = useSceneMaterials(shown.materials, visualStyle);
+  const materials = useSceneMaterials(shown.materials, visualStyle, textured);
   const edit = useDirectEdit(project, callbacks);
   const interact = useInteraction(callbacks);
   // Openness grouped by element, so each element gets only its own movers.
@@ -69,19 +73,8 @@ export function KitchenScene({ project, selectedId, showGrid, visualStyle, autoH
 
   return (
     <>
-      <ambientLight intensity={0.9} />
-      <hemisphereLight args={['#ffffff', '#b9ad9c', 0.8]} />
-      <directionalLight
-        castShadow
-        intensity={1.3}
-        position={[toWorld(width) * 0.7, toWorld(height) + 2.5, toWorld(length) + 2]}
-        shadow-mapSize={[2048, 2048]}
-        shadow-camera-left={-6}
-        shadow-camera-right={6}
-        shadow-camera-top={6}
-        shadow-camera-bottom={-6}
-        shadow-bias={-0.0004}
-      />
+      <Lighting style={visualStyle} room={{ width, length, height }} high={textured} />
+      <WorldUVs />
       <RoomShell project={shown} materials={materials} showGrid={showGrid} autoHideWalls={autoHideWalls && !walking} onBackgroundClick={callbacks.deselect} onWallClick={(w) => callbacks.select(`wall-${w}`)} selectedWall={selectedWall} onFloorClick={walking ? callbacks.walkTo : undefined} />
       <Countertops project={shown} materials={materials} />
       {allElements(shown).map((el) => (

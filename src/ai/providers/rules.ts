@@ -5,11 +5,13 @@
  * It produces the same `AssistantResponse`s a language model would, so everything downstream —
  * reference resolution, unit conversion, validation, preview and commit — is exercised for real.
  */
-import { WALLS, type KitchenProject, type WallId } from '@/domain';
+import { WALLS, type FurnitureType, type KitchenProject, type WallId } from '@/domain';
 import { LENGTH_UNITS, parseLength, UNIT_LABEL, type LengthUnit } from '@/engine/measurement/units';
 import { findEntity } from '../entities';
 import { resolveTarget, typeAlias } from '../resolve';
 import { DesignObjectiveSchema, type AssistantOperation, type AssistantRequest, type AssistantResponse, type DeliverableRequest, type DesignObjectiveInput, type Direction, type LengthInput, type PlacementInput, type Priority, type Show, type TargetRef } from '../schema';
+import type { SceneAction } from '../schema';
+import { parseHomeBrief } from '@/engine/home/brief';
 import type { AssistantProvider } from './types';
 
 export const EXAMPLE_REQUESTS = [
@@ -47,6 +49,14 @@ export function interpret(request: AssistantRequest): AssistantResponse {
     const steps = history[2] ? (WORD_NUM[history[2]] ?? Number(history[2])) : 1;
     return { kind: 'history', action: history[1] as 'undo' | 'redo', steps: Math.min(10, Math.max(1, steps || 1)) };
   }
+
+  // A whole home ("design a 3BHK apartment", "4 bedroom villa, 2400 sq ft").
+  const brief = parseHomeBrief(request.message);
+  if (brief) return { kind: 'home', brief };
+
+  // Doors, drawers, walking and views: acting in the room, not editing it.
+  const scene = sceneRequest(text, ctx);
+  if (scene) return scene;
 
   // Drawings, schedules, BOM, readiness and exports are computed by the app.
   const deliverable = deliverableRequest(text);
@@ -153,6 +163,7 @@ function dims(t: string, found: Found[]): Partial<Record<Dim, LengthInput>> & { 
 const TYPE_WORDS = [
   'base cabinet', 'base unit', 'wall cabinet', 'wall unit', 'upper cabinet', 'tall unit', 'tall cabinet', 'pantry', 'drawer unit', 'drawers', 'drawer', 'sink cabinet', 'sink unit', 'sink',
   'corner unit', 'corner cabinet', 'corner', 'refrigerator', 'fridge', 'dishwasher', 'range cooker', 'cooker', 'range', 'oven', 'hob', 'stove', 'cooker hood', 'hood', 'extractor',
+  'entertainment unit', 'cupboard wardrobe', 'chest of drawers', 'dressing table', 'shower cubicle', 'bedside table', 'coffee table', 'centre table', 'center table', 'lounge chair', 'study table', 'double bed', 'single bed', 'nightstand', 'side table', 'tv cabinet', 'tv console', 'media unit', 'book shelf', 'wash basin', 'work desk', 'bookshelf', 'washbasin', 'staircase', 'king bed', 'wardrobe', 'bookcase', 'armchair', 'bath tub', 'almirah', 'tv unit', 'dresser', 'commode', 'bathtub', 'closet', 'toilet', 'vanity', 'shower', 'stairs', 'basin', 'stair', 'desk', 'bed', 'tub', 'wc',
   'island', 'table', 'chair', 'sofa', 'couch', 'door', 'window', 'archway', 'opening', 'cabinets', 'cabinet', 'units', 'unit', 'cupboard', 'appliances', 'appliance', 'furniture',
 ];
 
@@ -397,7 +408,7 @@ function parseCreate(rest: string, ctx: Ctx, lastCreated: number | null): Parsed
     const offset = at ? lengths(at[1]!, ctx.unit)[0]?.value : undefined;
     placement = offset !== undefined ? { wall, offset } : { wall };
     where = ` on the ${wall} wall${at ? ` at ${at[1]}` : ''}`;
-  } else if (ctx.request.context.selectedId && findEntity(ctx.project, ctx.request.context.selectedId)?.element?.wallId && !['table', 'chair', 'sofa', 'couch', 'door', 'window', 'opening', 'archway'].includes(type)) {
+  } else if (ctx.request.context.selectedId && findEntity(ctx.project, ctx.request.context.selectedId)?.element?.wallId && typeAlias(type)?.category !== 'furniture' && !['door', 'window', 'opening', 'archway'].includes(type)) {
     // Beside the selected unit if there is room, otherwise the first free spot.
     placement = { near: { ref: 'selected' } };
     where = ` beside the selected ${findEntity(ctx.project, ctx.request.context.selectedId)!.label} (or the first free spot if there's no room)`;
@@ -411,7 +422,7 @@ function parseCreate(rest: string, ctx: Ctx, lastCreated: number | null): Parsed
     return { ops: [op], say: `Add a ${size}${kind}${where}.` };
   }
   if (alias?.category === 'furniture') {
-    const furnitureType = type === 'couch' ? 'sofa' : (type as 'table' | 'chair' | 'sofa');
+    const furnitureType = (type === 'couch' ? 'sofa' : (alias.type ?? type)) as FurnitureType;
     return { ops: [{ op: 'create_furniture', furnitureType, width, height: d.height, depth: d.depth }], say: `Add a ${size}${furnitureType}.` };
   }
   if (alias?.category === 'appliance' || type === 'appliance') {
@@ -686,6 +697,7 @@ function explainObjective(o: ReturnType<typeof DesignObjectiveSchema.parse>, ref
 function deliverableRequest(t: string): AssistantResponse | null {
   const approved = /\b(latest |last )?approved (revision|version|design)\b/.test(t);
   const req = (request: Omit<DeliverableRequest, 'revision'> & { revision?: 'current' | 'approved' }): AssistantResponse => ({ kind: 'deliverable', request: { revision: approved ? 'approved' : 'current', ...request } });
+  if (/\b(photo ?real\w*|realistic (photo|image|picture|render(ing)?)|render(ing)?|photograph)\b/.test(t) && !/\bdrawings?\b/.test(t)) return req({ action: 'render' });
   if (/\b(regenerate|re-generate|redo|recreate)\b.*\b(drawings?|plans?|set|pdf|deliverables?)\b/.test(t)) return req({ action: 'regenerate', revision: approved ? 'approved' : 'current' });
   if (/\b(what|which)\b.*\b(information|info|data|details?)\b.*\b(missing|needed|need)\b|\b(ready|readiness)\b.*\b(carpenter|workshop|joiner|manufactur\w*|fabricat\w*|production)\b|\bbefore (i|we) (can )?send\b/.test(t)) return req({ action: 'readiness' });
   if (/\bexport\b.*\bpdf\b|\b(pdf|print)\b.*\b(drawings?|set|plan)\b|\bdrawings?\b.*\bpdf\b/.test(t)) return req({ action: 'export-pdf' });
@@ -702,5 +714,44 @@ function deliverableRequest(t: string): AssistantResponse | null {
   }
   if (/\b(floor plan|dimensioned plan|plan drawing|technical drawings?)\b/.test(t)) return req({ action: 'plan' });
   if (/\b(presentation mode|present (this|the) (design|kitchen)|client presentation)\b/.test(t)) return req({ action: 'present' });
+  return null;
+}
+
+/** "open the top drawer of the sink unit", "close everything", "walk to the fridge", "show the top view"… */
+function sceneRequest(t: string, ctx: Ctx): AssistantResponse | null {
+  const act = (explanation: string, ...actions: SceneAction[]): AssistantResponse => ({ kind: 'act', explanation, actions });
+  const s = t.replace(/^(?:please |can you |could you |now |let's |lets )+/, '').replace(/ please$/, '');
+
+  const oc = /^(open|close|shut)\s+(?:up\s+)?(.+)$/.exec(s);
+  if (oc) {
+    const action = oc[1] === 'open' ? 'open' : 'close';
+    const rest = oc[2]!.trim();
+    if (/^(?:it all|everything|all(?: of)?(?: the)?(?: (?:doors|drawers|doors and drawers|cabinets|units))?)$/.test(rest)) return act(`${action === 'open' ? 'Open' : 'Close'} everything.`, { action, all: true });
+    const part = /^(?:the )?((?:(?:top|bottom|middle|upper|lower|left|right)\s+)?(?:drawer|door|flap)s?)\s+(?:of|on|in)\s+(.+)$/.exec(rest);
+    const target = targetIn(part ? part[2]! : rest, ctx, null);
+    if (!target) return null;
+    return act('', { action, target, ...(part ? { part: part[1]! } : {}) });
+  }
+  if (/^(?:start walking|walk around|walk(?: me)? through(?: the (?:room|kitchen|space))?|let me walk)$/.test(s)) return act('', { action: 'start_walking' });
+  if (/^(?:stop walking|exit walk(?:ing)?(?: mode)?|stop|back to orbit)$/.test(s)) return act('', { action: 'stop_walking' });
+  const vp = /^(?:go to|take me to|jump to)\s+(?:the\s+)?viewpoint\s+(.+)$/.exec(s);
+  if (vp) return act('', { action: 'viewpoint', name: vp[1]! });
+  const walk = /^(?:walk|go|take me|stand|step)\s+(?:over\s+)?(?:to|in front of|next to|up to)\s+(.+)$/.exec(s);
+  if (walk) {
+    const target = targetIn(walk[1]!, ctx, null);
+    if (target) return act('', { action: 'walk_to', target });
+  }
+  const look = /^(?:look at|focus on|zoom (?:in )?(?:on|to)|show me)\s+(.+)$/.exec(s);
+  if (look && !/\b(view|plan|dimensions?|sizes?|list|schedule|bom|drawings?)\b/.test(look[1]!)) {
+    const target = targetIn(look[1]!, ctx, null);
+    if (target) return act('', { action: 'focus', target });
+  }
+  const view = /^(?:show(?: me)?|switch to|go to|change to)\s+(?:the\s+)?(top|front|left|right|iso(?:metric)?|corner|whole room|plan|3d|split)\s*(?:view)?$/.exec(s);
+  if (view) {
+    const v = view[1]!;
+    if (v === 'plan' || v === '3d' || v === 'split') return act('', { action: 'view', mode: v });
+    if (v === 'whole room') return act('', { action: 'look', view: 'fit' });
+    return act('', { action: 'look', view: v.startsWith('iso') || v === 'corner' ? 'iso' : (v as 'top' | 'front' | 'left' | 'right') });
+  }
   return null;
 }

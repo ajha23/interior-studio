@@ -14,6 +14,7 @@ import {
   FrontStyleSchema,
   FurnitureTypeSchema,
   InteriorSchema,
+  KitchenMaterialSchema,
   CentreMm,
   Mm,
   OpeningKindSchema,
@@ -64,6 +65,9 @@ export const DesignCommandSchema = z.discriminatedUnion('type', [
     id: EntityIdSchema.optional(),
     dimensions: DimensionsSchema.optional(),
     materialId: z.string().optional(),
+    /** Against a wall, or free-standing at a footprint centre; otherwise the first free floor spot. */
+    placement: PlacementSchema.optional(),
+    at: z.object({ x: CentreMm, z: CentreMm, rotationY: RotationSchema }).optional(),
   }),
   z.object({ type: z.literal('resize_furniture'), furnitureId: EntityIdSchema, dimensions: DimensionsSchema }),
   z.object({ type: z.literal('move_entity'), entityId: EntityIdSchema, placement: PlacementSchema }),
@@ -75,6 +79,8 @@ export const DesignCommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('apply_interior_preset'), cabinetId: EntityIdSchema, preset: z.enum(INTERIOR_PRESETS), count: z.number().int().min(1).max(12).optional() }),
   z.object({ type: z.literal('set_material'), targetIds: z.array(EntityIdSchema).min(1), materialId: z.string().min(1) }),
   z.object({ type: z.literal('set_surface_material'), surface: SurfaceSchema, materialId: z.string().min(1) }),
+  /** Adds a finish to the project, or replaces the one with the same id. */
+  z.object({ type: z.literal('define_material'), material: KitchenMaterialSchema.extend({ id: EntityIdSchema }) }),
   z.object({ type: z.literal('remove_entity'), entityId: EntityIdSchema }),
   z.object({ type: z.literal('save_viewpoint'), viewpoint: ViewpointSchema.omit({ id: true }).extend({ id: EntityIdSchema.optional() }) }),
   z.object({ type: z.literal('delete_viewpoint'), id: EntityIdSchema }),

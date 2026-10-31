@@ -15,7 +15,7 @@ import { BACK_PANEL, fittingName, fittingSpan, insideOf, PANEL, sectionWidths } 
 import type { Fitting, Furniture, KitchenCabinet, KitchenElement } from '@/domain/schema';
 import { isCabinet, isFurniture } from '@/domain/schema';
 
-export type PartFinish = 'shutter' | 'carcass' | 'handle' | 'steel' | 'dark' | 'glass' | 'glassPane';
+export type PartFinish = 'shutter' | 'carcass' | 'handle' | 'steel' | 'dark' | 'glass' | 'glassPane' | 'ceramic' | 'fabric';
 
 export interface Part {
   key: string;
@@ -444,6 +444,37 @@ function applianceModel(type: KitchenElement['type'], d: Dims): ElementModel {
   }
 }
 
+/** Hinged doors across [x0,x1] (handles near the meeting edges), as movers like cabinet doors. */
+function furnitureDoors(d: Dims, x0: number, x1: number, y0: number, y1: number, n: number, parts: Part[], movers: Mover[]): void {
+  const zf = d.depth / 2;
+  const step = (x1 - x0) / n;
+  for (let i = 0; i < n; i++) {
+    const id = `door${i}`;
+    // Pairs hinge on their outer edges; odd ones out hinge on the left.
+    const left = n % 2 === 1 && i === n - 1 ? true : i % 2 === 0;
+    const a = x0 + i * step + FRONT_GAP / 2;
+    const b = x0 + (i + 1) * step - FRONT_GAP / 2;
+    const handle = vHandle(`${id}Handle`, d, left ? b - 40 : a + 40, (y0 + y1) / 2, Math.min(400, (y1 - y0) * 0.3));
+    parts.push({ ...box(id, 'shutter', true, a, b, y0, y1, zf - FRONT_THICKNESS, zf, 'front'), mover: id }, { ...handle, mover: id });
+    movers.push({ id, label: n === 1 ? 'Door' : `Door ${i + 1}`, kind: 'hinge', pivot: { x: left ? a : b, y: 0, z: zf - FRONT_THICKNESS }, amount: left ? -DOOR_ANGLE : DOOR_ANGLE, grab: handle.center, span: [y0, y1], requires: [] });
+  }
+}
+
+/** Drawers stacked over [y0,y1] that pull out, top one labelled "Top drawer". */
+function furnitureDrawers(d: Dims, x0: number, x1: number, y0: number, y1: number, n: number, parts: Part[], movers: Mover[]): void {
+  const zf = d.depth / 2;
+  const step = (y1 - y0) / n;
+  for (let i = 0; i < n; i++) {
+    const id = `drawer${i}`;
+    const top = y1 - i * step - FRONT_GAP / 2;
+    const bottom = y1 - (i + 1) * step + FRONT_GAP / 2;
+    const handle = hHandle(`${id}Handle`, d, (top + bottom) / 2 + step * 0.15, Math.min(300, (x1 - x0) * 0.4));
+    parts.push({ ...box(id, 'shutter', true, x0 + FRONT_GAP / 2, x1 - FRONT_GAP / 2, bottom, top, zf - FRONT_THICKNESS, zf, 'front'), mover: id }, { ...handle, mover: id });
+    const label = n === 1 ? 'Drawer' : i === 0 ? 'Top drawer' : i === n - 1 ? 'Bottom drawer' : `Drawer ${i + 1}`;
+    movers.push({ id, label, kind: 'slide', pivot: { x: 0, y: 0, z: 0 }, amount: Math.round(d.depth * 0.7), grab: handle.center, span: [bottom, top], requires: [] });
+  }
+}
+
 /** Loose furniture in its finish ("shutter" parts use the piece's material); legs are dark. */
 function furnitureModel(f: Furniture): ElementModel {
   const { width: w, height: h, depth: d } = f.dimensions;
@@ -490,6 +521,117 @@ function furnitureModel(f: Furniture): ElementModel {
             [xr - 80, zf - 80],
           ].map(([x, z], i) => box(`foot${i}`, 'dark', true, x!, x! + 40, 0, 60, z!, z! + 40)),
         ],
+        movers: [],
+      };
+    }
+    case 'armchair': {
+      const arm = Math.min(150, w * 0.18);
+      const seat = 420;
+      return {
+        parts: [
+          box('base', 'shutter', true, xl, xr, 80, seat - 110, zb, zf),
+          box('cushion', 'fabric', true, xl + arm, xr - arm, seat - 110, seat, zb + 180, zf),
+          box('backrest', 'shutter', true, xl, xr, seat - 110, h, zb, zb + 180),
+          box('armL', 'shutter', true, xl, xl + arm, seat - 110, 600, zb + 180, zf),
+          box('armR', 'shutter', true, xr - arm, xr, seat - 110, 600, zb + 180, zf),
+          ...legs(80, 30),
+        ],
+        movers: [],
+      };
+    }
+    case 'bed': {
+      // Head at the back (against a wall); a platform frame, mattress, pillows and a headboard.
+      const frameTop = Math.min(320, h * 0.35);
+      const mattress = frameTop + 200;
+      const pillows = w >= 1300 ? [xl + 80, (xl + xr) / 2 + 30] : [xl + 80];
+      const pw = w >= 1300 ? w / 2 - 110 : w - 160;
+      return {
+        parts: [
+          box('frame', 'shutter', true, xl, xr, 80, frameTop, zb + 60, zf),
+          box('headboard', 'shutter', true, xl, xr, 80, h, zb, zb + 60),
+          box('mattress', 'fabric', true, xl + 30, xr - 30, frameTop, mattress, zb + 70, zf - 30),
+          ...pillows.map((x, i) => box(`pillow${i}`, 'fabric', false, x, x + pw, mattress, mattress + 120, zb + 90, zb + 450)),
+          box('throw', 'shutter', false, xl + 20, xr - 20, mattress - 20, mattress + 15, zf - 650, zf - 20),
+          ...legs(80, 40),
+        ],
+        movers: [],
+      };
+    }
+    case 'wardrobe': {
+      const parts: Part[] = [box('body', 'carcass', true, xl, xr, 0, h, zb, zf - FRONT_THICKNESS), box('plinth', 'dark', true, xl + 20, xr - 20, 0, 80, zb, zf - FRONT_THICKNESS - 20)];
+      const movers: Mover[] = [];
+      furnitureDoors(f.dimensions, xl, xr, 80, h, Math.max(1, Math.round(w / 500)), parts, movers);
+      return { parts, movers };
+    }
+    case 'nightstand':
+    case 'dresser': {
+      const parts: Part[] = [box('body', 'carcass', true, xl, xr, 80, h, zb, zf - FRONT_THICKNESS), ...legs(80, 20)];
+      const movers: Mover[] = [];
+      furnitureDrawers(f.dimensions, xl, xr, 80, h - 20, f.type === 'dresser' ? 3 : 2, parts, movers);
+      parts.push(box('top', 'shutter', true, xl, xr, h - 20, h, zb, zf));
+      return { parts, movers };
+    }
+    case 'tv-unit': {
+      const parts: Part[] = [box('body', 'carcass', true, xl, xr, 60, h, zb, zf - FRONT_THICKNESS), box('plinth', 'dark', true, xl + 30, xr - 30, 0, 60, zb, zf - 60)];
+      const movers: Mover[] = [];
+      const doors = Math.max(2, Math.round(w / 600));
+      furnitureDoors({ ...f.dimensions }, xl, xr, 60, h, doors, parts, movers);
+      return { parts, movers };
+    }
+    case 'desk':
+      return { parts: [box('top', 'shutter', true, xl, xr, h - 30, h, zb, zf), ...legs(h - 30, 40), box('modesty', 'shutter', true, xl + 40, xr - 40, h - 330, h - 30, zb + 40, zb + 58)], movers: [] };
+    case 'coffee-table':
+      return { parts: [box('top', 'shutter', true, xl, xr, h - 30, h, zb, zf), box('shelf', 'shutter', true, xl + 60, xr - 60, 100, 118, zb + 60, zf - 60), ...legs(h - 30, 50)], movers: [] };
+    case 'bookshelf': {
+      const shelves = Math.max(2, Math.round(h / 350));
+      const parts: Part[] = [box('back', 'carcass', true, xl, xr, 0, h, zb, zb + 12), box('sideL', 'shutter', true, xl, xl + 18, 0, h, zb, zf), box('sideR', 'shutter', true, xr - 18, xr, 0, h, zb, zf)];
+      for (let i = 0; i <= shelves; i++) {
+        const y = Math.min(h - 18, (h / shelves) * i);
+        parts.push(box(`shelf${i}`, 'shutter', true, xl + 18, xr - 18, y, y + 18, zb + 12, zf));
+      }
+      return { parts, movers: [] };
+    }
+    case 'toilet':
+      return {
+        parts: [
+          box('pedestal', 'ceramic', true, -w * 0.3, w * 0.3, 0, 380, zb + 200, zf - 120),
+          box('bowl', 'ceramic', true, xl, xr, 280, 400, zb + 160, zf),
+          box('seat', 'ceramic', false, xl + 10, xr - 10, 400, 420, zb + 170, zf - 10),
+          box('cistern', 'ceramic', true, xl, xr, 400, h, zb, zb + 170),
+          box('flush', 'steel', false, -30, 30, h, h + 6, zb + 60, zb + 110),
+        ],
+        movers: [],
+      };
+    case 'basin': {
+      const top = h - 120;
+      const parts: Part[] = [box('vanity', 'carcass', true, xl, xr, 150, top, zb, zf - FRONT_THICKNESS), box('basin', 'ceramic', true, xl, xr, top, h, zb, zf), box('tap', 'steel', false, -15, 15, h, h + 160, zb + 30, zb + 70), box('spout', 'steel', false, -15, 15, h + 130, h + 160, zb + 70, zb + 170)];
+      const movers: Mover[] = [];
+      furnitureDoors(f.dimensions, xl, xr, 150, top, w >= 700 ? 2 : 1, parts, movers);
+      return { parts, movers };
+    }
+    case 'shower':
+      return {
+        parts: [
+          box('tray', 'ceramic', true, xl, xr, 0, 60, zb, zf),
+          box('glassFront', 'glassPane', false, xl, xr - 500, 60, h, zf - 10, zf),
+          box('glassSide', 'glassPane', false, xr - 10, xr, 60, h, zb, zf),
+          box('riser', 'steel', false, -10, 10, 1000, h - 100, zb, zb + 20),
+          box('head', 'steel', false, -120, 120, h - 120, h - 100, zb + 20, zb + 260),
+        ],
+        movers: [],
+      };
+    case 'bathtub':
+      return {
+        parts: [box('tub', 'ceramic', true, xl, xr, 0, h, zb, zf), box('water', 'glassPane', false, xl + 70, xr - 70, h - 120, h - 100, zb + 70, zf - 70), box('tap', 'steel', false, -20, 20, h, h + 120, zb + 20, zb + 60)],
+        movers: [],
+      };
+    case 'stairs': {
+      // Straight flight rising towards the back; ~175 mm risers.
+      const steps = Math.max(3, Math.round(h / 175));
+      const rise = h / steps;
+      const going = d / steps;
+      return {
+        parts: Array.from({ length: steps }, (_, i) => box(`step${i}`, 'shutter', true, xl, xr, 0, (i + 1) * rise, zf - (i + 1) * going, zf - i * going)),
         movers: [],
       };
     }

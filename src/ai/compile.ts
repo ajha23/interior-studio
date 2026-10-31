@@ -280,6 +280,17 @@ function compile(project: KitchenProject, op: AssistantOperation, index: number,
 
     case 'rename_project':
       return { commands: [{ type: 'rename_project', name: op.name }], targets: [], created: [] };
+
+    case 'create_finish': {
+      // Same name and category: update that finish instead of adding a duplicate.
+      const existing = Object.values(project.materials).find((m) => m.category === op.category && m.name.toLowerCase() === op.name.toLowerCase());
+      const slug = op.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'finish';
+      const id = existing?.id ?? `${op.category}-${slug}`;
+      const DEFAULT_ROUGHNESS: Record<MaterialCategory, number> = { shutter: 0.55, carcass: 0.7, countertop: 0.3, floor: 0.5, wall: 0.9 };
+      const SCALE: Partial<Record<NonNullable<typeof op.texture>, number>> = { wood: 600, planks: 180, marble: 1000, tile: 600, terrazzo: 800, concrete: 1500, plaster: 2000, stone: 600, fabric: 150, brick: 300 };
+      const material = { id, name: op.name, category: op.category, color: op.color.toLowerCase(), roughness: op.roughness ?? DEFAULT_ROUGHNESS[op.category], metalness: 0, ...(op.texture && op.texture !== 'plain' ? { texture: op.texture, textureScale: SCALE[op.texture] } : {}) };
+      return { commands: [{ type: 'define_material', material }], targets: [], created: [] };
+    }
   }
 }
 

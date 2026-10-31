@@ -22,6 +22,8 @@ interface Props {
   selectedWall: WallId | null;
   /** Walk mode: clicking the floor walks there (room mm) instead of clearing the selection. */
   onFloorClick?: (x: number, z: number) => void;
+  /** Where the room sits in the world (a room of a home), in world units, for the wall cut-away. */
+  origin?: { x: number; z: number };
 }
 
 /**
@@ -29,7 +31,7 @@ interface Props {
  * auto-hide on, a wall whose outside faces the camera is cut down to a low stub, so the room is
  * visible from any angle; from inside (walking) every wall stands.
  */
-export function RoomShell({ project, materials, showGrid, autoHideWalls, onBackgroundClick, onWallClick, selectedWall, onFloorClick }: Props) {
+export function RoomShell({ project, materials, showGrid, autoHideWalls, onBackgroundClick, onWallClick, selectedWall, onFloorClick, origin }: Props) {
   const { width, length, wallThickness } = project.room;
   const W = toWorld(width);
   const L = toWorld(length);
@@ -44,7 +46,7 @@ export function RoomShell({ project, materials, showGrid, autoHideWalls, onBackg
   const stub = useRef<Partial<Record<WallId, Mesh | null>>>({});
 
   useFrame(({ camera }) => {
-    const p = camera.position;
+    const p = { x: camera.position.x - (origin?.x ?? 0), z: camera.position.z - (origin?.z ?? 0) };
     const outside: Record<WallId, boolean> = { back: p.z < 0, front: p.z > L, left: p.x < 0, right: p.x > W };
     for (const w of WALLS) {
       const cut = autoHideWalls && outside[w];

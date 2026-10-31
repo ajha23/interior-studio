@@ -82,3 +82,12 @@ describe('spoken interior-design instructions', () => {
     expect(ask('make this base cabinet 900 millimetres wide')).toMatchObject({ kind: 'plan', operations: [{ target: { query: { type: 'base' } } }] });
   });
 });
+
+describe('conversation control phrases', () => {
+  it('recognises ways to end a conversation without catching ordinary requests', async () => {
+    const { voiceIntent } = await import('./normalize');
+    for (const t of ['goodbye', 'Bye bye.', 'okay goodbye', 'end conversation', 'end the conversation', 'stop the chat', "that's all", "thanks that's all", "we're done"]) expect(voiceIntent(t), t).toBe('end');
+    for (const t of ['end panel on the left', 'make the end cabinet 600', 'stop', 'all done with the sink?']) expect(voiceIntent(t), t).not.toBe('end');
+    expect(voiceIntent('wait')).toBe('stop');
+  });
+});

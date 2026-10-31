@@ -231,9 +231,10 @@ export function parseCommandLine(input: string, ctx: CommandContext): CommandLin
       const dims = { ...CABINET_SPECS[type].defaults, ...(width ? { width } : {}) };
       return { kind: 'design', command: { type: 'add_cabinet', cabinetType: type, dimensions: dims } };
     }
-    if (kind === 'table' || kind === 'chair' || kind === 'sofa') {
-      const spec = FURNITURE_SPECS[kind];
-      return { kind: 'design', command: { type: 'add_furniture', furnitureType: kind, ...(width ? { dimensions: { ...spec.defaults, width } } : {}) } };
+    if (kind in FURNITURE_SPECS) {
+      const type = kind as keyof typeof FURNITURE_SPECS;
+      const spec = FURNITURE_SPECS[type];
+      return { kind: 'design', command: { type: 'add_furniture', furnitureType: type, ...(width ? { dimensions: { ...spec.defaults, width } } : {}) } };
     }
     if (kind === 'door' || kind === 'window' || kind === 'opening' || kind === 'archway') {
       return { kind: 'design', command: { type: 'add_opening', kind: kind === 'archway' ? 'opening' : kind, ...(width ? { width } : {}) } };

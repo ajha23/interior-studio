@@ -16,7 +16,7 @@ import { PlanCancelled, planLayouts, resolveObjective, signature, type PlanOptio
 import { canAutoApply, type AssistantSettings } from './policy';
 import { ProviderError, type AssistantProvider, type ServedBy } from './providers/types';
 import { resolveTarget } from './resolve';
-import { DesignObjectiveSchema, LIMITS, type AssistantResponse, type DeliverableRequest, type DesignObjective, type HistoryTurn, type Plan, type Show, type TargetRef } from './schema';
+import { AssistantResponseSchema, DesignObjectiveSchema, LIMITS, type AssistantResponse, type DeliverableRequest, type HomeBriefInput, type SceneAction, type DesignObjective, type HistoryTurn, type Plan, type Show, type TargetRef } from './schema';
 import { bind, focusAfter, runPlan, type Alternative, type Proposal, type RunContext } from './transaction';
 
 export interface EditorPort {
@@ -31,6 +31,12 @@ export interface EditorPort {
   fmt(mm: number): string;
   /** Computes a deliverable summary from the project (drawings, schedule, BOM, readiness). */
   deliverable?(request: DeliverableRequest): DeliverableReply;
+  /** With a whole home open and no room in the editor: answers home-level requests (null = not one). */
+  homeCommand?(text: string): string | null;
+  /** Generates and opens a whole home; returns what is happening. */
+  home?(brief: HomeBriefInput): string;
+  /** Carries out a scene action (open, walk, look…) on the resolved ids; returns what happened. */
+  scene?(action: SceneAction, ids: string[]): string;
 }
 
 /** What the app computed for a deliverable request; actions are carried out by the UI. */
@@ -48,12 +54,19 @@ export type InputSource = 'text' | 'voice';
 
 export interface SendOptions {
   source?: InputSource;
+  /**
+   * An answer a realtime voice model already produced for this request (a validated tool call).
+   * It skips the provider and goes through the same validation, preview and approval as any reply.
+   */
+  response?: { value: AssistantResponse; servedBy: ServedBy };
+  /** Thumbnails of reference photos or video frames sent with the message (data URLs). */
+  attachments?: string[];
 }
 
 export type ProposalStatus = 'proposed' | 'applied' | 'rejected' | 'failed' | 'superseded';
 
 export type ChatMessage =
-  | { id: string; role: 'user'; text: string; source?: InputSource }
+  | { id: string; role: 'user'; text: string; source?: InputSource; attachments?: string[] }
   | { id: string; role: 'assistant'; kind: 'answer'; text: string; show?: Show }
   | { id: string; role: 'assistant'; kind: 'clarify'; question: string; options: { label: string; ids?: string[] }[]; key?: string; proposal?: Proposal; answered?: boolean }
   | { id: string; role: 'assistant'; kind: 'proposal'; proposal: Proposal; status: ProposalStatus; note?: string; autoApplied?: boolean; appliedRevision?: number; error?: string }
@@ -144,7 +157,14 @@ export class Conversation {
     const text = raw.trim();
     if (!text || this.state.busy) return null;
     const project = this.editor.getProject();
-    if (!project) return null;
+    if (!project) {
+      // The home plan: requests about the whole home (new home, style, open or resize a room).
+      const answer = this.editor.homeCommand?.(text);
+      if (answer == null) return null;
+      this.push({ id: msgId(), role: 'user', text, ...(options.source === 'voice' ? { source: 'voice' as const } : {}) });
+      this.push({ id: msgId(), role: 'assistant', kind: 'answer', text: answer });
+      return this.state.messages.at(-1)!;
+    }
     const lastBefore = this.state.messages.at(-1)?.id;
     const reply = () => {
       const m = this.state.messages.at(-1);
@@ -154,7 +174,7 @@ export class Conversation {
       this.push({ id: msgId(), role: 'assistant', kind: 'error', text: `Keep requests under ${LIMITS.messageChars} characters.`, code: 'bad_request', retryable: false });
       return reply();
     }
-    this.push({ id: msgId(), role: 'user', text, ...(options.source === 'voice' ? { source: 'voice' as const } : {}) });
+    this.push({ id: msgId(), role: 'user', text, ...(options.source === 'voice' ? { source: 'voice' as const } : {}), ...(options.attachments?.length ? { attachments: options.attachments.slice(0, 8) } : {}) });
 
     if (/^(unlock|release (the )?locks?|forget (the )?locks?)$/i.test(text)) {
       this.update({ protect: { walls: [], ids: [] } });
@@ -190,7 +210,9 @@ export class Conversation {
     const stale = () => epoch !== this.epoch || this.editor.getProject()?.id !== project.id;
     let response: AssistantResponse;
     try {
-      response = await this.provider.respond(
+      if (options.response) {
+        response = AssistantResponseSchema.parse(options.response.value);
+      } else response = await this.provider.respond(
         {
           message: text,
           history,
@@ -215,7 +237,7 @@ export class Conversation {
       return null;
     }
     this.logEvent('response', response.kind);
-    this.update({ served: this.provider.lastServed ?? { provider: this.provider.id, model: this.provider.model } });
+    this.update({ served: options.response?.servedBy ?? this.provider.lastServed ?? { provider: this.provider.id, model: this.provider.model } });
     if (response.kind === 'design') {
       // Planning runs on isolated copies; it keeps the request's abort signal and staleness check.
       await this.design(response, { selectedId, signal: abort.signal, stale });
@@ -396,6 +418,12 @@ export class Conversation {
         return;
       case 'design':
         return;
+      case 'act':
+        this.act(response, requestSelectedId);
+        return;
+      case 'home':
+        this.push({ id: msgId(), role: 'assistant', kind: 'answer', text: this.editor.home ? this.editor.home(response.brief) : 'Whole homes can be designed from the projects page.' });
+        return;
       case 'deliverable': {
         if (!this.editor.deliverable) {
           this.push({ id: msgId(), role: 'assistant', kind: 'answer', text: 'Deliverables are not available here.' });
@@ -406,6 +434,34 @@ export class Conversation {
         this.push({ id: msgId(), role: 'assistant', kind: 'deliverable', request: response.request, reply });
       }
     }
+  }
+
+  /** Interacting with the space: resolves each target, then lets the editor carry the action out. */
+  private act(response: Extract<AssistantResponse, { kind: 'act' }>, selectedId: string | null): void {
+    const project = this.editor.getProject();
+    if (!project || !this.editor.scene) {
+      this.push({ id: msgId(), role: 'assistant', kind: 'answer', text: 'Moving around the room is not available here.' });
+      return;
+    }
+    const lines: string[] = [];
+    let focus: string[] | null = null;
+    for (const action of response.actions) {
+      let ids: string[] = [];
+      if ('target' in action && action.target) {
+        const many = action.action === 'open' || action.action === 'close';
+        const r = resolveTarget(project, action.target, { selectedId, focus: this.state.focus, previousFocus: this.state.previousFocus, created: new Map(), bindings: {} }, 'act', many);
+        if (!r.ok) {
+          lines.push(r.kind === 'ambiguous' ? `${r.question} (${r.candidates.map((c) => c.label).join(', ')})` : r.message);
+          break;
+        }
+        ids = r.entities.map((e) => e.id);
+        focus = ids;
+      }
+      lines.push(this.editor.scene(action, ids));
+    }
+    if (focus) this.update({ previousFocus: this.state.focus, focus });
+    this.logEvent('response', `act ${response.actions.map((a) => a.action).join(', ')}`);
+    this.push({ id: msgId(), role: 'assistant', kind: 'answer', text: lines.join(' ') || response.explanation || 'Done.' });
   }
 
   private runContext(extra: Partial<RunContext> = {}): RunContext {

@@ -95,10 +95,15 @@ export const ApplianceSchema = z.object({
 });
 export type Appliance = z.infer<typeof ApplianceSchema>;
 
-export const FurnitureTypeSchema = z.enum(['table', 'chair', 'sofa']);
+export const FurnitureTypeSchema = z.enum([
+  'table', 'chair', 'sofa',
+  // Rooms beyond the kitchen (whole-home design).
+  'bed', 'wardrobe', 'nightstand', 'desk', 'tv-unit', 'coffee-table', 'bookshelf', 'armchair', 'dresser',
+  'toilet', 'basin', 'shower', 'bathtub', 'stairs',
+]);
 export type FurnitureType = z.infer<typeof FurnitureTypeSchema>;
 
-/** Loose furniture (dining table, chair, sofa): floor-standing, resizable, with a finish. */
+/** Loose furniture and fixtures (tables, beds, wardrobes, bathroom fittings…): floor-standing, resizable, with a finish. */
 export const FurnitureSchema = z.object({
   kind: z.literal('furniture'),
   id: EntityIdSchema,
@@ -116,6 +121,10 @@ export type KitchenElement = KitchenCabinet | Appliance | Furniture;
 export const MaterialCategorySchema = z.enum(['shutter', 'carcass', 'countertop', 'floor', 'wall']);
 export type MaterialCategory = z.infer<typeof MaterialCategorySchema>;
 
+/** The surface pattern drawn over a finish's colour (generated in the browser, at real scale). */
+export const MaterialTextureSchema = z.enum(['plain', 'wood', 'planks', 'marble', 'tile', 'terrazzo', 'concrete', 'plaster', 'stone', 'fabric', 'brick']);
+export type MaterialTexture = z.infer<typeof MaterialTextureSchema>;
+
 export const KitchenMaterialSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
@@ -123,6 +132,9 @@ export const KitchenMaterialSchema = z.object({
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'colour must be #rrggbb'),
   roughness: z.number().min(0).max(1),
   metalness: z.number().min(0).max(1).default(0),
+  /** Optional (older files have none): the pattern and its repeat size in mm (plank width, tile size…). */
+  texture: MaterialTextureSchema.optional(),
+  textureScale: z.number().min(20).max(5000).optional(),
 });
 export type KitchenMaterial = z.infer<typeof KitchenMaterialSchema>;
 

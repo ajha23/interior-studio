@@ -41,6 +41,10 @@ const GROUPS: { title: string; entries: Entry[] }[] = [
   { title: 'Appliances', entries: [appliance('fridge'), appliance('range'), appliance('dishwasher'), appliance('hood')] },
   { title: 'Doors & windows', entries: [opening('door'), opening('window'), opening('opening')] },
   { title: 'Furniture', entries: [furniture('table'), furniture('chair'), furniture('sofa')] },
+  { title: 'Living', entries: [furniture('armchair'), furniture('coffee-table'), furniture('tv-unit'), furniture('bookshelf')] },
+  { title: 'Bedroom', entries: [furniture('bed'), furniture('wardrobe'), furniture('nightstand'), furniture('dresser'), furniture('desk')] },
+  { title: 'Bathroom', entries: [furniture('toilet'), furniture('basin'), furniture('shower'), furniture('bathtub')] },
+  { title: 'Structure', entries: [furniture('stairs')] },
 ];
 
 /** Design library: each entry adds a real element (or wall opening) in the first free spot on a wall. */

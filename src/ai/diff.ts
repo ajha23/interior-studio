@@ -42,6 +42,8 @@ export interface ChangeSet {
   unit?: { before: LengthUnit; after: LengthUnit };
   name?: { before: string; after: string };
   surfaces: { surface: Surface; before: string; after: string }[];
+  /** Finishes in use whose colour, texture or sheen changed (everything using them changes look). */
+  finishes: { name: string; before: string; after: string }[];
   added: EntityChange[];
   removed: EntityChange[];
   modified: EntityChange[];
@@ -81,10 +83,18 @@ function changedFields(a: Snapshot, b: Snapshot, extra: { interior?: boolean; sw
 }
 
 export function diffProjects(before: KitchenProject, after: KitchenProject, named: ReadonlySet<string>): ChangeSet {
-  const out: ChangeSet = { surfaces: [], added: [], removed: [], modified: [] };
+  const out: ChangeSet = { surfaces: [], finishes: [], added: [], removed: [], modified: [] };
   if (JSON.stringify(before.room) !== JSON.stringify(after.room)) out.room = { before: before.room, after: after.room };
   if (before.preferences.unit !== after.preferences.unit) out.unit = { before: before.preferences.unit, after: after.preferences.unit };
   if (before.name !== after.name) out.name = { before: before.name, after: after.name };
+  // Finishes edited in place: only those something in the design uses.
+  const used = new Set<string>([...Object.values(after.surfaces), ...allElements(after).flatMap((e) => ('materialId' in e ? [e.materialId] : []))]);
+  const look = (m: KitchenProject['materials'][string]) => `${m.color}${m.texture && m.texture !== 'plain' ? ` ${m.texture}` : ''}${m.roughness < 0.35 ? ' glossy' : m.roughness > 0.75 ? ' matt' : ''}`;
+  for (const id of used) {
+    const b = before.materials[id];
+    const a2 = after.materials[id];
+    if (b && a2 && JSON.stringify(b) !== JSON.stringify(a2)) out.finishes.push({ name: a2.name, before: look(b), after: look(a2) });
+  }
   for (const s of Object.keys(after.surfaces) as Surface[]) {
     if (before.surfaces[s] !== after.surfaces[s]) out.surfaces.push({ surface: s, before: before.materials[before.surfaces[s]]?.name ?? before.surfaces[s], after: after.materials[after.surfaces[s]]?.name ?? after.surfaces[s] });
   }
@@ -130,7 +140,7 @@ export function diffProjects(before: KitchenProject, after: KitchenProject, name
 }
 
 export function isEmptyChange(c: ChangeSet): boolean {
-  return !c.room && !c.unit && !c.name && !c.surfaces.length && !c.added.length && !c.removed.length && !c.modified.length;
+  return !c.room && !c.unit && !c.name && !c.surfaces.length && !c.finishes.length && !c.added.length && !c.removed.length && !c.modified.length;
 }
 
 /** Every object id the change set touches. */

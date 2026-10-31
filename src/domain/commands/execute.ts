@@ -171,8 +171,17 @@ function apply(p: Draft<KitchenProject>, cmd: DesignCommand, ctx: Ctx): Outcome 
       requireMaterial(p, materialId, 'shutter');
       const id = uniqueId(p, cmd.id ?? ctx.newId('fur'));
       const piece: Furniture = { kind: 'furniture', id, type: cmd.furnitureType, dimensions, position: { x: 0, y: 0, z: 0 }, rotationY: 0, materialId };
-      const spot = findFloorSpot(p, piece) ?? reject(`There is no free floor space for a ${dimensions.width} mm ${spec.label.toLowerCase()}.`);
-      p.furniture.push({ ...piece, position: spot });
+      if (cmd.placement) {
+        const placed = placeOnWall(p.room, cmd.placement.wallId, dimensions, cmd.placement.offset, spec.elevation);
+        const onWall: Furniture = { ...piece, position: placed.position, rotationY: placed.rotationY, wallId: cmd.placement.wallId };
+        if (spanAlongWall(onWall).end > wallLength(p.room, cmd.placement.wallId)) reject(`${elementLabel(onWall)} would run past the end of the ${WALL_LABEL[cmd.placement.wallId].toLowerCase()}.`);
+        p.furniture.push(onWall);
+      } else if (cmd.at) {
+        p.furniture.push({ ...piece, position: { x: cmd.at.x, y: spec.elevation, z: cmd.at.z }, rotationY: cmd.at.rotationY });
+      } else {
+        const spot = findFloorSpot(p, piece) ?? reject(`There is no free floor space for a ${dimensions.width} mm ${spec.label.toLowerCase()}.`);
+        p.furniture.push({ ...piece, position: spot });
+      }
       return { summary: `Added a ${spec.label.toLowerCase()} (${dimensions.width} × ${dimensions.depth} mm)`, affected: [id] };
     }
 
@@ -330,6 +339,12 @@ function apply(p: Draft<KitchenProject>, cmd: DesignCommand, ctx: Ctx): Outcome 
       }
       const name = p.materials[cmd.materialId]!.name;
       return { summary: `Applied ${name} to ${cmd.targetIds.length} item${cmd.targetIds.length === 1 ? '' : 's'}`, affected: cmd.targetIds };
+    }
+
+    case 'define_material': {
+      const existed = !!p.materials[cmd.material.id];
+      p.materials[cmd.material.id] = { ...cmd.material };
+      return { summary: `${existed ? 'Updated' : 'Added'} the finish ${cmd.material.name}`, affected: [] };
     }
 
     case 'set_surface_material': {

@@ -54,6 +54,7 @@ export function ChangePreview({ message }: { message: ProposalMessage }) {
           {c.room && <Row icon="mod" text="Room" before={`${fmt(c.room.before.width)} × ${fmt(c.room.before.length)} × ${fmt(c.room.before.height)}`} after={`${fmt(c.room.after.width)} × ${fmt(c.room.after.length)} × ${fmt(c.room.after.height)}`} />}
           {c.name && <Row icon="mod" text="Project name" before={c.name.before} after={c.name.after} />}
           {c.surfaces.map((s) => <Row key={s.surface} icon="mod" text={`${s.surface === 'countertop' ? 'Worktop' : s.surface.charAt(0).toUpperCase() + s.surface.slice(1)} finish`} before={s.before} after={s.after} />)}
+          {c.finishes.map((f) => <Row key={`finish-${f.name}`} icon="mod" text={`${f.name} (finish)`} before={f.before} after={f.after} />)}
           {c.added.map((e) => <Row key={e.id} icon="add" text={`New: ${e.label}`} detail={`${size(e.after!)} · ${where(e.after!, e.category)}`} />)}
           {c.removed.map((e) => <Row key={e.id} icon="del" text={`Delete: ${e.label}`} detail={`${size(e.before!)} · ${where(e.before!, e.category)}`} dependency={e.dependency} />)}
           {c.modified.map((e) => <ModifiedRow key={e.id} change={e} size={size} where={where} />)}
