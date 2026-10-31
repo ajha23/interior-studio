@@ -131,7 +131,7 @@ others "not set up".
 All three AI providers share one tool loop (`src/ai/providers/toolLoop.ts`): a fixed system prompt,
 the compact project summary, and read-only tools (`list_objects`, `get_object`, `get_walls`,
 `get_issues`). The model must end with `propose_changes`, `ask_clarification`, `reply`,
-`plan_layout`, `deliverables` or `undo_redo`; inputs are validated with Zod, and invalid ones and
+`plan_layout`, `deliverables`, `client_package` or `undo_redo`; inputs are validated with Zod, and invalid ones and
 unknown ids are sent back once for repair. Adapters, each through the vendor's official SDK:
 
 - **Claude** (`anthropic.ts`, `@anthropic-ai/sdk`): Messages API, adaptive thinking, prompt caching of
@@ -141,6 +141,18 @@ unknown ids are sent back once for repair. Adapters, each through the vendor's o
   results; safety finish reasons are reported as refusals; 429 retry delays are passed on.
 - **OpenAI** (`openai.ts`, `openai`): Responses API, stateless (`store: false`) with encrypted
   reasoning items passed back each turn; refusals and truncated output are detected.
+
+## Client package edits
+The `client_package` tool (`PackageRequestSchema`) edits the client package, never the design: notes,
+page names, headings, paper and orientation, dimension label positions (a dimension is named by its
+measured value; the value can't be changed here), hardware image size, title block fields, adding,
+deleting, reordering and regenerating pages, and "which pages are outdated?". `src/ai/packagePlan.ts`
+resolves pages ("this page" = the page open in the studio, "elevation B", "the layout", "every page",
+"stale pages") and runs every edit through `executePackageCommand` on a copy; anything ambiguous
+becomes a question. Edits to one page apply at once (package undo reverts them); edits to several
+pages, deletions and regenerating from the approved revision wait for **Apply**, and an approval
+planned against an older package is refused rather than applied over newer edits
+(`state/packageAssistant.ts`). The rule-based provider understands the same requests.
 
 ## Acting in the space, references and renders
 See `docs/REALISM.md`: the `interact` tool (open/close, walk, look, views — no approval needed, no

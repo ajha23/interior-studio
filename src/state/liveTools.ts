@@ -44,6 +44,8 @@ export function outcome(m: ChatMessage | null): string {
       return m.text;
     case 'deliverable':
       return `${m.reply.title}. ${m.reply.lines.slice(0, 4).join(' ')}`;
+    case 'package':
+      return `${m.reply.title}. ${m.reply.lines.slice(0, 4).join(' ')}${m.reply.actions.some((a) => a.action.startsWith('package:apply')) ? ' The designer applies it with the Apply button in the chat panel.' : ''}`;
     case 'layouts':
       return m.result.candidates.length
         ? `${m.result.candidates.length} layout options are shown: ${m.result.candidates.map((c, i) => `option ${i + 1}: ${c.name}`).join('; ')}. Ask which one to apply.`

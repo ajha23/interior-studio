@@ -3,7 +3,7 @@
  * arcs and text in Helvetica (WinAnsi), so drawings stay sharp when printed and text is searchable.
  * Coordinates arrive in paper millimetres with y down and are converted to points with y up.
  */
-import { PAPER, renderSheet, textWidth, type Painter, type Pt, type Sheet } from './drawing';
+import { renderSheet, sheetSize, textWidth, type ImageRef, type Painter, type Pt, type Sheet } from './drawing';
 
 const PT = 72 / 25.4;
 const f = (v: number) => (Math.round(v * 1000) / 1000).toString();
@@ -28,15 +28,16 @@ function hexToRgb(hex: string): string {
   return `${f(((v >> 16) & 255) / 255)} ${f(((v >> 8) & 255) / 255)} ${f((v & 255) / 255)}`;
 }
 
-function pageContent(sheet: Sheet): string {
-  const { h } = PAPER[sheet.paper];
+/** Page content; images drawn are collected (by id) so the page can reference them. */
+function pageContent(sheet: Sheet, images: Map<string, ImageRef>): string {
+  const { h } = sheetSize(sheet);
   const X = (x: number) => f(x * PT);
   const Y = (y: number) => f((h - y) * PT);
   const ops: string[] = ['1 J 1 j'];
   const strokeStyle = (width: number, dash?: number[]) => `${f(width * PT)} w [${(dash ?? []).map((d) => f(d * PT)).join(' ')}] 0 d 0 0 0 RG`;
   const pathOf = (pts: Pt[]) => pts.map((p, i) => `${X(p.x)} ${Y(p.y)} ${i ? 'l' : 'm'}`).join(' ');
   const painter: Painter = {
-    line: (a, b, width, dash) => ops.push(`${strokeStyle(width, dash)} ${X(a.x)} ${Y(a.y)} m ${X(b.x)} ${Y(b.y)} l S`),
+    line: (a, b, width, dash, color) => ops.push(`${strokeStyle(width, dash)}${color && /^#[0-9a-f]{6}$/i.test(color) ? ` ${hexToRgb(color)} RG` : ''} ${X(a.x)} ${Y(a.y)} m ${X(b.x)} ${Y(b.y)} l S`),
     rect: (x, y, w, rh, stroke, fill) => {
       const r = `${X(x)} ${Y(y + rh)} ${f(w * PT)} ${f(rh * PT)} re`;
       if (fill && fill !== '#ffffff') ops.push(`${hexToRgb(fill)} rg ${r} f`);
@@ -71,7 +72,7 @@ function pageContent(sheet: Sheet): string {
       const p = `${X(c.x + r)} ${Y(c.y)} m ${X(c.x + r)} ${Y(c.y + k)} ${X(c.x + k)} ${Y(c.y + r)} ${X(c.x)} ${Y(c.y + r)} c ${X(c.x - k)} ${Y(c.y + r)} ${X(c.x - r)} ${Y(c.y + k)} ${X(c.x - r)} ${Y(c.y)} c ${X(c.x - r)} ${Y(c.y - k)} ${X(c.x - k)} ${Y(c.y - r)} ${X(c.x)} ${Y(c.y - r)} c ${X(c.x + k)} ${Y(c.y - r)} ${X(c.x + r)} ${Y(c.y - k)} ${X(c.x + r)} ${Y(c.y)} c h`;
       ops.push(`${fill ? `${hexToRgb(fill)} rg ` : ''}${strokeStyle(width)} ${p} ${fill ? 'B' : 'S'}`);
     },
-    text: (at, text, size, anchor, rotate = 0, bold) => {
+    text: (at, text, size, anchor, rotate = 0, bold, color) => {
       // Anchor from the shared Helvetica metrics so PDF and SVG place text identically.
       const width = textWidthPt(text, size, bold);
       const shift = anchor === 'middle' ? -width / 2 : anchor === 'end' ? -width : 0;
@@ -80,12 +81,18 @@ function pageContent(sheet: Sheet): string {
       const sin = Math.sin(r);
       const x = at.x * PT + shift * cos;
       const y = (h - at.y) * PT + shift * sin;
-      ops.push(`BT /${bold ? 'F2' : 'F1'} ${f(size * PT)} Tf 0 0 0 rg ${f(cos)} ${f(sin)} ${f(-sin)} ${f(cos)} ${f(x)} ${f(y)} Tm ${pdfString(text)} Tj ET`);
+      ops.push(`BT /${bold ? 'F2' : 'F1'} ${f(size * PT)} Tf ${color && /^#[0-9a-f]{6}$/i.test(color) ? hexToRgb(color) : '0 0 0'} rg ${f(cos)} ${f(sin)} ${f(-sin)} ${f(cos)} ${f(x)} ${f(y)} Tm ${pdfString(text)} Tj ET`);
+    },
+    image: (x, y, iw, ih, img) => {
+      images.set(img.id, img);
+      ops.push(`q ${f(iw * PT)} 0 0 ${f(ih * PT)} ${X(x)} ${Y(y + ih)} cm /${imageName(img.id)} Do Q`);
     },
   };
   renderSheet(sheet, painter);
   return ops.join('\n');
 }
+
+const imageName = (id: string) => `Im${id.replace(/[^A-Za-z0-9]/g, '')}`;
 
 const textWidthPt = (text: string, size: number, bold?: boolean) => textWidth(text, size, bold) * PT;
 
@@ -108,11 +115,22 @@ export function sheetsToPdf(sheets: Sheet[], meta: PdfMeta): string {
   const font = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
   const bold = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
   const kids: number[] = [];
+  // Each image is stored once (JPEG, DCTDecode) and shared by every page that shows it.
+  const imageObjects = new Map<string, number>();
   for (const sheet of sheets) {
-    const { w, h } = PAPER[sheet.paper];
-    const content = pageContent(sheet);
+    const { w, h } = sheetSize(sheet);
+    const used = new Map<string, ImageRef>();
+    const content = pageContent(sheet, used);
+    for (const img of used.values()) {
+      if (!imageObjects.has(img.id)) {
+        let bin = '';
+        for (const byte of img.data) bin += String.fromCharCode(byte);
+        imageObjects.set(img.id, add(`<< /Type /XObject /Subtype /Image /Width ${img.w} /Height ${img.h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${img.data.length} >>\nstream\n${bin}\nendstream`));
+      }
+    }
+    const xobjects = used.size ? ` /XObject << ${[...used.keys()].map((id) => `/${imageName(id)} ${imageObjects.get(id)} 0 R`).join(' ')} >>` : '';
     const stream = add(`<< /Length ${content.length} >>\nstream\n${content}\nendstream`);
-    kids.push(add(`<< /Type /Page /Parent ${pages} 0 R /MediaBox [0 0 ${f(w * PT)} ${f(h * PT)}] /Resources << /Font << /F1 ${font} 0 R /F2 ${bold} 0 R >> >> /Contents ${stream} 0 R >>`));
+    kids.push(add(`<< /Type /Page /Parent ${pages} 0 R /MediaBox [0 0 ${f(w * PT)} ${f(h * PT)}] /Resources << /Font << /F1 ${font} 0 R /F2 ${bold} 0 R >>${xobjects} >> /Contents ${stream} 0 R >>`));
   }
   objects[catalog - 1] = `<< /Type /Catalog /Pages ${pages} 0 R >>`;
   objects[pages - 1] = `<< /Type /Pages /Kids [${kids.map((k) => `${k} 0 R`).join(' ')}] /Count ${kids.length} >>`;

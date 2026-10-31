@@ -247,6 +247,57 @@ export const DeliverableRequestSchema = z
   .strict();
 export type DeliverableRequest = z.infer<typeof DeliverableRequestSchema>;
 
+/** Where on the paper a note goes. */
+export const PaperPositionSchema = z.enum(['top-left', 'top-right', 'bottom-left', 'bottom-right', 'centre']);
+
+/**
+ * One edit of the client package (the presentation layer). Never a design change: dimensions are
+ * referred to by their measured value and only their position on the page changes.
+ */
+export const PackageOpSchema = z.discriminatedUnion('op', [
+  z.object({ op: z.literal('status') }).strict(),
+  z.object({ op: z.literal('open') }).strict(),
+  /** `pointTo`: a reference tag on the page ("C3") the note's arrow points at. */
+  z.object({ op: z.literal('add_note'), text: z.string().trim().min(1).max(400), position: PaperPositionSchema.optional(), color: z.enum(['red', 'black']).optional(), pointTo: z.string().trim().min(1).max(20).optional() }).strict(),
+  /** Moves the newest note, or the note containing `match`. */
+  z.object({ op: z.literal('move_note'), match: z.string().trim().max(80).optional(), position: PaperPositionSchema }).strict(),
+  z.object({ op: z.literal('set_orientation'), orientation: z.enum(['landscape', 'portrait']) }).strict(),
+  z.object({ op: z.literal('set_paper'), paper: z.enum(['A3', 'A4']) }).strict(),
+  z.object({ op: z.literal('rename_page'), name: z.string().trim().min(1).max(60) }).strict(),
+  z.object({ op: z.literal('set_heading'), text: z.string().trim().max(90) }).strict(),
+  /** A dimension by its value in mm; its label/line moves on the paper (mm), the value never changes. */
+  z.object({ op: z.literal('move_dimension'), value: z.number().int().positive(), direction: z.enum(['away', 'closer', 'up', 'down', 'left', 'right']), distance: z.number().min(1).max(50).optional() }).strict(),
+  z.object({ op: z.literal('hide_dimension'), value: z.number().int().positive() }).strict(),
+  z.object({ op: z.literal('resize_images'), change: z.enum(['larger', 'smaller']) }).strict(),
+  z.object({ op: z.literal('add_page'), template: z.enum(['layout', 'elevation', 'hardware', 'presentation', 'schedule']), wall: WallIdSchema.optional() }).strict(),
+  z.object({ op: z.literal('delete_page') }).strict(),
+  z.object({ op: z.literal('move_page'), to: z.union([z.number().int().min(1).max(60), z.enum(['first', 'last', 'up', 'down'])]) }).strict(),
+  z.object({ op: z.literal('regenerate'), revision: z.enum(['current', 'approved']).default('current') }).strict(),
+  z.object({ op: z.literal('set_info'), field: z.enum(['projectTitle', 'client', 'address', 'date', 'drawnBy', 'approvedBy', 'referenceBy', 'studio', 'studioAddress']), value: z.string().trim().max(160) }).strict(),
+  z.object({ op: z.literal('title_block') }).strict(),
+  /** Captures the 3D view of the named presentation page(s): `view` by name ("overall", "back wall run", "island", "top", a saved viewpoint), else the page's own view. */
+  z.object({ op: z.literal('capture_view'), view: z.string().trim().max(60).optional() }).strict(),
+  /** Adds a page for each standard 3D view (overall, each wall run, island) that has none yet. */
+  z.object({ op: z.literal('add_views') }).strict(),
+  /** Captures every stale 3D view again with its stored camera. */
+  z.object({ op: z.literal('recapture_stale') }).strict(),
+]);
+export type PackageOp = z.infer<typeof PackageOpSchema>;
+
+/**
+ * Edits of the client package from chat or voice. `page` names the pages they apply to: "current"
+ * (the page open in the studio), "all", "stale", an elevation letter ("B"), a template ("layout",
+ * "hardware", "3d", "schedule", "elevations") or words from a page name. The app resolves it and asks
+ * when it is ambiguous; broad or destructive edits are shown for approval first.
+ */
+export const PackageRequestSchema = z
+  .object({
+    page: z.string().trim().max(60).optional(),
+    ops: z.array(PackageOpSchema).min(1).max(12),
+  })
+  .strict();
+export type PackageRequest = z.infer<typeof PackageRequestSchema>;
+
 /**
  * Things a person does in the space without changing the design: open and close doors and drawers,
  * walk to a unit, look from a view, switch views. Carried out at once (nothing to approve or undo).
@@ -290,6 +341,8 @@ export const AssistantResponseSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('design'), explanation: z.string().trim().min(1).max(600), objective: DesignObjectiveSchema, refine: RefineSchema.optional() }),
   /** Deliverables are computed by the app; the model only says which. */
   z.object({ kind: z.literal('deliverable'), request: DeliverableRequestSchema }),
+  /** Edits of the client package (pages, notes, label positions, title block); never the design. */
+  z.object({ kind: z.literal('package'), request: PackageRequestSchema }),
   /** A whole home (apartment or villa) to generate and open; the app plans and furnishes it. */
   z.object({ kind: z.literal('home'), brief: HomeBriefSchema }),
   /** Interacting with the space (doors, drawers, walking, views); never changes the design. */

@@ -80,9 +80,43 @@ before I can send this to the carpenter", "Export the current drawings to PDF", 
 drawings for the latest approved revision", "Start presentation mode". The assistant returns a typed
 `deliverables` request; the app computes the reply and offers Open / Download / Present buttons.
 
+## Client packages
+**Deliverables › Client package** builds a multi-page client deliverable for the project (spec 020):
+kitchen layout with elevation markers, elevations A, B, … per wall, hardware & accessories board,
+3D view, cabinet schedule, all with the studio title block (filled in by the designer; nothing is
+invented). Each page is edited on its own: notes, dimension/tag positions (drag or arrow keys), hidden
+labels, images, captions, paper and orientation. Package edits have their own undo/redo.
+Notes can carry a leader arrow (Add arrow; drag its tip, which stays put when the note moves), and
+while a note is dragged it snaps to other notes and to the drawing area's edges and centre (hold Alt
+to place it freely).
+- Technical pages are pinned to the design revision they were generated from (the package keeps that
+  project file) and are drawn from it until regenerated. A design change makes only the pages whose
+  content changed **stale**; **Regenerate** pins the page to the current design and keeps compatible
+  edits. Edits whose element changed are listed as **needs review** and can be discarded.
+- Dimensions are always the model's measurements. Moving a label or line changes only the page;
+  "Change the size in the design" opens the design.
+- Images are re-encoded to JPEG in the browser and stored per project.
+- 3D view pages store a named view (overall, each wall run, island, top, or a saved viewpoint) and
+  are framed automatically, so **Add standard 3D views** creates and captures them in one step and
+  **Capture … stale 3D views again** refreshes them after a design change. "Current 3D camera"
+  captures a hand-set view (not reproducible). Snapshots go stale on any design change; captions can
+  be edited without making a stale view look current. Capturing needs the window visible (the 3D
+  view does not draw in a hidden tab).
+- Export: one vector PDF (images embedded once), SVG per page. Stale pages say STALE in the title block.
+- Chat and voice: "add a note that the LED strip will be installed after the kitchen is completed",
+  "change this page to landscape", "move the 900 mm dimension away from the cabinet", "make the
+  hardware reference images larger", "create an elevation for the left wall", "regenerate elevation B
+  using the latest approved model", "which pages are outdated?", "add the standard 3D views",
+  "capture the stale 3D views again", "capture the back wall view", "add a note “VISIBLE SIDE”
+  pointing at C3" (the arrow points at that reference tag on the page). One-page edits apply at once;
+  several pages, deletions and approved-revision regeneration wait for Apply (docs/AI_ASSISTANT.md).
+- Code: `engine/package/*` (schema, commands, composition), `state/packageStore.ts`,
+  `state/packageAssistant.ts`, `ai/packagePlan.ts`, `features/deliverables/package/*`.
+
 ## Limitations
 - One construction rule set; blind corners, end and decorative panels, scribes and joinery
   allowances are not modelled. Board counts are not nested.
 - Elevations are per wall (a run is shown on its wall's elevation).
-- History and approvals live in this browser (no server storage or accounts yet).
+- History, approvals and client packages live in this browser (no server storage or accounts yet).
+- Client packages: elevations are per wall (no island or section views); chat can't add reference images (upload them in the studio).
 - XLSX is not offered (CSV opens in spreadsheets).

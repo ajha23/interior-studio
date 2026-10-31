@@ -1,0 +1,15 @@
+# 020 — Tests
+
+- `engine/package/package.test.ts`: starter pages and statuses; file round-trip, sanitising, foreign
+  and newer files; page add/rename/reorder/duplicate/delete and validation; layout and elevation
+  dimensions from the model, markers, title block; moving a label keeps value and design; only
+  affected pages go stale, regeneration keeps notes and label edits; changed elements flagged and
+  discardable; boards and snapshots (missing images, stale snapshots); PDF with one image object.
+- `persistence/projectDb.test.ts`: package and images saved, reloaded and deleted with the project.
+- `e2e/package.spec.ts`: the whole workflow in the browser, through PDF export and reload.
+- `state/packageAssistant.test.ts`: the brief's requests parsed as typed edits; immediate one-page edits
+  with undo and no design change; questions for ambiguity; approval for broad/destructive edits and
+  refusal of outdated approvals; status and regeneration; title block fields.
+- `e2e/package.spec.ts` also adds a note, asks for outdated pages and approves an all-pages edit from chat.
+- Named 3D views: `engine/package/package.test.ts` (views, stored camera, caption keeps revision), `state/packageAssistant.test.ts` (capture planning), `e2e/package.spec.ts` (standard views captured, stale, captured again).
+- Arrows and snapping: `engine/package/package.test.ts` (SVG/PDF arrow, tip independent of the note, removal, snapMove), `state/packageAssistant.test.ts` ("pointing at C3"), `e2e/package.spec.ts` (add and drag an arrow tip).

@@ -9,7 +9,7 @@ test('deliverables: plan, elevations, schedule, and a cut list once a constructi
   await page.getByRole('button', { name: 'Deliverables' }).click();
 
   const nav = page.getByRole('navigation', { name: 'Sheets' });
-  await expect(nav.getByRole('button')).toHaveText([/Readiness/, /Floor plan/, /Back wall elevation/, /Cabinet schedule/, /Bill of materials/, /Generated files/, /Client presentation/]);
+  await expect(nav.getByRole('button')).toHaveText([/Readiness/, /Floor plan/, /Back wall elevation/, /Cabinet schedule/, /Bill of materials/, /Client package/, /Generated files/, /Client presentation/]);
   await nav.getByRole('button', { name: /Floor plan/ }).click();
   await expect(page.getByTestId('sheet-preview')).toContainText('4200');
 

@@ -49,6 +49,8 @@ export function ProjectsHome({ notice }: { notice?: string | null }) {
     setBusy(true);
     try {
       await createAndOpen(createProject({ name, room, layout, unit }));
+    } catch (err) {
+      setErrors([`Could not create the project: ${err instanceof Error ? err.message : String(err)}`]);
     } finally {
       setBusy(false);
     }
@@ -56,7 +58,7 @@ export function ProjectsHome({ notice }: { notice?: string | null }) {
 
   const onImport = async (file: File | undefined) => {
     if (!file) return;
-    const result = await importProjectFile(file);
+    const result = await importProjectFile(file).catch((err: unknown) => ({ ok: false as const, errors: [err instanceof Error ? err.message : String(err)] }));
     if (fileInput.current) fileInput.current.value = '';
     if (!result.ok) setErrors([`Could not import ${file.name}:`, ...result.errors]);
     else navigate({ name: 'editor', projectId: result.project.id });

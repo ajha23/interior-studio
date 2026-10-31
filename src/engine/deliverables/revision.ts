@@ -34,5 +34,10 @@ export function designRevision(project: KitchenProject): string {
   return `r-${fnv1a(stableJson(project))}`;
 }
 
+/** Hash of any JSON-like content (e.g. a page's generated geometry), same scheme as revisions. */
+export function contentHash(value: unknown): string {
+  return fnv1a(stableJson(value));
+}
+
 /** Short form for title blocks. */
 export const shortRevision = (rev: string) => rev.slice(0, 8);

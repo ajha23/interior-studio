@@ -12,6 +12,7 @@ import { RuleBasedProvider } from '@/ai/providers/rules';
 import type { AssistantProvider } from '@/ai/providers/types';
 import { formatLength } from '@/engine/measurement/units';
 import { deliverableReply } from './deliverableAssistant';
+import { packageReply } from './packageAssistant';
 import { runSceneAction } from './sceneActions';
 import { homeCommand } from './homeCommands';
 import { useHomeStore } from './homeStore';
@@ -73,6 +74,7 @@ export function editorPort(): EditorPort {
     select: (id) => editor().select(id),
     fmt: (mm) => formatLength(mm, editor().project?.preferences.unit ?? 'mm'),
     deliverable: (request) => deliverableReply(request),
+    package: (request) => packageReply(request),
     scene: (action, ids) => runSceneAction(action, ids),
     homeCommand: (text) => homeCommand(text),
     home: (brief) => {
