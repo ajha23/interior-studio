@@ -30,9 +30,20 @@ interface ProjectRecord extends ProjectSummary {
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
+/** Shown when another tab, still running an older version, holds the database open during an upgrade. */
+export const BLOCKED_MESSAGE = 'Interior Studio is open in another tab with an older version, which blocks an update of local storage. Close or reload the other Interior Studio tabs, then try again.';
+
 function openDb(): Promise<IDBDatabase> {
   dbPromise ??= new Promise((resolve, reject) => {
+    let failed = false;
     const req = indexedDB.open(DB_NAME, DB_VERSION);
+    // Another tab (an older version) has the database open, so the upgrade cannot run: say so instead of
+    // waiting forever. If that tab closes later, the connection that then opens is closed again.
+    req.onblocked = () => {
+      failed = true;
+      dbPromise = null;
+      reject(new Error(BLOCKED_MESSAGE));
+    };
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'id' }).createIndex('updatedAt', 'updatedAt');
@@ -40,7 +51,16 @@ function openDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(PACKAGES)) db.createObjectStore(PACKAGES, { keyPath: 'id' }).createIndex('projectId', 'projectId');
       if (!db.objectStoreNames.contains(ASSETS)) db.createObjectStore(ASSETS, { keyPath: 'id' }).createIndex('projectId', 'projectId');
     };
-    req.onsuccess = () => resolve(req.result);
+    req.onsuccess = () => {
+      const db = req.result;
+      if (failed) return db.close();
+      // A newer version opened in another tab needs to upgrade: let it, and reopen on the next request.
+      db.onversionchange = () => {
+        db.close();
+        dbPromise = null;
+      };
+      resolve(db);
+    };
     req.onerror = () => {
       dbPromise = null;
       reject(req.error ?? new Error('Could not open local project storage.'));
