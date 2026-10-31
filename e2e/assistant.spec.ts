@@ -75,3 +75,40 @@ test('Phase 2 acceptance: create, follow-up resize, move, units, collision, undo
   await ask(page, 'Show me all cabinet dimensions');
   await expect(page.getByTestId('answer-table').last()).toContainText('900 × 750 × 560');
 });
+
+test('choose an AI provider and model; a provider without a server key falls back to the rules with a notice', async ({ page }) => {
+  await page.goto('/');
+  await page.getByLabel('Project name').fill('Model picker');
+  await page.getByText('Empty room', { exact: true }).click();
+  await page.getByRole('button', { name: 'Create project' }).click();
+  await page.getByRole('button', { name: 'Assistant', exact: true }).click();
+  await expect(page.getByTestId('assistant-model')).toHaveText('Gemini 3.8 Flash');
+  await page.getByRole('button', { name: 'Assistant settings' }).click();
+
+  const provider = page.getByLabel('AI provider');
+  const model = page.getByLabel('Model', { exact: true });
+  await expect(provider).toHaveValue('gemini');
+  await expect(model.locator('option')).toHaveCount(5);
+  await expect(page.getByTestId('provider-not-configured')).toContainText('GEMINI_API_KEY');
+
+  await provider.selectOption('anthropic');
+  await expect(model).toHaveValue('claude-opus-5-5');
+  await expect(model.locator('option')).toHaveText(['Claude Fable 5.1', 'Claude Opus 5.5', 'Claude Sonnet 5.5', 'Claude Opus 5', 'Claude Haiku 5.5']);
+  await provider.selectOption('openai');
+  await model.selectOption('gpt-6-luna');
+  await expect(page.getByTestId('assistant-model')).toHaveText('GPT-6 Luna');
+
+  // No OpenAI key on the test server: the built-in rules answer and the panel says so.
+  await ask(page, 'Create a 900 mm base cabinet');
+  await expect(lastPreview(page)).toContainText('New: Base cabinet 900');
+  await expect(page.getByTestId('assistant-notice')).toContainText('OpenAI is not configured on this server (set OPENAI_API_KEY)');
+
+  // The choice is remembered; the built-in rules run in the browser without a notice.
+  await page.reload();
+  await page.getByRole('button', { name: 'Assistant', exact: true }).click().catch(() => undefined);
+  await expect(page.getByTestId('assistant-model')).toHaveText('GPT-6 Luna');
+  await page.getByRole('button', { name: 'Assistant settings' }).click();
+  await page.getByLabel('AI provider').selectOption('rules');
+  await expect(page.getByLabel('Model', { exact: true })).toBeDisabled();
+  await expect(page.getByTestId('provider-not-configured')).toHaveCount(0);
+});

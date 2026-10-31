@@ -6,6 +6,7 @@
 import { create } from 'zustand';
 import { Conversation, type ChatMessage, type ConversationState, type EditorPort, type SendOptions } from '@/ai/conversation';
 import { DEFAULT_SETTINGS, type AssistantSettings } from '@/ai/policy';
+import { AI_PROVIDERS, DEFAULT_PROVIDER, PROVIDER_CATALOG, type AiProviderId, type AiSelection, type ProviderStatus } from '@/ai/providers/catalog';
 import { HttpAssistantProvider } from '@/ai/providers/http';
 import { RuleBasedProvider } from '@/ai/providers/rules';
 import type { AssistantProvider } from '@/ai/providers/types';
@@ -13,20 +14,25 @@ import { formatLength } from '@/engine/measurement/units';
 import { deliverableReply } from './deliverableAssistant';
 import { useEditorStore } from './editorStore';
 
-export type ProviderChoice = 'server' | 'offline';
-
-export interface AssistantPrefs extends AssistantSettings {
-  provider: ProviderChoice;
-}
+/** The AI provider and model the designer picked; "rules" runs in the browser without a server. */
+export interface AssistantPrefs extends AssistantSettings, AiSelection {}
 
 const PREFS_KEY = 'interior-studio:assistant';
 
+/** Reads saved preferences, upgrading the old `server`/`offline` choice and dropping unknown models. */
+export function parsePrefs(raw: unknown): AssistantPrefs {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const provider: AiProviderId = r.provider === 'offline' ? 'rules' : (AI_PROVIDERS as readonly unknown[]).includes(r.provider) ? (r.provider as AiProviderId) : DEFAULT_PROVIDER;
+  const catalog = PROVIDER_CATALOG[provider];
+  const model = catalog.models.some((m) => m.id === r.model) ? (r.model as string) : catalog.defaultModel;
+  return { autoApply: r.autoApply === true, provider, model };
+}
+
 function loadPrefs(): AssistantPrefs {
   try {
-    const raw = JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}') as Partial<AssistantPrefs>;
-    return { autoApply: raw.autoApply === true, provider: raw.provider === 'offline' ? 'offline' : 'server' };
+    return parsePrefs(JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}'));
   } catch {
-    return { ...DEFAULT_SETTINGS, provider: 'server' };
+    return parsePrefs({ ...DEFAULT_SETTINGS });
   }
 }
 
@@ -66,8 +72,14 @@ export function editorPort(): EditorPort {
   };
 }
 
-export function providerFor(choice: ProviderChoice): AssistantProvider {
-  return choice === 'offline' ? new RuleBasedProvider() : new HttpAssistantProvider();
+// One server client for every AI provider; it sends the current selection with each request.
+const http = new HttpAssistantProvider('/api/assistant', 60_000, undefined, (): AiSelection => {
+  const { provider, model }: AssistantPrefs = useAssistantStore.getState().prefs;
+  return { provider, model };
+});
+
+export function providerFor(provider: AiProviderId): AssistantProvider {
+  return provider === 'rules' ? new RuleBasedProvider() : http;
 }
 
 interface AssistantStore {
@@ -91,6 +103,9 @@ interface AssistantStore {
   applyLayout: (messageId: string, candidateId: string) => Promise<boolean>;
   rejectLayouts: (messageId: string) => void;
   setPrefs: (patch: Partial<AssistantPrefs>) => void;
+  /** Which providers the server has keys for (null until loaded or when there is no server). */
+  serverStatus: ProviderStatus | null;
+  loadServerStatus: () => Promise<void>;
   setOpen: (open: boolean) => void;
   reset: () => void;
 }
@@ -135,12 +150,16 @@ export const useAssistantStore = create<AssistantStore>()((set, get) => ({
     conversation.rejectLayouts(messageId);
   },
   setPrefs: (patch) => {
-    const next = { ...get().prefs, ...patch };
+    // Switching provider picks that provider's recommended model unless one is given.
+    const switched = patch.provider !== undefined && patch.provider !== get().prefs.provider;
+    const next = parsePrefs({ ...get().prefs, ...(switched && !patch.model ? { model: undefined } : {}), ...patch });
     savePrefs(next);
-    if (patch.provider && patch.provider !== get().prefs.provider) conversation.setProvider(providerFor(next.provider));
+    if (switched || next.model !== get().prefs.model) conversation.setProvider(providerFor(next.provider));
     conversation.setSettings(next);
     set({ prefs: next });
   },
+  serverStatus: null,
+  loadServerStatus: async () => set({ serverStatus: await http.status() }),
   setOpen: (open) => set({ open }),
   reset: () => conversation.reset(),
 }));

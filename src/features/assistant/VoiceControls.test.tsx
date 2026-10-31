@@ -32,7 +32,7 @@ async function renderPanel() {
   const { useAssistantStore } = await import('@/state/assistantStore');
   const { AssistantPanel } = await import('./AssistantPanel');
   useEditorStore.getState().openProject(createProject({ name: 'Panel', room: DEFAULT_ROOM, layout: 'straight' }));
-  useAssistantStore.getState().setPrefs({ provider: 'offline' });
+  useAssistantStore.getState().setPrefs({ provider: 'rules' });
   render(<AssistantPanel />);
 }
 

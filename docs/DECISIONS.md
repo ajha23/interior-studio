@@ -192,3 +192,14 @@ Readiness is reported per output and "manufacturing-ready" requires no blocking 
 A design revision id is a hash of the project content, so deliverables can name the exact design they
 came from across sessions without a server, and staleness is a comparison of ids. Approved revisions
 are stored as snapshots so drawings can be regenerated for them later.
+
+## D-027 — Several AI providers behind one tool loop, chosen per request
+
+Designers choose Gemini (default), Claude or OpenAI and one of five listed models per provider in the
+panel; the choice travels with each request and the server builds the provider from its own keys.
+All three share the tool loop, prompts and validation (`toolLoop.ts`), so only a thin adapter per
+vendor differs and a proposal means the same thing whichever model wrote it. The server accepts only
+catalogued models (no arbitrary model ids, which would bypass cost control), and a provider without a
+key answers with the built-in rules and says so instead of failing, so the panel works on any
+deployment. Keys stay server-side (D-021).
+

@@ -11,7 +11,8 @@ panel ──► Conversation (src/ai/conversation.ts)
             │  + the project (validated again on the server)
             ▼
           AssistantProvider ── rules (deterministic, offline/tests)
-            │                └─ http → POST /api/assistant → rules | Anthropic (server, holds the key)
+            │                └─ http → POST /api/assistant {ai: provider + model}
+            │                          → Gemini | Claude | OpenAI (server, holds the keys) | rules
             ▼
           AssistantResponse (Zod)  plan | clarify | answer | history
             ▼
@@ -85,32 +86,61 @@ The rule-based provider reads bare numbers in the display unit, like every other
 
 ## Providers and configuration
 
+The designer picks the **AI provider** and **model** in the panel settings (remembered in this
+browser). Each provider offers its five strongest current models with tool calling, best first
+(catalog as of 31 Oct 2026, `src/ai/providers/catalog.ts`); the server accepts only listed models.
+
+| Provider | Models (default in bold) | Server key |
+| --- | --- | --- |
+| Google Gemini (default) | Gemini 4 Argon, **Gemini 3.8 Flash**, Gemini 3.1 Pro (preview), Gemini 3.6 Flash, Gemini 3.5 Flash-Lite | `GEMINI_API_KEY` or `GOOGLE_API_KEY` |
+| Anthropic Claude | Claude Fable 5.1, **Claude Opus 5.5**, Claude Sonnet 5.5, Claude Opus 5, Claude Haiku 5.5 | `ANTHROPIC_API_KEY` |
+| OpenAI | GPT-6 Astra, **GPT-6.1 Sol**, GPT-6 Sol, GPT-6.1 Terra, GPT-6 Luna | `OPENAI_API_KEY` |
+| Built-in rules | Deterministic rules (runs in the browser, no key) | — |
+
+If the chosen provider has no key on the server, the built-in rules answer and the panel shows a
+notice naming the missing variable (`ASSISTANT_FALLBACK_TO_RULES=off` turns this into an error).
+`GET /api/assistant` reports which providers are configured (never the keys); the settings mark the
+others "not set up".
+
 | Variable (server only) | Default | Meaning |
 | --- | --- | --- |
-| `ASSISTANT_PROVIDER` | `rules` | `rules` (deterministic) or `anthropic` |
-| `ANTHROPIC_API_KEY` | — | Required for `anthropic`. Never `VITE_`-prefixed, never sent to the browser |
-| `ASSISTANT_MODEL` | `claude-opus-5-5` | Any Messages API model id |
-| `ASSISTANT_EFFORT` | `medium` | `low`, `medium` or `high` |
+| `GEMINI_API_KEY` / `GOOGLE_API_KEY` | — | Enables Gemini. Never `VITE_`-prefixed, never sent to the browser |
+| `ANTHROPIC_API_KEY` | — | Enables Claude |
+| `OPENAI_API_KEY` | — | Enables OpenAI |
+| `ASSISTANT_PROVIDER` | `gemini` | Provider for requests that name none: `gemini`, `anthropic`, `openai` or `rules` |
+| `ASSISTANT_MODEL` | provider default | Default model; ignored unless it is one of that provider's listed models |
+| `ASSISTANT_FALLBACK_TO_RULES` | on | `off` returns 503 instead of answering with the rules when a key is missing |
+| `ASSISTANT_EFFORT` | `medium` | Reasoning effort for Claude and OpenAI: `low`, `medium` or `high` |
 | `ASSISTANT_TIMEOUT_MS` | `45000` | Whole tool loop (5–120 s) |
-| `ASSISTANT_FALLBACKS` | on | `off` disables server-side refusal fallback (`fallbacks: "default"`) |
+| `ASSISTANT_FALLBACKS` | on | Claude only: `off` disables server-side refusal fallback (`fallbacks: "default"`) |
 | `ASSISTANT_RATE_LIMIT` | `30` | Requests per client per minute (per server instance) |
 
-- **Local development:** `npm run dev` serves `/api/assistant` from the dev server. Put the variables
-  in `.env.local` (git-ignored) or the shell, e.g. `ASSISTANT_PROVIDER=anthropic` and
-  `ANTHROPIC_API_KEY=…`. Without them the deterministic provider answers.
+- **Local development:** `npm run dev` serves `/api/assistant` from the dev server. Put the keys in
+  `.env.local` (git-ignored) or the shell, e.g. `GEMINI_API_KEY=…`.
 - **Vercel:** `npm run build:vercel` writes `.vercel/output` (static app + a self-contained
-  `/api/assistant` Node function). Set the variables in Project Settings → Environment Variables.
-- **Offline:** the panel settings can switch to "Built-in rules (offline)", which runs the same
-  deterministic provider in the browser (useful on static hosting).
-- **Another provider:** implement `AssistantProvider.respond(request, signal)` returning an
-  `AssistantResponse`, add it to `providerFromEnv` in `src/server/assistantHandler.ts`. Everything
-  downstream (validation, preview, commit) is provider-independent.
+  `/api/assistant` Node function with the SDKs bundled). Set the keys in Project Settings →
+  Environment Variables.
+- **Offline:** choosing "Built-in rules (no AI)" runs the deterministic provider in the browser
+  (useful on static hosting).
+- **Updating the model list:** edit `PROVIDER_CATALOG`; the pickers, server allowlist and tests read it.
+- **Another provider:** implement a `ModelAdapter` (one model turn: text, tool calls, stop reason)
+  and wrap it in `ToolLoopProvider`, add it to the catalog and to `providerFor` in
+  `src/server/assistantHandler.ts`. Everything downstream (validation, preview, commit) is
+  provider-independent.
 
-The Anthropic adapter (`src/ai/providers/anthropic.ts`) sends a fixed system prompt, the compact
-project summary, and read-only tools (`list_objects`, `get_object`, `get_walls`, `get_issues`). The
-model must end with `propose_changes`, `ask_clarification`, `reply` or `undo_redo`; inputs are
-validated with Zod, invalid ones and unknown ids are sent back once for repair. Adaptive thinking,
-automatic tool choice and prompt caching of the system prompt are used.
+All three AI providers share one tool loop (`src/ai/providers/toolLoop.ts`): a fixed system prompt,
+the compact project summary, and read-only tools (`list_objects`, `get_object`, `get_walls`,
+`get_issues`). The model must end with `propose_changes`, `ask_clarification`, `reply`,
+`plan_layout`, `deliverables` or `undo_redo`; inputs are validated with Zod, and invalid ones and
+unknown ids are sent back once for repair. Adapters, each through the vendor's official SDK:
+
+- **Claude** (`anthropic.ts`, `@anthropic-ai/sdk`): Messages API, adaptive thinking, prompt caching of
+  the system prompt, server-side refusal fallback for models that support it.
+- **Gemini** (`gemini.ts`, `@google/genai`): `generateContent` with JSON-Schema function
+  declarations; the model's turns are replayed unchanged so thought signatures go back with the tool
+  results; safety finish reasons are reported as refusals; 429 retry delays are passed on.
+- **OpenAI** (`openai.ts`, `openai`): Responses API, stateless (`store: false`) with encrypted
+  reasoning items passed back each turn; refusals and truncated output are detected.
 
 ## Security
 - Model output is untrusted data: it can only produce schema-valid operations, which are compiled to
@@ -129,10 +159,11 @@ automatic tool choice and prompt caching of the system prompt are used.
 - Projects are stored in the browser; there are no accounts, so the server validates the submitted
   project but cannot check per-user access. Server rate limiting is per instance.
 - The rule-based provider understands common phrasings only; open-ended requests ("design me a
-  kitchen") need the LLM provider. Responses are not streamed.
+  kitchen") need an AI provider. Responses are not streamed.
 - Domain error messages quote millimetres regardless of the display unit.
-- The LLM path is covered by tests against a fake Messages API; it has not been exercised against
-  the live API in this environment (no key configured).
+- The AI providers are covered by tests against fake Gemini, Messages and Responses APIs; they
+  have not been exercised against the live APIs in this environment (no keys configured). The model
+  catalog is a snapshot and needs updating as vendors release and retire models.
 
 ## Voice
 Phase 3 adds spoken input on top of this pipeline; see `docs/VOICE.md`. Spoken requests call the

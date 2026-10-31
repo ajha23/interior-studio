@@ -93,10 +93,11 @@ architecture and domain model.
 
 **Assistant** in the top bar opens a chat panel that edits the design from plain language (“Add a
 600 mm dishwasher next to the sink”). Every change is previewed (sizes and positions before → after,
-validation, warnings) and applied only when you approve, as one undo step. Out of the box the
-`/api/assistant` endpoint uses a deterministic rule-based provider; to use Claude, set
-`ASSISTANT_PROVIDER=anthropic` and `ANTHROPIC_API_KEY` on the server (`.env.local` for `npm run dev`,
-project environment variables on Vercel; see `.env.example`). Details: `docs/AI_ASSISTANT.md`.
+validation, warnings) and applied only when you approve, as one undo step. Pick the AI provider —
+Google Gemini (default), Anthropic Claude or OpenAI — and one of its five listed models in the panel
+settings. Each needs its key on the server (`GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`
+in `.env.local` for `npm run dev`, project environment variables on Vercel; see `.env.example`);
+without a key the built-in rules answer and the panel says so. Details: `docs/AI_ASSISTANT.md`.
 
 The microphone button in the panel lets you **speak** requests instead (Chrome, Edge, Safari); they
 go through exactly the same previews and approval, and you can say “apply” or “reject”. No setup

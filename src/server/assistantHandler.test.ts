@@ -6,7 +6,7 @@ import { ProviderError, type AssistantProvider } from '@/ai/providers/types';
 import type { AssistantRequest } from '@/ai/schema';
 import { createProject, DEFAULT_ROOM } from '@/domain';
 import { sequentialIds } from '@/test/ids';
-import { createAssistantHandler, providerFromEnv, RateLimiter } from './assistantHandler';
+import { createAssistantHandler, defaultSelectionFromEnv, providerFor, RateLimiter } from './assistantHandler';
 
 const project = createProject({ name: 'Server', room: DEFAULT_ROOM, layout: 'straight' }, sequentialIds());
 const body = (message = 'Create a 900 mm base cabinet', over: Partial<AssistantRequest> = {}): AssistantRequest => ({
@@ -37,7 +37,8 @@ describe('/api/assistant', () => {
     expect((await handler(post(body('x'.repeat(1001))))).status).toBe(400);
     expect((await handler(post({ ...body(), project: { ...project, room: { ...project.room, width: -1 } } }))).status).toBe(400);
     expect((await handler(post(body(), { origin: 'https://evil.example' }))).status).toBe(403);
-    expect((await handler(new Request('http://localhost/api/assistant'))).status).toBe(405);
+    expect((await handler(new Request('http://localhost/api/assistant', { method: 'PUT' }))).status).toBe(405);
+    expect((await handler(post({ ...body(), ai: { provider: 'openai', model: 'gpt-1-free' } }))).status).toBe(400);
   });
 
   it('rate-limits per client', async () => {
@@ -65,12 +66,45 @@ describe('/api/assistant', () => {
     }
   });
 
-  it('needs a server-side key for the Anthropic provider and never reads a VITE_ variable', () => {
-    expect(() => providerFromEnv({ ASSISTANT_PROVIDER: 'anthropic' })).toThrow(/ANTHROPIC_API_KEY is not configured/);
-    const p = providerFromEnv({ ASSISTANT_PROVIDER: 'anthropic', ANTHROPIC_API_KEY: 'sk-test', ASSISTANT_MODEL: 'claude-sonnet-5-5' });
-    expect(p).toMatchObject({ id: 'anthropic', model: 'claude-sonnet-5-5' });
-    expect(providerFromEnv({ ASSISTANT_PROVIDER: 'anthropic', ANTHROPIC_API_KEY: 'sk-test' }).model).toBe('claude-opus-5-5');
-    expect(providerFromEnv({}).id).toBe('rules');
+  it('builds the chosen provider from server-side keys and never reads a VITE_ variable', () => {
+    expect(providerFor({ ANTHROPIC_API_KEY: 'sk-test' }, { provider: 'anthropic', model: 'claude-sonnet-5-5' }).provider).toMatchObject({ id: 'anthropic', model: 'claude-sonnet-5-5' });
+    expect(providerFor({ GEMINI_API_KEY: 'g' }, { provider: 'gemini', model: 'gemini-4-argon' }).provider).toMatchObject({ id: 'gemini', model: 'gemini-4-argon' });
+    expect(providerFor({ GOOGLE_API_KEY: 'g' }, { provider: 'gemini', model: 'gemini-3.8-flash' }).provider.id).toBe('gemini');
+    expect(providerFor({ OPENAI_API_KEY: 'o' }, { provider: 'openai', model: 'gpt-6.1-sol' }).provider).toMatchObject({ id: 'openai', model: 'gpt-6.1-sol' });
+    expect(providerFor({ VITE_OPENAI_API_KEY: 'o' } as never, { provider: 'openai', model: 'gpt-6.1-sol' }).provider.id).toBe('rules');
+    expect(() => providerFor({}, { provider: 'openai', model: 'claude-opus-5-5' })).toThrow(/not offered/);
+  });
+
+  it('defaults to Gemini and honours ASSISTANT_PROVIDER / ASSISTANT_MODEL only for offered models', () => {
+    expect(defaultSelectionFromEnv({})).toEqual({ provider: 'gemini', model: 'gemini-3.8-flash' });
+    expect(defaultSelectionFromEnv({ ASSISTANT_PROVIDER: 'anthropic' })).toEqual({ provider: 'anthropic', model: 'claude-opus-5-5' });
+    expect(defaultSelectionFromEnv({ ASSISTANT_PROVIDER: 'openai', ASSISTANT_MODEL: 'gpt-6-luna' })).toEqual({ provider: 'openai', model: 'gpt-6-luna' });
+    expect(defaultSelectionFromEnv({ ASSISTANT_PROVIDER: 'openai', ASSISTANT_MODEL: 'nope' }).model).toBe('gpt-6.1-sol');
+    expect(defaultSelectionFromEnv({ ASSISTANT_PROVIDER: 'mock' }).provider).toBe('rules');
+  });
+
+  it('falls back to the built-in rules with a notice when the chosen provider has no key', async () => {
+    const res = await createAssistantHandler({ env: {}, log: quiet })(post({ ...body(), ai: { provider: 'anthropic', model: 'claude-opus-5-5' } }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, provider: 'rules', notice: expect.stringMatching(/Anthropic Claude is not configured.*ANTHROPIC_API_KEY/) });
+    const strict = await createAssistantHandler({ env: { ASSISTANT_FALLBACK_TO_RULES: 'off' }, log: quiet })(post({ ...body(), ai: { provider: 'gemini', model: 'gemini-3.8-flash' } }));
+    expect(strict.status).toBe(503);
+    expect(await strict.json()).toMatchObject({ ok: false, error: { code: 'unavailable', message: expect.stringContaining('GEMINI_API_KEY') } });
+  });
+
+  it('reports which providers are configured without exposing keys', async () => {
+    const res = await createAssistantHandler({ env: { OPENAI_API_KEY: 'sk-secret', ASSISTANT_PROVIDER: 'openai' }, log: quiet })(new Request('http://localhost/api/assistant'));
+    const text = await res.text();
+    expect(text).not.toContain('sk-secret');
+    expect(JSON.parse(text)).toEqual({
+      defaultProvider: 'openai',
+      providers: [
+        { id: 'gemini', configured: false },
+        { id: 'anthropic', configured: false },
+        { id: 'openai', configured: true },
+        { id: 'rules', configured: true },
+      ],
+    });
   });
 });
 

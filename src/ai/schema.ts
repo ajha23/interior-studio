@@ -16,6 +16,7 @@ import {
   WallIdSchema,
 } from '@/domain';
 import { LENGTH_UNITS } from '@/engine/measurement/units';
+import { AiSelectionSchema } from './providers/catalog';
 
 /** Hard limits applied on the client and again on the server. */
 export const LIMITS = {
@@ -269,6 +270,8 @@ export const AssistantRequestSchema = z.object({
   history: z.array(HistoryTurnSchema).max(LIMITS.historyTurns),
   context: ConversationContextSchema,
   project: KitchenProjectSchema,
+  /** Which AI provider and model to use; the server's default when absent. */
+  ai: AiSelectionSchema.optional(),
 });
 export type AssistantRequest = z.infer<typeof AssistantRequestSchema>;
 
@@ -276,7 +279,8 @@ export const ProviderErrorCodeSchema = z.enum(['timeout', 'rate_limited', 'malfo
 export type ProviderErrorCode = z.infer<typeof ProviderErrorCodeSchema>;
 
 export const AssistantReplySchema = z.discriminatedUnion('ok', [
-  z.object({ ok: z.literal(true), provider: z.string(), model: z.string().optional(), response: AssistantResponseSchema }),
+  /** `notice` explains a substitution, e.g. the chosen provider has no key so the built-in rules answered. */
+  z.object({ ok: z.literal(true), provider: z.string(), model: z.string().optional(), notice: z.string().optional(), response: AssistantResponseSchema }),
   z.object({
     ok: z.literal(false),
     error: z.object({ code: ProviderErrorCodeSchema, message: z.string(), retryable: z.boolean(), retryAfterSeconds: z.number().optional() }),

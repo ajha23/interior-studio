@@ -105,7 +105,7 @@ function open(p: KitchenProject) {
 beforeEach(() => {
   localStorage.clear();
   // The deterministic provider in the browser: same pipeline, no network.
-  useAssistantStore.getState().setPrefs({ provider: 'offline', autoApply: false });
+  useAssistantStore.getState().setPrefs({ provider: 'rules', autoApply: false });
   useAssistantStore.getState().setDraft('');
   assistantConversation().reset();
   open(createProject({ name: 'Voice', room: DEFAULT_ROOM, layout: 'empty' }, sequentialIds()));

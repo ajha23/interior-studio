@@ -14,7 +14,7 @@ import { findEntity } from './entities';
 import { evaluate } from './layout/constraints';
 import { PlanCancelled, planLayouts, resolveObjective, signature, type PlanOptions, type PlanResult } from './layout/planner';
 import { canAutoApply, type AssistantSettings } from './policy';
-import { ProviderError, type AssistantProvider } from './providers/types';
+import { ProviderError, type AssistantProvider, type ServedBy } from './providers/types';
 import { resolveTarget } from './resolve';
 import { DesignObjectiveSchema, LIMITS, type AssistantResponse, type DeliverableRequest, type DesignObjective, type HistoryTurn, type Plan, type Show, type TargetRef } from './schema';
 import { bind, focusAfter, runPlan, type Alternative, type Proposal, type RunContext } from './transaction';
@@ -83,9 +83,11 @@ export interface ConversationState {
   protect: { walls: WallId[]; ids: string[] };
   log: LogEntry[];
   provider: string;
+  /** Who answered the last request (the server may substitute the built-in rules). */
+  served: ServedBy | null;
 }
 
-export const initialConversation = (provider = 'rules'): ConversationState => ({ messages: [], busy: false, progress: null, focus: [], previousFocus: [], protect: { walls: [], ids: [] }, log: [], provider });
+export const initialConversation = (provider = 'rules'): ConversationState => ({ messages: [], busy: false, progress: null, focus: [], previousFocus: [], protect: { walls: [], ids: [] }, log: [], provider, served: null });
 
 let counter = 0;
 const msgId = () => `m${Date.now().toString(36)}${(++counter).toString(36)}`;
@@ -113,7 +115,7 @@ export class Conversation {
 
   setProvider(provider: AssistantProvider): void {
     this.provider = provider;
-    this.update({ provider: provider.id });
+    this.update({ provider: provider.id, served: null });
   }
 
   setSettings(settings: AssistantSettings): void {
@@ -213,6 +215,7 @@ export class Conversation {
       return null;
     }
     this.logEvent('response', response.kind);
+    this.update({ served: this.provider.lastServed ?? { provider: this.provider.id, model: this.provider.model } });
     if (response.kind === 'design') {
       // Planning runs on isolated copies; it keeps the request's abort signal and staleness check.
       await this.design(response, { selectedId, signal: abort.signal, stale });

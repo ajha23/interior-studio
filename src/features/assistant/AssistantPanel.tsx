@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
-import { Bot, Loader2, Lock, Mic, RotateCcw, Send, Settings2, Square, X } from 'lucide-react';
+import { AlertTriangle, Bot, Loader2, Lock, Mic, RotateCcw, Send, Settings2, Square, X } from 'lucide-react';
 import type { ChatMessage } from '@/ai/conversation';
 import { findEntity } from '@/ai/entities';
 import { showRows } from '@/ai/inspect';
+import { AI_PROVIDERS, PROVIDER_CATALOG, type AiProviderId } from '@/ai/providers/catalog';
 import { EXAMPLE_REQUESTS } from '@/ai/providers/rules';
 import { LIMITS } from '@/ai/schema';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { useAssistantStore, type ProviderChoice } from '@/state/assistantStore';
+import { useAssistantStore } from '@/state/assistantStore';
 import { useEditorStore } from '@/state/editorStore';
 import { useFormatDims, useFormatLength } from '@/state/units';
 import { ChangePreview } from './ChangePreview';
@@ -16,9 +17,55 @@ import { DeliverableMessage } from './DeliverableMessage';
 import { LayoutOptions } from './LayoutOptions';
 import { MicButton, VoiceSettings, VoiceStatusBar } from './VoiceControls';
 
+const modelLabel = (provider: AiProviderId, model: string) => PROVIDER_CATALOG[provider].models.find((m) => m.id === model)?.label ?? model;
+
+/** Provider and model selects. Providers without a key on the server are marked; choosing one still works (the server answers with the built-in rules and says so). */
+function ModelPicker() {
+  const prefs = useAssistantStore((s) => s.prefs);
+  const status = useAssistantStore((s) => s.serverStatus);
+  const { setPrefs, loadServerStatus } = useAssistantStore.getState();
+  useEffect(() => {
+    void loadServerStatus();
+  }, [loadServerStatus]);
+  const configured = (id: AiProviderId) => id === 'rules' || !status || status.providers.some((p) => p.id === id && p.configured);
+  const info = PROVIDER_CATALOG[prefs.provider];
+  const model = info.models.find((m) => m.id === prefs.model);
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label className="flex items-center justify-between gap-2">
+        <span>AI provider</span>
+        <Select aria-label="AI provider" value={prefs.provider} onChange={(e) => setPrefs({ provider: e.target.value as AiProviderId })} className="h-7 w-48 text-xs">
+          {AI_PROVIDERS.map((id) => (
+            <option key={id} value={id}>
+              {PROVIDER_CATALOG[id].label}
+              {configured(id) ? '' : ' — not set up'}
+            </option>
+          ))}
+        </Select>
+      </label>
+      <label className="flex items-center justify-between gap-2">
+        <span>Model</span>
+        <Select aria-label="Model" value={prefs.model} onChange={(e) => setPrefs({ model: e.target.value })} disabled={info.models.length < 2} className="h-7 w-48 text-xs">
+          {info.models.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.label}
+            </option>
+          ))}
+        </Select>
+      </label>
+      {model && <span className="text-muted-foreground">{model.note}.</span>}
+      {!configured(prefs.provider) && (
+        <span className="text-amber-700 dark:text-amber-300" data-testid="provider-not-configured">
+          {info.label} is not set up on this server ({info.keyEnv[0]}); the built-in rules will answer instead.
+        </span>
+      )}
+    </div>
+  );
+}
+
 /** The design assistant: a conversation that proposes, previews and applies real design changes. */
 export function AssistantPanel({ onClose }: { onClose?: () => void }) {
-  const { messages, busy, focus, protect, log, progress } = useAssistantStore((s) => s.conversation);
+  const { messages, busy, focus, protect, log, progress, served } = useAssistantStore((s) => s.conversation);
   const prefs = useAssistantStore((s) => s.prefs);
   const { send, cancel, setPrefs, reset } = useAssistantStore.getState();
   const draft = useAssistantStore((s) => s.draft);
@@ -51,8 +98,8 @@ export function AssistantPanel({ onClose }: { onClose?: () => void }) {
       <header className="flex items-center gap-2 border-b px-3 py-2">
         <Bot className="size-4 text-highlight" />
         <h2 className="text-sm font-semibold">Design assistant</h2>
-        <span className="rounded border px-1 text-[10px] text-muted-foreground" title={prefs.provider === 'offline' ? 'Built-in rules, runs in this browser' : 'AI service on the server (falls back to built-in rules when no model is configured)'}>
-          {prefs.provider === 'offline' ? 'offline' : 'server'}
+        <span className="truncate rounded border px-1 text-[10px] text-muted-foreground" data-testid="assistant-model" title={`${PROVIDER_CATALOG[prefs.provider].label}: ${prefs.model}${prefs.provider === 'rules' ? ' (runs in this browser)' : ''}`}>
+          {prefs.provider === 'rules' ? 'rules' : modelLabel(prefs.provider, prefs.model)}
         </span>
         <div className="ml-auto flex items-center gap-0.5">
           <Button size="icon-sm" variant={showSettings ? 'selected' : 'ghost'} aria-label="Assistant settings" aria-pressed={showSettings} onClick={() => setShowSettings((v) => !v)}>
@@ -68,13 +115,7 @@ export function AssistantPanel({ onClose }: { onClose?: () => void }) {
 
       {showSettings && (
         <div className="flex flex-col gap-2 border-b bg-muted/40 px-3 py-2.5 text-xs" aria-label="Assistant settings panel">
-          <label className="flex items-center justify-between gap-2">
-            <span>Assistant</span>
-            <Select aria-label="Assistant provider" value={prefs.provider} onChange={(e) => setPrefs({ provider: e.target.value as ProviderChoice })} className="h-7 w-44 text-xs">
-              <option value="server">AI service (server)</option>
-              <option value="offline">Built-in rules (offline)</option>
-            </Select>
-          </label>
+          <ModelPicker />
           <label className="flex items-start gap-2">
             <input type="checkbox" checked={prefs.autoApply} onChange={(e) => setPrefs({ autoApply: e.target.checked })} className="mt-0.5" aria-label="Auto-apply safe changes" />
             <span>
@@ -103,6 +144,12 @@ export function AssistantPanel({ onClose }: { onClose?: () => void }) {
             </details>
           )}
         </div>
+      )}
+
+      {served?.notice && (
+        <p className="flex items-start gap-1.5 border-b bg-amber-50 px-3 py-1.5 text-[11px] text-amber-900 dark:bg-amber-950/40 dark:text-amber-200" role="note" data-testid="assistant-notice">
+          <AlertTriangle className="mt-px size-3 shrink-0" /> {served.notice}
+        </p>
       )}
 
       <div ref={list} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-3 py-3" aria-live="polite" data-testid="assistant-messages">

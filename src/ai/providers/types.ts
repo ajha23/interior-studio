@@ -6,9 +6,18 @@
  */
 import type { AssistantRequest, AssistantResponse, ProviderErrorCode } from '../schema';
 
+export interface ServedBy {
+  provider: string;
+  model?: string;
+  /** Why a different provider answered, e.g. the chosen one has no key on the server. */
+  notice?: string;
+}
+
 export interface AssistantProvider {
   readonly id: string;
   readonly model?: string;
+  /** Which provider and model actually answered the last request (a server may substitute). */
+  readonly lastServed?: ServedBy | null;
   respond(request: AssistantRequest, signal?: AbortSignal): Promise<AssistantResponse>;
 }
 
