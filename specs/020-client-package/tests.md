@@ -11,3 +11,4 @@
   with undo and no design change; questions for ambiguity; approval for broad/destructive edits and
   refusal of outdated approvals; status and regeneration; title block fields.
 - `e2e/package.spec.ts` also adds a note, asks for outdated pages and approves an all-pages edit from chat.
+- Named 3D views: `engine/package/package.test.ts` (views, stored camera, caption keeps revision), `state/packageAssistant.test.ts` (capture planning), `e2e/package.spec.ts` (standard views captured, stale, captured again).

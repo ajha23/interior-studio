@@ -22,7 +22,9 @@ ever changing the design or falsifying a measurement.
 5. Status per page: current, presentation customized, technical content stale, needs review, missing
    source data. Stale = the page's content (not just the project) differs from what it shows; only
    affected pages go stale. Regenerate pins one page to the current design and keeps compatible edits.
-6. 3D snapshots record their revision and go stale on any design change.
+6. 3D snapshots record their revision and go stale on any design change. They store a named,
+   reproducible view (overall, wall runs, island, top, saved viewpoints) so they can be added in one
+   step and captured again after a change; caption edits never refresh a snapshot's revision.
 7. Studio title block (project, address, date, scale, client, drawn/approved/reference by, revision
    table, studio) on every page; nothing about the client or studio is invented.
 8. One vector PDF for the whole package (images embedded once as JPEG), SVG per page; stale pages
@@ -33,6 +35,6 @@ ever changing the design or falsifying a measurement.
     the real package, questions for ambiguity, Apply for broad/destructive/approved-revision edits.
 
 ## Not done (later slices)
-Chat-driven images and 3D captures; resizing/snap guides/multi-select; island and run-cropped elevations
+Adding reference images from chat; resizing/snap guides/multi-select; island and run-cropped elevations
 and section views (018 limitation: elevations are per wall); server-side storage and sharing;
 schedule column choice per page; cut lists in the package.

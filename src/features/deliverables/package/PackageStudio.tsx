@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, Copy, FileDown, FileText, Minus, Plus, Redo2, StickyNote, Trash2, Undo2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, Camera, Copy, FileDown, FileText, Minus, Plus, Redo2, StickyNote, Trash2, Undo2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { WALL_LABEL, WALLS, type WallId } from '@/domain';
 import { executePackageCommand, type PackageCommand } from '@/engine/package/commands';
@@ -13,6 +13,8 @@ import { useEditorStore } from '@/state/editorStore';
 import { packageContext, usePackageStore } from '@/state/packageStore';
 import { PackageInspector } from './PackageInspector';
 import { moveCommand, PageCanvas } from './PageCanvas';
+import { cameraAvailable, presentationViews, viewKeyOf } from '@/engine/package/views';
+import { captureViews, type CaptureTarget } from '@/state/packageCapture';
 
 const DOT: Record<PageStatus, string> = {
   current: 'bg-success',
@@ -35,6 +37,15 @@ export function PackageStudio() {
   const [preview, setPreview] = useState<PackageCommand | null>(null);
   const [addTemplate, setAddTemplate] = useState<Template>('elevation');
   const [addWall, setAddWall] = useState<WallId>('back');
+  const [capturing, setCapturing] = useState(false);
+  const capture = async (targets: CaptureTarget[]) => {
+    setCapturing(true);
+    try {
+      await captureViews(targets);
+    } finally {
+      setCapturing(false);
+    }
+  };
 
   // A drag previews its command on a copy of the package; nothing is stored until release.
   const shown = useMemo(() => {
@@ -102,6 +113,19 @@ export function PackageStudio() {
     if (r.ok) select(r.package.pages[index]!.notes.at(-1)!.id);
   };
   const staleCount = composed.filter((c) => c.status === 'stale').length;
+  // Standard views (not top or saved viewpoints) that no page shows yet.
+  const views = presentationViews(project);
+  const viewsShown = new Set(pkg.pages.flatMap((p) => (p.snapshot?.camera ? [viewKeyOf(p.snapshot.camera)] : [])));
+  const missingViews = views.filter((v) => (v.key === 'overall' || v.key.startsWith('run-') || v.key === 'island') && !viewsShown.has(v.key));
+  // Stale 3D pages whose view can be framed again.
+  const recapturable = (ps: typeof pkg.pages): CaptureTarget[] =>
+    ps.flatMap((p) => {
+      const cam = p.snapshot?.camera;
+      if (p.template !== 'presentation' || !cam || composed[pkg.pages.indexOf(p)]?.status !== 'stale' || !cameraAvailable(project, cam)) return [];
+      const view = views.find((v) => v.key === viewKeyOf(cam));
+      return view ? [{ pageId: p.id, view }] : [];
+    });
+  const staleViews = recapturable(pkg.pages);
 
   return (
     <div className="flex size-full min-h-0" data-testid="package-studio">
@@ -148,6 +172,9 @@ export function PackageStudio() {
           <Button size="xs" variant="outline" onClick={() => dispatch({ type: 'add-page', template: addTemplate, wallId: addTemplate === 'elevation' ? addWall : undefined, at: index + 1 })} data-testid="add-page">
             <Plus /> Add page
           </Button>
+          <Button size="xs" variant="ghost" disabled={capturing || !missingViews.length} onClick={() => capture(missingViews.map((view) => ({ pageId: null, view })))} title={missingViews.length ? `Adds a page for: ${missingViews.map((v) => v.label).join(', ')}` : 'Every standard view already has a page'} data-testid="add-standard-views">
+            <Camera /> {capturing ? 'Capturing…' : `Add standard 3D views${missingViews.length ? ` (${missingViews.length})` : ''}`}
+          </Button>
         </div>
       </nav>
 
@@ -162,6 +189,11 @@ export function PackageStudio() {
           <Button size="xs" variant="ghost" aria-label="Zoom in" onClick={() => setZoom((z) => Math.min(3, z + 0.25))}><Plus /></Button>
           {message && <span className={cn('ml-2 truncate', message.error ? 'text-destructive' : 'text-muted-foreground')} role="status" data-testid="package-message">{message.text}</span>}
           <div className="ml-auto flex gap-1">
+            {staleViews.length > 0 && (
+              <Button size="xs" variant="outline" disabled={capturing} onClick={() => capture(staleViews)} data-testid="recapture-stale">
+                <Camera /> Capture {staleViews.length} stale 3D view{staleViews.length === 1 ? '' : 's'} again
+              </Button>
+            )}
             {page && <Button size="xs" variant="outline" onClick={() => exportSvg(page.id)}><FileDown /> Page SVG</Button>}
             <Button size="xs" onClick={() => exportPdf()} data-testid="export-package-pdf" title={staleCount ? `${staleCount} stale page(s) will be marked STALE in the PDF` : undefined}>
               <FileText /> Package PDF
@@ -171,8 +203,12 @@ export function PackageStudio() {
         {current && current.status === 'stale' && page && (
           <div className="flex items-center gap-2 border-b bg-amber-500/10 px-3 py-1 text-xs text-amber-800 dark:text-amber-300" data-testid="stale-banner">
             {current.reasons[0]}
-            {page.template !== 'presentation' && (
+            {page.template !== 'presentation' ? (
               <Button size="xs" className="ml-auto" onClick={() => dispatch({ type: 'regenerate-page', pageId: page.id })}>Regenerate</Button>
+            ) : (
+              recapturable([page]).length > 0 && (
+                <Button size="xs" className="ml-auto" disabled={capturing} onClick={() => capture(recapturable([page]))}>Capture again</Button>
+              )
             )}
           </div>
         )}

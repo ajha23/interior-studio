@@ -8,7 +8,9 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { useEditorStore } from '@/state/editorStore';
 import { usePackageStore } from '@/state/packageStore';
-import { captureViewport, fileToJpeg } from './images';
+import { presentationViews, viewKeyOf } from '@/engine/package/views';
+import { captureViews } from '@/state/packageCapture';
+import { captureViewport, fileToJpeg } from '@/state/packageImages';
 
 /** A text field that commits on blur or Enter (one undo step per edit, not per keystroke). */
 function Field({ label, value, onCommit, multiline, testId, placeholder }: { label: string; value: string; onCommit: (v: string) => void; multiline?: boolean; testId?: string; placeholder?: string }) {
@@ -192,6 +194,52 @@ function ImagePicker({ label, onPicked, testId }: { label: string; onPicked: (as
   );
 }
 
+/** The 3D view of a presentation page: a named, reproducible view or the camera as it is now. */
+function SnapshotProps({ page }: { page: Page }) {
+  const dispatch = usePackageStore((s) => s.dispatch);
+  const project = useEditorStore((s) => s.project)!;
+  const views = presentationViews(project);
+  const stored = page.snapshot?.camera ? viewKeyOf(page.snapshot.camera) : page.snapshot ? 'free' : 'overall';
+  const [choice, setChoice] = useState(stored);
+  const [capturing, setCapturing] = useState(false);
+  const view = views.find((v) => v.key === choice);
+  const capture = async () => {
+    setCapturing(true);
+    try {
+      if (view) {
+        await captureViews([{ pageId: page.id, view }]);
+        return;
+      }
+      // The camera as it is now: an illustration that cannot be framed again automatically.
+      const jpeg = await captureViewport().catch((e: unknown) => (e instanceof Error ? e : new Error(String(e))));
+      if (jpeg instanceof Error) return void usePackageStore.setState({ message: { text: jpeg.message, error: true } });
+      if (!jpeg) return void usePackageStore.setState({ message: { text: 'Open the 3D view once so there is something to capture.', error: true } });
+      const id = await usePackageStore.getState().addImage({ ...jpeg, name: '3d-view.jpg' });
+      if (id) dispatch({ type: 'set-snapshot', pageId: page.id, snapshot: { assetId: id, caption: page.snapshot?.caption || 'Kitchen 3D view · illustration, not to scale' } });
+    } finally {
+      setCapturing(false);
+    }
+  };
+  return (
+    <>
+      <label className="grid gap-0.5 text-[11px] text-muted-foreground">
+        View
+        <Select value={choice} onChange={(e) => setChoice(e.target.value)} data-testid="snapshot-view">
+          {views.map((v) => <option key={v.key} value={v.key}>{v.label}</option>)}
+          <option value="free">Current 3D camera (as set up)</option>
+        </Select>
+      </label>
+      <p className="text-xs text-muted-foreground">
+        {view ? 'Named views are framed automatically and can be captured again after the design changes.' : 'Set the camera up in the 3D view or presentation mode first; this view cannot be framed again automatically.'} A snapshot is an illustration, not a dimensioned drawing, and is marked stale when the design changes.
+      </p>
+      <Button size="xs" className="justify-self-start" disabled={capturing} data-testid="capture-view" onClick={capture}>
+        <Camera /> {capturing ? 'Capturing…' : page.snapshot ? 'Capture again' : 'Capture the 3D view'}
+      </Button>
+      {page.snapshot && <Field label="Caption" value={page.snapshot.caption} onCommit={(caption) => dispatch({ type: 'set-snapshot-caption', pageId: page.id, caption })} />}
+    </>
+  );
+}
+
 const INFO_FIELDS: [keyof PackageInfo, string][] = [
   ['projectTitle', 'Project'],
   ['client', 'Client'],
@@ -207,7 +255,6 @@ const INFO_FIELDS: [keyof PackageInfo, string][] = [
 function PageProps({ pkg, page, composed }: { pkg: ClientPackage; page: Page; composed: ComposedPage }) {
   const dispatch = usePackageStore((s) => s.dispatch);
   const select = usePackageStore((s) => s.select);
-  const [capturing, setCapturing] = useState(false);
   const technical = TECHNICAL.includes(page.template);
   const hidden = composed.handles.filter((h) => h.hidden);
   const [rev, setRev] = useState({ no: '', date: '', description: '' });
@@ -274,31 +321,7 @@ function PageProps({ pkg, page, composed }: { pkg: ClientPackage; page: Page; co
             </div>
           </>
         )}
-        {page.template === 'presentation' && (
-          <>
-            <p className="text-xs text-muted-foreground">Captures the 3D view with its current camera (set it up in the 3D view or presentation mode first). A snapshot is an illustration, not a dimensioned drawing, and is marked stale when the design changes.</p>
-            <Button
-              size="xs"
-              className="justify-self-start"
-              disabled={capturing}
-              data-testid="capture-view"
-              onClick={async () => {
-                setCapturing(true);
-                try {
-                  const jpeg = await captureViewport();
-                  if (!jpeg) return void usePackageStore.setState({ message: { text: 'Open the 3D view once so there is something to capture.', error: true } });
-                  const id = await usePackageStore.getState().addImage({ ...jpeg, name: '3d-view.jpg' });
-                  if (id) dispatch({ type: 'set-snapshot', pageId: page.id, snapshot: { assetId: id, caption: page.snapshot?.caption ?? 'Kitchen 3D view · illustration, not to scale' } });
-                } finally {
-                  setCapturing(false);
-                }
-              }}
-            >
-              <Camera /> {page.snapshot ? 'Capture again' : 'Capture the 3D view'}
-            </Button>
-            {page.snapshot && <Field label="Caption" value={page.snapshot.caption} onCommit={(caption) => dispatch({ type: 'set-snapshot', pageId: page.id, snapshot: { assetId: page.snapshot!.assetId, caption } })} />}
-          </>
-        )}
+        {page.template === 'presentation' && <SnapshotProps page={page} />}
         {hidden.length > 0 && (
           <div className="grid gap-1 text-xs">
             <p className="text-[11px] text-muted-foreground">Hidden on this page</p>

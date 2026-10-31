@@ -274,6 +274,12 @@ export const PackageOpSchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('regenerate'), revision: z.enum(['current', 'approved']).default('current') }).strict(),
   z.object({ op: z.literal('set_info'), field: z.enum(['projectTitle', 'client', 'address', 'date', 'drawnBy', 'approvedBy', 'referenceBy', 'studio', 'studioAddress']), value: z.string().trim().max(160) }).strict(),
   z.object({ op: z.literal('title_block') }).strict(),
+  /** Captures the 3D view of the named presentation page(s): `view` by name ("overall", "back wall run", "island", "top", a saved viewpoint), else the page's own view. */
+  z.object({ op: z.literal('capture_view'), view: z.string().trim().max(60).optional() }).strict(),
+  /** Adds a page for each standard 3D view (overall, each wall run, island) that has none yet. */
+  z.object({ op: z.literal('add_views') }).strict(),
+  /** Captures every stale 3D view again with its stored camera. */
+  z.object({ op: z.literal('recapture_stale') }).strict(),
 ]);
 export type PackageOp = z.infer<typeof PackageOpSchema>;
 

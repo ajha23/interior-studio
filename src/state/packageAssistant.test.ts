@@ -7,7 +7,9 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { Conversation, type ChatMessage } from '@/ai/conversation';
 import { finalResponse } from '@/ai/providers/toolLoop';
 import { interpret, RuleBasedProvider } from '@/ai/providers/rules';
-import type { AssistantRequest } from '@/ai/schema';
+import type { AssistantRequest, PackageRequest } from '@/ai/schema';
+import { planPackageRequest } from '@/ai/packagePlan';
+import { newId } from '@/domain';
 import { designRevision } from '@/engine/deliverables/revision';
 import { composePage } from '@/engine/package/compose';
 import { lKitchen12x10 } from '@/test/kitchens';
@@ -137,6 +139,28 @@ describe('client package from chat and voice', () => {
     await say('Regenerate elevation A');
     expect(composePage(pkg(), page(/Elevation A/), packageContext()!).status).toBe('current');
     expect(composePage(pkg(), page(/Cabinet schedule/), packageContext()!).status).toBe('stale');
+  });
+
+  it('plans 3D captures by named view, for new pages and stale ones', () => {
+    const ops = (m: string) => {
+      const r = interpret(request(m));
+      return r.kind === 'package' ? r.request.ops : r.kind;
+    };
+    expect(ops('Add the standard 3D views')).toEqual([{ op: 'add_views' }]);
+    expect(ops('Capture the stale 3D views again')).toEqual([{ op: 'recapture_stale' }]);
+    expect(ops('Capture the back wall view')).toEqual([{ op: 'capture_view', view: 'back wall' }]);
+    expect(ops('Capture it again')).toEqual([{ op: 'capture_view' }]);
+
+    pkgStore().createStarter();
+    const plan = (r: PackageRequest) => planPackageRequest(pkg(), r, { project: editor().project!, now: new Date(), newId, ctx: packageContext()!, currentPageId: page(/3D view/).id, approved: null });
+    const added = plan({ ops: [{ op: 'add_views' }] });
+    expect(added.kind === 'result' && added.captures!.map((c) => [c.pageId, c.view.label])).toEqual([[null, 'Overall view'], [null, 'Back wall run'], [null, 'Left wall run']]);
+    const one = plan({ ops: [{ op: 'capture_view', view: 'back wall' }] });
+    expect(one.kind === 'result' && one.captures!.map((c) => [c.pageId, c.view.key])).toEqual([[page(/3D view/).id, 'run-back']]);
+    // The starter 3D page has no stored camera: the designer must say which view.
+    expect(plan({ ops: [{ op: 'capture_view' }] })).toMatchObject({ kind: 'question' });
+    expect(plan({ ops: [{ op: 'capture_view', view: 'garden' }] })).toMatchObject({ kind: 'question', text: expect.stringContaining('There is no 3D view called “garden”') });
+    expect(plan({ page: 'layout', ops: [{ op: 'capture_view' }] })).toMatchObject({ kind: 'question', text: expect.stringContaining('is not a 3D view page') });
   });
 
   it('fills the studio title block on every page', async () => {

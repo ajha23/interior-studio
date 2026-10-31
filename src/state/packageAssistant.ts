@@ -12,6 +12,7 @@ import { designRevision } from '@/engine/deliverables/revision';
 import type { ClientPackage } from '@/engine/package/schema';
 import { sourceProject, useDeliverablesStore } from './deliverablesStore';
 import { useEditorStore } from './editorStore';
+import { captureViews } from './packageCapture';
 import { packageContext, usePackageStore } from './packageStore';
 
 interface Pending {
@@ -43,6 +44,12 @@ export function packageReply(req: PackageRequest): DeliverableReply {
   });
   if (plan.kind === 'question') return { title: 'Client package', lines: [plan.text], actions: [{ label: 'Open the client package', action: 'package:open' }], revision };
   const open = { label: 'Open the page', action: `package:open${plan.openPageId ? `:${plan.openPageId}` : ''}` };
+  if (plan.captures?.length) {
+    // Capturing shows the 3D view briefly for each picture; the result arrives as the studio's message.
+    if (plan.next) store.applyPackage(plan.next, plan.lines.join(' '));
+    void captureViews(plan.captures).then(() => openStudio(plan.captures!.length === 1 ? (plan.captures![0]!.pageId ?? undefined) : undefined));
+    return { title: plan.title, lines: [...plan.lines, 'The 3D view is shown briefly for each picture.'], actions: [open], revision };
+  }
   if (!plan.next) return { title: plan.title, lines: plan.lines, actions: [open], revision };
   if (plan.approval) {
     const id = newId('pkgop');

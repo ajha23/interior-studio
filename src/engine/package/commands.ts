@@ -10,7 +10,7 @@ import { serializeProject, WALL_LABEL, WALLS, type KitchenProject, type WallId }
 import { DEFAULT_CONFIG, elevationWalls } from '../deliverables/set';
 import { designRevision } from '../deliverables/revision';
 import { elevationTitle, pageContentHash } from './compose';
-import { cleanText, TECHNICAL, TEMPLATE_LABEL, type Card, type ClientPackage, type Note, type Override, type Page, type PackageInfo, type Template } from './schema';
+import { cleanText, TECHNICAL, TEMPLATE_LABEL, type Card, type ClientPackage, type Note, type Override, type Page, type PackageInfo, type SnapshotCamera, type Template } from './schema';
 
 export type PackageCommand =
   | { type: 'rename-package'; name: string }
@@ -33,7 +33,9 @@ export type PackageCommand =
   | { type: 'update-card'; pageId: string; cardId: string; patch: Partial<Omit<Card, 'id'>> }
   | { type: 'remove-card'; pageId: string; cardId: string }
   | { type: 'move-card'; pageId: string; cardId: string; to: number }
-  | { type: 'set-snapshot'; pageId: string; snapshot: { assetId: string; caption: string } };
+  | { type: 'set-snapshot'; pageId: string; snapshot: { assetId: string; caption: string; camera?: SnapshotCamera } }
+  /** Updates only the caption of an existing snapshot (the image and its revision stay). */
+  | { type: 'set-snapshot-caption'; pageId: string; caption: string };
 
 export interface PackageEnv {
   project: KitchenProject;
@@ -321,8 +323,15 @@ export function executePackageCommand(pkg: ClientPackage, cmd: PackageCommand, e
       case 'set-snapshot': {
         const page = pageOf(d, cmd.pageId)!;
         if (page.template !== 'presentation') return void (error = '3D views go on a presentation page.');
-        page.snapshot = { assetId: cmd.snapshot.assetId, revision: designRevision(env.project), caption: cleanText(cmd.snapshot.caption).slice(0, 120) };
+        page.snapshot = { assetId: cmd.snapshot.assetId, revision: designRevision(env.project), caption: cleanText(cmd.snapshot.caption).slice(0, 120), ...(cmd.snapshot.camera ? { camera: cmd.snapshot.camera } : {}) };
         message = '3D view captured from the current design.';
+        break;
+      }
+      case 'set-snapshot-caption': {
+        const page = pageOf(d, cmd.pageId)!;
+        if (!page.snapshot) return void (error = 'Capture a 3D view first.');
+        page.snapshot.caption = cleanText(cmd.caption).slice(0, 120);
+        message = 'Caption updated.';
         break;
       }
     }

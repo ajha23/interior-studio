@@ -92,13 +92,19 @@ labels, images, captions, paper and orientation. Package edits have their own un
   edits. Edits whose element changed are listed as **needs review** and can be discarded.
 - Dimensions are always the model's measurements. Moving a label or line changes only the page;
   "Change the size in the design" opens the design.
-- Images are re-encoded to JPEG in the browser and stored per project; a 3D view is captured from the
-  3D camera and goes stale when the design changes.
+- Images are re-encoded to JPEG in the browser and stored per project.
+- 3D view pages store a named view (overall, each wall run, island, top, or a saved viewpoint) and
+  are framed automatically, so **Add standard 3D views** creates and captures them in one step and
+  **Capture … stale 3D views again** refreshes them after a design change. "Current 3D camera"
+  captures a hand-set view (not reproducible). Snapshots go stale on any design change; captions can
+  be edited without making a stale view look current. Capturing needs the window visible (the 3D
+  view does not draw in a hidden tab).
 - Export: one vector PDF (images embedded once), SVG per page. Stale pages say STALE in the title block.
 - Chat and voice: "add a note that the LED strip will be installed after the kitchen is completed",
   "change this page to landscape", "move the 900 mm dimension away from the cabinet", "make the
   hardware reference images larger", "create an elevation for the left wall", "regenerate elevation B
-  using the latest approved model", "which pages are outdated?". One-page edits apply at once;
+  using the latest approved model", "which pages are outdated?", "add the standard 3D views",
+  "capture the stale 3D views again", "capture the back wall view". One-page edits apply at once;
   several pages, deletions and approved-revision regeneration wait for Apply (docs/AI_ASSISTANT.md).
 - Code: `engine/package/*` (schema, commands, composition), `state/packageStore.ts`,
   `state/packageAssistant.ts`, `ai/packagePlan.ts`, `features/deliverables/package/*`.
@@ -108,5 +114,5 @@ labels, images, captions, paper and orientation. Package edits have their own un
   allowances are not modelled. Board counts are not nested.
 - Elevations are per wall (a run is shown on its wall's elevation).
 - History, approvals and client packages live in this browser (no server storage or accounts yet).
-- Client packages: elevations are per wall (no island or section views); chat can't add images or capture 3D views.
+- Client packages: elevations are per wall (no island or section views); chat can't add reference images (upload them in the studio).
 - XLSX is not offered (CSV opens in spreadsheets).

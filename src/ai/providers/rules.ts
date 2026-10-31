@@ -736,6 +736,14 @@ const INFO_FIELD: Record<string, Extract<PackageOp, { op: 'set_info' }>['field']
 function packageRequest(t: string, raw: string): AssistantResponse | null {
   const pkg = (ops: PackageOp[], page?: string): AssistantResponse => ({ kind: 'package', request: { ...(page ? { page } : {}), ops } });
   if (/\b(which|what) pages?\b.*\b(outdated|out of date|stale|need(s)? (updating|regenerat\w*))\b|\b(outdated|stale) pages\b\??$/.test(t) && !/\bregenerate\b/.test(t)) return pkg([{ op: 'status' }]);
+  if (/\badd (?:the |all )?(?:standard |default )?3d views?\b|\badd (?:a )?3d (?:page|view) for (?:each|every) (?:wall|run)\b/.test(t)) return pkg([{ op: 'add_views' }]);
+  if (/\b(capture|recapture|retake|refresh|update)\b.*\b(stale|outdated|old)\b.*\b3d views?\b|\b(recapture|retake)\b.*\b3d views\b|\bcapture (?:all )?(?:the )?3d views again\b/.test(t)) return pkg([{ op: 'recapture_stale' }]);
+  if (/^(?:capture|recapture|retake)(?: it| this(?: page)?)?(?: again)?$/.test(t)) return pkg([{ op: 'capture_view' }]);
+  const cap = /\b(capture|recapture|retake|take)\b (?:a |the )?(?:(.+?) )?(?:3d )?view\b(?: again)?/.exec(t);
+  if (cap && /\b(capture|recapture|retake)\b|\b3d\b/.test(t) && !/\bviews\b/.test(t)) {
+    const v = cap[2]?.replace(/\b(3d|this|page'?s?)\b/g, '').trim();
+    return pkg([{ op: 'capture_view', ...(v && v !== 'it' ? { view: v } : {}) }], pageRefIn(t.replace(cap[0], '')));
+  }
   if (/\bopen (the )?client package\b/.test(t)) return pkg([{ op: 'open' }], pageRefIn(t.replace(/client package/, '')));
 
   const note = /^(?:please\s+)?add (?:a |an )?note(?: (?:to|on) (.+?))?(?:\s+(?:that|saying|which says))?\s*[:,]?\s+(.+)$/i.exec(raw);

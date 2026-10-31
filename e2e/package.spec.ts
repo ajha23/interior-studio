@@ -115,3 +115,40 @@ test('Client package: pages, notes, label edits, stale detection, regeneration, 
   await approve.getByRole('button', { name: 'Apply' }).click();
   await expect(page.getByTestId('page-paper')).toHaveValue('A4');
 });
+
+/** Named 3D views: added in one step, framed automatically, captured again when the design changes. */
+test('Client package: standard 3D views are captured, go stale and are captured again', async ({ page }) => {
+  await page.goto('/');
+  await page.getByLabel('Project file').setInputFiles(FIXTURE);
+  await expect(page.locator('canvas[data-rendered]')).toBeVisible({ timeout: 30_000 });
+  await page.getByRole('button', { name: 'Deliverables' }).click();
+  await page.getByRole('navigation', { name: 'Sheets' }).getByRole('button', { name: /Client package/ }).click();
+  await page.getByTestId('create-package').click();
+
+  await page.getByTestId('add-standard-views').click();
+  await expect(page.getByTestId('package-message')).toContainText('Captured 3 3D views', { timeout: 20_000 });
+  for (const name of [/Overall view/, /Back wall run/, /Left wall run/]) {
+    await pageItem(page, name).click();
+    await expect(pageItem(page, name)).toHaveAttribute('data-status', 'current');
+    await expect(page.getByTestId('package-sheet').locator('image')).toHaveCount(1);
+  }
+  // Each view is a different picture.
+  const images = new Set<string>();
+  for (const name of [/Overall view/, /Back wall run/, /Left wall run/]) {
+    await pageItem(page, name).click();
+    images.add((await page.getByTestId('package-sheet').locator('image').getAttribute('href'))!);
+  }
+  expect(images.size).toBe(3);
+
+  await page.getByRole('button', { name: '3D', exact: true }).click();
+  await page.getByTestId('outline-base1').click();
+  const height = page.getByTestId('inspector-height');
+  await height.fill('750');
+  await height.press('Enter');
+  await expect(height).toHaveAttribute('data-mm', '750');
+  await page.getByRole('button', { name: 'Deliverables' }).click();
+  await expect(pageItem(page, /Back wall run/)).toHaveAttribute('data-status', 'stale');
+  await page.getByTestId('recapture-stale').click();
+  await expect(page.getByTestId('package-message')).toContainText('Captured 3 3D views', { timeout: 20_000 });
+  for (const name of [/Overall view/, /Back wall run/, /Left wall run/]) await expect(pageItem(page, name)).toHaveAttribute('data-status', 'current');
+});

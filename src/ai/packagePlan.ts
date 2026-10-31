@@ -10,6 +10,7 @@ import { shortRevision } from '@/engine/deliverables/revision';
 import { executePackageCommand, type PackageCommand, type PackageEnv } from '@/engine/package/commands';
 import { composePage, dragOverride, sheetNote, STATUS_LABEL, type PackageContext } from '@/engine/package/compose';
 import { TECHNICAL, TEMPLATE_LABEL, type ClientPackage, type Note, type Page } from '@/engine/package/schema';
+import { cameraAvailable, presentationViews, viewKeyOf, type PresentationView } from '@/engine/package/views';
 import type { PackageOp, PackageRequest } from './schema';
 
 export interface PackagePlanEnv extends PackageEnv {
@@ -31,11 +32,13 @@ export type PackagePlan =
       /** Broad, destructive or revision-changing edits wait for the designer's approval. */
       approval: boolean;
       openPageId?: string;
+      /** 3D views the app captures after this reply (pageId null = a new page). */
+      captures?: { pageId: string | null; view: PresentationView }[];
     };
 
 const question = (text: string): PackagePlan => ({ kind: 'question', text });
 const MUTATING_WITHOUT_PAGE = new Set<PackageOp['op']>(['set_info', 'add_page']);
-const NO_PAGE = new Set<PackageOp['op']>(['status', 'title_block', 'set_info', 'add_page', 'open']);
+const NO_PAGE = new Set<PackageOp['op']>(['status', 'title_block', 'set_info', 'add_page', 'open', 'add_views', 'recapture_stale']);
 
 /** Pages a reference names, or a question when it does not name exactly what is needed. */
 export function resolvePages(pkg: ClientPackage, ref: string | undefined, env: PackagePlanEnv): Page[] | string {
@@ -104,6 +107,14 @@ export function planPackageRequest(pkg: ClientPackage, req: PackageRequest, env:
   let approval = false;
   let openPageId: string | undefined;
   let targets: Page[] | null = null;
+  const captures: { pageId: string | null; view: PresentationView }[] = [];
+  const views = presentationViews(env.project);
+  const viewOf = (p: Page) => (p.snapshot?.camera && cameraAvailable(env.project, p.snapshot.camera) ? views.find((v) => v.key === viewKeyOf(p.snapshot!.camera!)) : undefined);
+  /** A view by what the designer called it: "overall", "back wall", "island", "top", a viewpoint name. */
+  const viewNamed = (name: string) => {
+    const n = name.toLowerCase().replace(/\b(the|view|run|3d)\b/g, ' ').replace(/\s+/g, ' ').trim();
+    return views.find((v) => v.key === n || v.label.toLowerCase().replace(/\b(view|run)\b/g, ' ').replace(/\s+/g, ' ').trim() === n) ?? views.find((v) => v.label.toLowerCase().includes(n));
+  };
   const needsPages = req.ops.some((o) => !NO_PAGE.has(o.op)) || req.ops.some((o) => o.op === 'open' && req.page);
   if (needsPages) {
     const r = resolvePages(work, req.page, env);
@@ -134,6 +145,28 @@ export function planPackageRequest(pkg: ClientPackage, req: PackageRequest, env:
         const empty = Object.entries(work.info).filter(([, v]) => !v).map(([k]) => k);
         lines.push(`Every page already carries the studio title block (project, client, address, date, scale, drawn/approved/reference by, revisions, studio).`);
         lines.push(empty.length ? `Still empty: ${empty.join(', ')}. Tell me the values, e.g. “set the client to …”.` : `All fields are filled in (${filled.length}).`);
+        break;
+      }
+      case 'add_views': {
+        const shown = new Set(work.pages.flatMap((p) => (p.snapshot?.camera ? [viewKeyOf(p.snapshot.camera)] : [])));
+        const missing = views.filter((v) => (v.key === 'overall' || v.key.startsWith('run-') || v.key === 'island') && !shown.has(v.key));
+        if (!missing.length) lines.push('Every standard 3D view already has a page.');
+        else {
+          captures.push(...missing.map((view) => ({ pageId: null, view })));
+          lines.push(`Adding a 3D page for: ${missing.map((v) => v.label).join(', ')}. Each is captured from the current design and can be captured again after changes.`);
+        }
+        break;
+      }
+      case 'recapture_stale': {
+        const stale = work.pages.filter((p) => p.template === 'presentation' && composePage(work, p, env.ctx).status === 'stale');
+        const again = stale.flatMap((p) => {
+          const view = viewOf(p);
+          return view ? [{ pageId: p.id, view }] : [];
+        });
+        const manual = stale.filter((p) => !viewOf(p));
+        captures.push(...again);
+        lines.push(again.length ? `Capturing ${again.length} stale 3D view${again.length === 1 ? '' : 's'} again: ${again.map((c) => c.view.label).join(', ')}.` : 'No stale 3D view can be captured again automatically.');
+        if (manual.length) lines.push(`Set these up by hand in the 3D view and capture them on their page: ${manual.map((p) => p.name).join(', ')}.`);
         break;
       }
       case 'open':
@@ -241,8 +274,16 @@ export function planPackageRequest(pkg: ClientPackage, req: PackageRequest, env:
         if (!err) lines.push(`“${page.name}” is now page ${to + 1}.`);
         return err;
       }
+      case 'capture_view': {
+        if (page.template !== 'presentation') return `${page.name} is not a 3D view page. Say “add the standard 3D views”, or add a 3D view page first.`;
+        const view = op.view ? viewNamed(op.view) : viewOf(page);
+        if (!view) return op.view ? `There is no 3D view called “${op.view}” (views: ${views.map((v) => v.label).join(', ')}).` : `${page.name} was captured from a hand-set camera; say which view to capture (${views.map((v) => v.label).join(', ')}).`;
+        captures.push({ pageId: page.id, view });
+        lines.push(`${page.name}: capturing the ${view.label.toLowerCase()} from the current design.`);
+        return null;
+      }
       case 'regenerate': {
-        if (!TECHNICAL.includes(page.template)) return `${page.name} is not generated from the design${page.template === 'presentation' ? '; capture the 3D view again instead' : ''}.`;
+        if (!TECHNICAL.includes(page.template)) return `${page.name} is not generated from the design${page.template === 'presentation' ? '; say “capture it again” instead' : ''}.`;
         let e: PackageEnv = env;
         if (op.revision === 'approved') {
           if (!env.approved) return 'No revision has been approved yet. Approve the design in Deliverables › Readiness first.';
@@ -266,6 +307,7 @@ export function planPackageRequest(pkg: ClientPackage, req: PackageRequest, env:
   if (!openPageId && targets?.length === 1) openPageId = targets[0]!.id;
   const changed = work !== pkg;
   const statusOnly = req.ops.every((o) => o.op === 'status');
+  if (captures.length) return { kind: 'result', title: 'Capturing 3D views', lines, next: changed ? work : null, approval: false, openPageId, captures };
   const title = statusOnly ? 'Package pages' : req.ops.every((o) => o.op === 'title_block') ? 'Title block' : changed ? (approval ? 'Package changes to approve' : 'Package updated') : 'Client package';
   if (targets && targets.length > 1 && changed) lines.unshift(`${changedPages.length} pages: ${targets.map((p) => p.name).join(', ')}.`);
   return { kind: 'result', title, lines, next: changed ? work : null, approval, openPageId };

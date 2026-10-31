@@ -59,6 +59,17 @@ export type Card = z.infer<typeof CardSchema>;
 /** The design revision a technical page was generated from, and a hash of what it showed. */
 export const SourceSchema = z.object({ revision: z.string().max(40), hash: z.string().max(40) });
 
+/**
+ * How a 3D snapshot was framed, so it can be captured again exactly: a standard camera preset, an
+ * element in focus (the island) or a saved viewpoint. Absent for a free camera (not reproducible).
+ */
+export const SnapshotCameraSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('preset'), preset: z.enum(['iso', 'top', 'front', 'left', 'right']) }),
+  z.object({ kind: z.literal('focus'), id: z.string().max(64) }),
+  z.object({ kind: z.literal('viewpoint'), id: z.string().max(64) }),
+]);
+export type SnapshotCamera = z.infer<typeof SnapshotCameraSchema>;
+
 export const PageSchema = z.object({
   id: Id,
   template: z.enum(TEMPLATES),
@@ -76,7 +87,8 @@ export const PageSchema = z.object({
   columns: z.number().int().min(1).max(6).optional(),
   cards: z.array(CardSchema).max(40).optional(),
   /** Presentation pages: a captured 3D view and the revision it shows. */
-  snapshot: z.object({ assetId: Id, revision: z.string().max(40), caption: Text(120) }).nullable().optional(),
+  // `camera` is optional, so packages saved before named views load unchanged (no version bump).
+  snapshot: z.object({ assetId: Id, revision: z.string().max(40), caption: Text(120), camera: SnapshotCameraSchema.optional() }).nullable().optional(),
 });
 export type Page = z.infer<typeof PageSchema>;
 

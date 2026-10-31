@@ -9,6 +9,7 @@ import { sheetToSvg } from '../deliverables/svg';
 import { createPackage, executePackageCommand, type PackageCommand, type PackageEnv } from './commands';
 import { composePackage, composePage, dragOverride, type PackageContext } from './compose';
 import { parsePackageFile, serializePackage, type ClientPackage } from './schema';
+import { cameraAvailable, presentationViews, viewKeyOf } from './views';
 
 const NOW = new Date('2026-10-31T10:00:00Z');
 const env = (project: KitchenProject, ids = sequentialIds()): PackageEnv => ({ project, now: NOW, newId: ids });
@@ -197,6 +198,24 @@ describe('client package', () => {
     expect(composePage(pkg, pkg.pages[5]!, ctx(p, assets)).status).toBe('current');
     const edited = executeCommand(p, { type: 'resize_cabinet', cabinetId: 'base1', dimensions: { width: 600, height: 750, depth: 560 } }).project;
     expect(composePage(pkg, pkg.pages[5]!, ctx(edited, assets)).status).toBe('stale');
+    // Editing the caption keeps the snapshot's revision: it does not make a stale view look current.
+    pkg = run(pkg, { type: 'set-snapshot-caption', pageId: view.id, caption: 'Kitchen — overall' }, env(edited));
+    expect(pkg.pages[5]!.snapshot).toMatchObject({ caption: 'Kitchen — overall', revision: designRevision(p) });
+    expect(composePage(pkg, pkg.pages[5]!, ctx(edited, assets)).status).toBe('stale');
+  });
+
+  it('names reproducible 3D views and stores the camera with the snapshot', () => {
+    const p = lKitchen12x10();
+    const views = presentationViews(p);
+    expect(views.map((v) => v.label)).toEqual(['Overall view', 'Back wall run', 'Left wall run', 'Top view']);
+    expect(views.map((v) => viewKeyOf(v.camera))).toEqual(views.map((v) => v.key));
+    const e = env(p);
+    let pkg = createPackage(e);
+    pkg = run(pkg, { type: 'set-snapshot', pageId: pkg.pages[5]!.id, snapshot: { assetId: JPEG.id, caption: 'Back', camera: views[1]!.camera } }, e);
+    const parsed = parsePackageFile(serializePackage(pkg, NOW));
+    expect(parsed.ok && parsed.package.pages[5]!.snapshot!.camera).toEqual({ kind: 'preset', preset: 'front' });
+    expect(cameraAvailable(p, { kind: 'focus', id: 'gone' })).toBe(false);
+    expect(cameraAvailable(p, { kind: 'focus', id: 'sink' })).toBe(true);
   });
 
   it('exports the whole package as one PDF with each image stored once', () => {
