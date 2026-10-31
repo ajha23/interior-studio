@@ -20,15 +20,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Typecheck
-        run: npx tsc -b
-      - name: Unit and property tests
-        run: npx vitest run
-      - name: Production build
-        run: npm run build
-        env:
-          VITE_SUPABASE_URL: https://pkbctmaiawztzmwqkpgw.supabase.co
-          VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_KpNjQ1QaBf1PaMi_aTuEIg_-5taFJ86
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
 
   e2e:
     runs-on: ubuntu-latest
@@ -40,12 +35,12 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
-      - name: End-to-end editor tests (mocked backend)
-        run: npx playwright test
+      - run: npx playwright install --with-deps chromium
+      - run: npm run e2e
+        env:
+          CI: 'true'
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: e2e-results
+          name: playwright-report
           path: test-results

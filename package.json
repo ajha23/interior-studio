@@ -1,27 +1,64 @@
 {
   "name": "interior-studio",
   "private": true,
-  "version": "0.2.0",
+  "version": "1.0.0-alpha.1",
   "type": "module",
-  "workspaces": [
-    "packages/*",
-    "apps/*"
-  ],
   "scripts": {
-    "dev": "npm run dev -w @studio/web",
-    "build": "npm run build -w @studio/web",
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "build:vercel": "npm run build && node scripts/build-vercel-output.mjs",
+    "preview": "vite preview",
+    "lint": "eslint .",
     "typecheck": "tsc -b",
     "test": "vitest run",
-    "check": "npm run typecheck && npm run test && npm run build",
-    "e2e": "playwright test"
-  },
-  "devDependencies": {
-    "@playwright/test": "^1.63.0",
-    "fast-check": "4.10.2",
-    "typescript": "5.9.3",
-    "vitest": "5.0.5"
+    "test:watch": "vitest",
+    "e2e": "playwright test",
+    "check": "npm run lint && npm run typecheck && npm run test && npm run build"
   },
   "engines": {
     "node": ">=22"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "1.3.0",
+    "@google/genai": "2.30.0",
+    "@react-three/drei": "10.7.9",
+    "@react-three/fiber": "9.8.2",
+    "@react-three/postprocessing": "3.2.2",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "immer": "11.2.9",
+    "lucide-react": "1.65.0",
+    "n8ao": "2.0.1",
+    "openai": "7.44.0",
+    "postprocessing": "6.39.5",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "tailwind-merge": "3.7.0",
+    "three": "0.186.1",
+    "zod": "4.6.7",
+    "zustand": "5.0.16"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.64.1",
+    "@tailwindcss/vite": "4.3.3",
+    "@testing-library/jest-dom": "7.0.1",
+    "@testing-library/react": "16.3.3",
+    "@testing-library/user-event": "14.6.8",
+    "@types/node": "26.6.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@types/three": "0.186.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "eslint": "10.13.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "fake-indexeddb": "6.2.7",
+    "globals": "17.13.0",
+    "jsdom": "30.1.3",
+    "tailwindcss": "4.3.3",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.1",
+    "vite": "8.3.5",
+    "vitest": "5.0.5"
   }
 }

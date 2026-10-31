@@ -1,66 +1,153 @@
 # Interior Studio
 
-In-house interior design platform: measured rooms, a synchronized 2D plan and 3D view, parametric wardrobes and TV units, construction checks, elevations, cut lists and print-ready sheets. Projects are saved to the cloud per studio, with full version history.
+A browser-based, dimension-driven modular kitchen designer: the first vertical slice of a wider
+interior-design and custom-furniture platform (see `docs/ROADMAP.md`).
 
-## Layout
+Create a room, start from a straight or L-shaped kitchen, click any unit in the 3D view or plan,
+edit its width/height/depth, position and finish, undo/redo, read a live bill of materials, and
+save projects locally.
 
-```
-apps/web            React app (Vite): workspace, editor, Supabase client
-  src/auth          Google sign-in, studio membership, roles
-  src/data          Project, version and team queries
-  src/pages         Home, Projects, Team, Editor
-  src/editor        Plan, 3D, properties, drawings; cloud-saving store
-packages/core       Framework-free domain: units, scene types, commands,
-                    parametric furniture, geometry, validation, schedules,
-                    scene hashing and schema migrations
-supabase/migrations Database schema, row-level security, seed
-```
+CAD-style working: double-click a unit (or **F**) to fly to it, **Home** for zoom extents, ViewCube,
+perspective/parallel projection, walls that cut away automatically, Realistic / Edges / X-ray
+styles, drag units along walls (3D or plan) with snapping, a grip to drag widths, **Tab** to cycle
+units, and a command line (**/**): `w 900`, `m 1200`, `m +50`, `e`, `u`, `ze`, `f`, `finish oak`,
+`add base 600`, `help`.
 
-## How saving works
+Free design: drag any unit anywhere — near a wall it snaps onto it, elsewhere it becomes a
+free-standing island (**R** rotates). Blue / green / amber grips resize width, height and depth in
+3D (any millimetre in range; standard sizes snap). Each cabinet has a configurable **interior**:
+sections, shelves (wood or glass), internal drawers, hanging rails, plate racks, bottle racks and
+baskets, with solid, glass or open fronts and presets (crockery, wardrobe, pantry, drawers, bottles,
+split, N shelves). Drag shelves and dividers in the interior elevation; **I** shows interiors in 3D.
 
-- Every edit is a typed `Command` with an exact inverse (undo/redo, audit, later AI tools).
-- The editor autosaves 2.5 s after the last edit. Each save is an immutable row in `project_versions` (scene JSON, schema version, SHA-256 of the canonical scene) created by the `save_project_version` RPC, which checks the caller's role.
-- Unchanged scenes are not re-saved. A local draft is kept in the browser until the cloud confirms, and is offered back after a crash or lost connection.
-- "Save version" stores a named version; History restores any version as one undoable step.
-- Scenes carry `schemaVersion`; `apps/web/src/editor/migrations.ts` upgrades old scenes on load.
+Real-life interaction: press **H** (Interact) and click any door, drawer, basket or appliance door to
+open it — doors swing on their hinges, drawers slide out with their boxes, oven and dishwasher doors
+fold down — or grab a handle and pull. Inner drawers open their door first. Opening things is not a
+design change (not saved or undoable).
 
-## Catalogue and materials
+Walk through it: press **V** to stand in the room at eye height (standing, seated or child). Walk with
+**W A S D**, turn with **Q / E** or by dragging, click the floor or the mini-map to go somewhere, and
+press **F** (or double-click) on a unit to stand right in front of it — e.g. at the cooktop. Open,
+drag and edit everything from where you stand, and save named viewpoints to come back to.
 
-- `packages/core/src/catalog/library.ts` — built-in catalogue (68 pieces). Each piece builds its parts from the size you give it, so every piece resizes exactly. Ids are stored in scenes; never rename one.
-- `packages/core/src/materials/library.ts` — 54 floor, wall and furniture materials with procedural patterns (planks, herringbone, tiles, marble, brick, stone, stripes, fabric). The same tile drives the plan, the 3D view and the swatches.
-- Wall faces can carry their own finish (`wall.finishes.pos/neg`); otherwise a face shows the colour of the room it faces.
-- Studio models: designers upload `.glb` files to the private `models` bucket (`<org_id>/<id>.glb` + thumbnail); rows live in `catalog_models` with org-scoped RLS.
+Doors, windows and openings: add them from the library (or `add door 900`), drag them along a wall on
+the plan, set width, height, sill, swing and hinge side. They cut into the 3D walls, show on the plan
+with door swings, and units are kept out of doorways, door swings and from covering windows.
 
-## AI studio
+Design checks: the **Checks** panel (and the status bar) warns about doors, drawers and appliance
+doors that would hit something when opened, walkways under 900 mm, wall cabinets less than 450 mm
+above the worktop, a hood outside 650–750 mm above the hob, tall units beside the hob, and shows the
+sink–hob–fridge work triangle. Warnings never block an edit; the amber area shows the space involved.
 
-- Edge functions `ai-image` (Gemini image model) and `ai-model` (Gemini text model → furniture *recipe* JSON: shaped parts, mm sizes, studio material ids) run with the studio's credit pool (`ai_credit_ledger`, monthly allowance in `ai_settings`, atomic debit via `ai_debit`, refunds on failure).
-- Secrets (set in Supabase → Edge Functions → Secrets; never in the app): `GEMINI_API_KEY` (the only provider key). Optional overrides: `GEMINI_IMAGE_MODEL` (default `gemini-3.1-flash-image`), `GEMINI_TEXT_MODEL` (default `gemini-3.6-flash`, falls back to `gemini-2.5-flash`).
-- Cloud renders: `workers/blender` (Blender Cycles on Cloud Run, Mumbai) — see its README. The Renders panel shows "Cloud · Blender Cycles" when `VITE_BLENDER_WORKER_URL` is set; renders carry `engine` = browser | cycles | ai.
-- AI 3D models: the recipe format lives in `packages/core/src/recipe` (`sanitizeRecipe`, `resizeRecipe`); the browser builds it with three.js (`apps/web/src/recipe/build.ts`), previews it, lets the designer resize/refine, then exports GLB into Studio models and keeps the recipe in `catalog_models.recipe`. The same format is meant to be built by a future Blender worker.
-- AI images land in the project's render gallery (`renders.kind = 'ai'`); AI models are imported into Studio models (`source_format = 'ai'`), scaled to the size the designer gives.
+Units and views: show and type lengths in mm, cm, m, inches, feet or feet & inches (top bar);
+every field accepts any unit (`12' 6"`, `381 cm`, `3.81 m`) and geometry is always stored in whole
+millimetres. **Split** shows the plan and 3D side by side; the plan has a grid and wall labels; click
+a wall (plan or 3D) to inspect it. Room presets, plus dining tables, chairs and sofas. The Library
+and Properties panels can each be hidden (the button in their header) and shown again from the slim
+strip left behind; the choice is remembered. Below 1280 px the side panels become drawers.
 
-## Access
+Drawings: the **Drawings** view is a set of A3 sheets with a title block — the plan, an elevation of
+every wall in use (fronts, handles, worktops, windows and doors, dimension chains and height marks),
+the cabinet schedule (units numbered C1…, A1… on every sheet) and the cut list with panels, edge
+banding, glass, worktops, hardware and a board estimate. Print or save as PDF, download SVG, or
+download the cut list as CSV for the workshop.
 
-- Google sign-in through Supabase Auth. Access is invite-only: an admin invites an email on the Team page; the person gets the role on first sign-in.
-- Roles: owner, admin (manage team, archive), designer (create and edit), viewer (read-only).
-- Every table has row-level security keyed on studio membership; helper functions live in a non-exposed `private` schema.
-
-## Develop
+## Quick start
 
 ```bash
 npm install
-cp apps/web/.env.example apps/web/.env.local
-npm run dev          # http://localhost:5173
-npm run check        # typecheck + tests + production build
+npm run dev            # http://localhost:5173
 ```
 
-Lengths are integer micrometres internally; the UI shows millimetres. The default construction rule pack is illustrative and needs carpenter review before any cut list is used for production.
+| Script | What it does |
+| --- | --- |
+| `npm run dev` | Vite dev server |
+| `npm run build` | Typecheck and production build to `dist/` |
+| `npm run lint` | ESLint (includes the domain-purity import rule) |
+| `npm run typecheck` | `tsc -b` |
+| `npm test` | Vitest: domain, geometry, persistence, store and component tests |
+| `npm run e2e` | Playwright end-to-end tests (first run: `npx playwright install chromium`) |
+| `npm run check` | lint + typecheck + test + build |
+| `npm run build:vercel` | Build plus `.vercel/output` (static app and the `/api/assistant` function) |
 
-## Editor architecture (Sprint 1)
+## Stack
 
-- **Workspace:** top bar (views, undo/redo, share, overflow menu) · tool rail (Select V, Wall W, Room M, Door D, Window N, Paint B, Comment C) · left panel (Add, Catalogue, Materials, Scene) · plan/3D viewport · inspector · status bar.
-- **Scene model:** typed `Project` (schema v6, µm integers) changed only through invertible `Command`s → undo/redo, autosave (2.5 s) to `project_versions`.
-- **Kitchen cabinets** (`basecabinet`, `wallcabinet`, `tallcabinet`): parametric templates with one limits table each, regenerated parts for 3D, plan, elevations and cut lists. **Kitchen runs:** select a wall → Kitchen run → base/wall/tall units fill its free length (or say “fill this wall with base cabinets”).
-- **AI command bar (⌘K):** request → deterministic parser or `ai-command` (Gemini function calling) → validated scene tools → one undoable batch → autosave. See `docs/adr/0002-scene-tools-and-ai-commands.md`.
-- **Tests:** `npm test` (Vitest, core) and `npm run e2e` (Playwright driving the real editor route with an in-memory Supabase mock in `e2e/backend.ts`).
-- **Quote & BOM (Sprint 3):** Quote view → client quotation (per piece, GST, print/PDF), workshop BOM (sheets, banding, worktops, hardware), studio rates (admins), saved numbered quotes. See `docs/adr/0003-bom-and-quotes.md`.
+React 19, TypeScript, Vite · Three.js with React Three Fiber and Drei · Tailwind CSS v4 with
+shadcn/ui-style components · Zustand + Immer · Zod · IndexedDB · Vitest, React Testing Library, Playwright.
+
+## How it fits together
+
+```
+features/ (UI)  ──dispatch(DesignCommand)──▶  state/editorStore  ──▶  domain/commands/executeCommand
+      ▲                                              │                       │ Zod parse → size rules →
+      │                                              ▼                       │ Immer draft → invariants
+rendering/ (R3F) ◀── project (immutable) ── undo/redo snapshots              ▼
+engine/geometry/parts (procedural parts, mm)                     new project or readable errors
+persistence/ (IndexedDB, versioned JSON files)
+```
+
+Lengths are integer millimetres everywhere in the domain and are converted to metres only in
+`src/rendering/units.ts`. Read `AGENTS.md` before changing code, and `docs/` for the product,
+architecture and domain model.
+
+## Whole homes
+
+**New home** on the projects page (or “design a 3BHK apartment” to the assistant) plans and
+furnishes a complete 1–6 BHK apartment or two-floor villa in one style: bedrooms with beds,
+wardrobes and baths, living, dining, kitchen, utility, pooja room, balcony, staircase. See it as a
+floor plan or a 3D dollhouse, restyle every room at once, change any room's size, name or use, and
+open any room in the full editor to refine it. Details: `docs/HOMES.md`.
+
+## Realistic look
+
+The 3D view renders textured finishes (wood, planks, marble, tile, terrazzo, plaster…) at real size
+with soft image-based light and ambient occlusion (High quality; Fast for slower computers). **Photo**
+in the 3D toolbar makes an AI photoreal render of the current view for clients. Attach photos or a
+video of a look you like in the assistant chat, and it proposes matching finishes (or layout, or
+room size). The assistant can also act in the room: “open the fridge”, “walk to the sink”, “show the
+top view”. Details: `docs/REALISM.md`.
+
+## Design assistant
+
+The round **assistant button** in the bottom-right corner opens a chat window that edits the design
+from plain language (“Add a 600 mm dishwasher next to the sink”). Every change is previewed (sizes and positions before → after,
+validation, warnings) and applied only when you approve, as one undo step. Pick the AI provider —
+Google Gemini (default), Anthropic Claude or OpenAI — and one of its five listed models in the panel
+settings. Each needs its key on the server (`GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`
+in `.env.local` for `npm run dev`, project environment variables on Vercel; see `.env.example`);
+without a key the built-in rules answer and the panel says so. Details: `docs/AI_ASSISTANT.md`.
+
+The microphone button in the panel lets you **speak** requests instead (Chrome, Edge, Safari); they
+go through exactly the same previews and approval, and you can say “apply” or “reject”. Replies
+are spoken in a voice you pick in the settings: Gemini voices (default), ChatGPT voices or the
+browser's own; the first two use the server's Gemini / OpenAI key, and the browser's voice steps in
+without one. The conversation button next to the microphone starts a **hands-free voice
+conversation** (like Gemini Live or ChatGPT voice): with a Gemini key on the server it streams speech
+both ways with Gemini Live (replies start about a second after you stop talking, you can talk over
+them, and the assistant cannot hear itself); every spoken edit is still previewed and needs your
+“apply”. It ends when you press End, say “goodbye”, or stay quiet for a while.
+Details, browser support and privacy: `docs/VOICE.md`.
+
+Whole-layout goals work too (“Convert this L-shaped kitchen into a U-shaped kitchen, keep the sink
+wall, maximise storage”): a deterministic planner generates and checks alternatives you can compare,
+preview in the plan and 3D, and apply as one undoable step. See `docs/LAYOUT_AGENT.md`.
+
+## Deliverables
+
+**Deliverables** turns the design into a dimensioned floor plan, wall elevations, a cabinet schedule
+and a bill of materials, checks readiness for presentation, drawings and manufacturing, and exports
+PDF, SVG and CSV. Every file names the design revision it came from and shows as stale after a change.
+Manufacturing outputs need a construction method (Readiness › Manufacturing settings). Presentation
+mode shows the 3D model without editing tools. See `docs/DELIVERABLES.md`.
+
+## Project files
+
+Projects are saved in this browser (IndexedDB). **Export** downloads a `.kitchen.json` file with a
+schema version; **Import project file** on the home screen loads one, running migrations and
+validation first. Clearing site data deletes local projects, so export anything you want to keep.
+
+## Status
+
+Phase 1 (M0–M6), the Phase 1 gaps, Phase 2 (chat-driven design editing), Phase 3 (voice) and a
+first version of Phase 4 (layout design agent) and Phase 5 (production deliverables) are implemented. Not yet: cloud persistence and accounts. See
+`docs/ROADMAP.md` and `docs/DECISIONS.md` (including where the previous Supabase-based app lives).
