@@ -111,6 +111,29 @@ describe('generated files and revisions', () => {
     editor().undo();
     expect(editor().project!.production.constructionId).toBeUndefined();
   });
+
+  it('generates factory 16-column OptiCut CSV and Indian GST quotation CSV', () => {
+    const opticut = store().generate('opticut-csv')!;
+    expect(opticut).toBeDefined();
+    expect(opticut.fileName).toContain('opticut-16col.csv');
+    expect(String(opticut.data)).toContain('Module,Part,Material,CuttingLength,CuttingWidth,Thickness,Qty,Grain');
+    expect(String(opticut.data)).toContain('Left Side (Gable)');
+
+    const quotation = store().generate('quotation-csv')!;
+    expect(quotation).toBeDefined();
+    expect(quotation.fileName).toContain('quotation-gst.csv');
+    expect(String(quotation.data)).toContain('9403.40.00');
+    expect(String(quotation.data)).toContain('9954.79');
+    expect(String(quotation.data)).toContain('TOTAL');
+
+    const dxf = store().generate('dxf-plan')!;
+    expect(dxf).toBeDefined();
+    expect(dxf.fileName).toContain('cad-plan.dxf');
+    expect(String(dxf.data)).toContain('AC1009');
+    expect(String(dxf.data)).toContain('WALLS');
+    expect(String(dxf.data)).toContain('CABINETS');
+    expect(String(dxf.data)).toContain('EOF');
+  });
 });
 
 describe('presentation mode', () => {

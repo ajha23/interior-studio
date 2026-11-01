@@ -8,6 +8,7 @@
  */
 import { z } from 'zod';
 import { LENGTH_UNITS } from '@/engine/measurement/units';
+import { MepPointSchema } from './mep/schema';
 
 export const SCHEMA_VERSION = 2;
 
@@ -244,10 +245,13 @@ export const KitchenProjectSchema = z.object({
   preferences: z.object({ unit: z.enum(LENGTH_UNITS) }).default({ unit: 'mm' }),
   /** Doors, windows and openings; optional and defaulted like `viewpoints`. */
   openings: z.array(OpeningSchema).max(40).default([]),
+  /** MEP service points (electrical, plumbing, chimney duct); optional and defaulted. */
+  mep: z.array(MepPointSchema).max(100).default([]),
   /** Workshop settings; optional and defaulted (no schema bump). */
   production: ProductionSettingsSchema.default({}),
 });
 export type KitchenProject = z.infer<typeof KitchenProjectSchema>;
+export { MepPointSchema, type MepPoint, MepKindSchema, type MepKind } from './mep/schema';
 
 export function isCabinet(el: KitchenElement): el is KitchenCabinet {
   return 'interior' in el;

@@ -19,10 +19,15 @@ import { bomCsv, buildDrawingSet, DEFAULT_CONFIG, elevationWalls, scheduleCsv, t
 import { sheetToSvg } from '@/engine/deliverables/svg';
 import { cutList, cutListCsv } from '@/engine/production/cutlist';
 import { constructionOf } from '@/engine/deliverables/construction';
+import { SEED_RULE_PACK_V1 } from '@/domain/manufacturing/rulePack';
+import { explodeScene } from '@/engine/manufacturing/explode';
+import { exportOptiCutCsv } from '@/engine/manufacturing/opticutCsv';
+import { calculateQuotation, type QuotationLineItem } from '@/engine/commercial/gst';
+import { exportPlanDxf } from '@/engine/deliverables/dxf';
 import type { LengthUnit } from '@/engine/measurement/units';
 import { useEditorStore } from './editorStore';
 
-export type DeliverableKind = 'pdf-set' | 'pdf-sheet' | 'svg-sheet' | 'schedule-csv' | 'bom-csv' | 'cutlist-csv';
+export type DeliverableKind = 'pdf-set' | 'pdf-sheet' | 'svg-sheet' | 'schedule-csv' | 'bom-csv' | 'cutlist-csv' | 'opticut-csv' | 'quotation-csv' | 'dxf-plan';
 
 export const KIND_LABEL: Record<DeliverableKind, string> = {
   'pdf-set': 'Drawing set (PDF)',
@@ -31,6 +36,9 @@ export const KIND_LABEL: Record<DeliverableKind, string> = {
   'schedule-csv': 'Cabinet schedule (CSV)',
   'bom-csv': 'Bill of materials (CSV)',
   'cutlist-csv': 'Cut list (CSV)',
+  'opticut-csv': 'OptiCut 16-col (CSV)',
+  'quotation-csv': 'Quotation & GST (CSV)',
+  'dxf-plan': 'CAD Floor Plan (DXF)',
 };
 
 export interface Approval {
@@ -200,6 +208,61 @@ export const useDeliverablesStore = create<DeliverablesState>()((set, get) => ({
       mime = 'text/csv;charset=utf-8';
       data = bomCsv(s.project);
       if (!buildBom(s.project).complete) warnings.unshift('Partial BOM: some cabinets have no verified construction rules.');
+    } else if (kind === 'opticut-csv') {
+      const pkg = explodeScene(s.project.cabinets, SEED_RULE_PACK_V1, s.project.name);
+      fileName = `${base}-opticut-16col.csv`;
+      mime = 'text/csv;charset=utf-8';
+      data = exportOptiCutCsv(pkg);
+    } else if (kind === 'quotation-csv') {
+      const pkg = explodeScene(s.project.cabinets, SEED_RULE_PACK_V1, s.project.name);
+      const items: QuotationLineItem[] = [
+        {
+          id: 'item_carcase',
+          description: '18mm Carcase Panels (Factory Pre-drilled 32mm System)',
+          code: '9403.40.00',
+          type: 'goods',
+          quantity: Math.max(1, Math.round(pkg.summary.totalCarcaseAreaSqM * 10) / 10),
+          unit: 'sqm',
+          unitRatePaise: 240000,
+        },
+        {
+          id: 'item_shutters',
+          description: '18mm Shutters & Fronts with 2.0mm ABS Edge Banding',
+          code: '9403.40.00',
+          type: 'goods',
+          quantity: Math.max(1, Math.round(pkg.summary.totalShutterAreaSqM * 10) / 10),
+          unit: 'sqm',
+          unitRatePaise: 360000,
+        },
+        {
+          id: 'item_installation',
+          description: 'On-site Installation & Precision Alignment',
+          code: '9954.79',
+          type: 'services',
+          quantity: Math.max(1, s.project.cabinets.length),
+          unit: 'nos',
+          unitRatePaise: 120000,
+        },
+      ];
+      const quote = calculateQuotation(`QT-${s.project.id.slice(0, 6).toUpperCase()}`, items, 'INTRA_STATE');
+      fileName = `${base}-quotation-gst.csv`;
+      mime = 'text/csv;charset=utf-8';
+      const csvLines = [
+        'Item,HSN_SAC,Type,Qty,Unit,Rate_INR,Taxable_INR,CGST_INR,SGST_INR,Total_INR',
+        ...quote.items.map((it) => {
+          const taxable = (it.quantity * it.unitRatePaise) / 10000;
+          const cgst = taxable * 0.09;
+          const sgst = taxable * 0.09;
+          const total = taxable + cgst + sgst;
+          return `"${it.description}",${it.code},${it.type},${it.quantity},${it.unit},${it.unitRatePaise / 100},${taxable},${cgst},${sgst},${total}`;
+        }),
+        `"TOTAL",,,,,"${quote.formatted.totalTaxable}","${quote.formatted.totalTax}","${quote.formatted.grandTotal}"`,
+      ];
+      data = csvLines.join('\r\n');
+    } else if (kind === 'dxf-plan') {
+      fileName = `${base}-cad-plan.dxf`;
+      mime = 'application/dxf';
+      data = exportPlanDxf(s.project);
     } else {
       const rules = constructionOf(s.project.production.constructionId);
       if (!rules) return null;

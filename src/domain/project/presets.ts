@@ -142,6 +142,7 @@ export function createProject(input: { name: string; room: Room; layout: Layout;
     viewpoints: [],
     openings: [],
     furniture: [],
+    mep: [],
     preferences: { unit: input.unit ?? 'mm' },
     production: {},
     ...buildLayout(input.room, input.layout, makeId),

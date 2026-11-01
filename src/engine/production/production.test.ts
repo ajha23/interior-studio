@@ -9,7 +9,7 @@ const straight = () => createProject({ name: 'p', room: DEFAULT_ROOM, layout: 's
 
 function single(): KitchenProject {
   const base = makeCabinet(DEFAULT_ROOM, { id: 'b', type: 'base', wallId: 'back', offset: 0, dimensions: { width: 600, height: 720, depth: 560 }, materialId: 'shutter-oak' });
-  return { schemaVersion: SCHEMA_VERSION, id: 'p', name: 'One', room: DEFAULT_ROOM, surfaces: { ...DEFAULT_SURFACES }, materials: libraryMaterials(), cabinets: [base], appliances: [], viewpoints: [], openings: [], furniture: [], preferences: { unit: 'mm' }, production: {} };
+  return { schemaVersion: SCHEMA_VERSION, id: 'p', name: 'One', room: DEFAULT_ROOM, surfaces: { ...DEFAULT_SURFACES }, materials: libraryMaterials(), cabinets: [base], appliances: [], viewpoints: [], openings: [], furniture: [], mep: [], preferences: { unit: 'mm' }, production: {} };
 }
 
 describe('schedule and references', () => {

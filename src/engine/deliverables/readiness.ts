@@ -6,6 +6,7 @@
  */
 import { allElements, validateProject, type KitchenProject } from '@/domain';
 import { designChecks } from '../checks/designChecks';
+import { checkMepSafety } from '../checks/mepChecks';
 import { buildModel } from '../geometry/parts';
 import { unitRefs } from '../production/schedule';
 import { constructionOf } from './construction';
@@ -55,6 +56,7 @@ export function checkReadiness(project: KitchenProject, revision: string): Readi
   for (const i of validateProject(project)) add('blocking', ['drawings', 'manufacturing'], `geometry-${i.code}`, `Unresolved geometry conflict: ${i.message}`, i.entityIds);
   if (validateProject(project).length) add('warning', ['presentation'], 'geometry', 'The design has unresolved conflicts; the presentation shows them as modelled.');
   for (const c of designChecks(project).filter((x) => x.severity === 'warning')) add('warning', ['drawings', 'manufacturing'], `check-${c.code}`, c.message, c.entityIds);
+  for (const m of checkMepSafety(project)) add(m.severity, ['drawings', 'manufacturing'], `mep-${m.code}`, m.message, m.elementId ? [m.elementId] : []);
 
   const rules = constructionOf(project.production.constructionId);
   if (!project.production.constructionId) add('blocking', ['manufacturing'], 'no-construction', 'No construction method is chosen, so there are no panel thicknesses, joinery or edge-banding rules. Choose one in Deliverables › Manufacturing settings.');
