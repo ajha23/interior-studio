@@ -16,7 +16,8 @@ export type FeatureKey =
   | 'drawings.dxf'
   | 'accounting.export'
   | 'ai.layout'
-  | 'custom_rulepack';
+  | 'custom_rulepack'
+  | 'sheet.nesting';
 
 export interface PlanFeatures {
   maxActiveProjects: number; // -1 indicates unlimited
@@ -26,6 +27,7 @@ export interface PlanFeatures {
   accountingExport: boolean;
   aiLayout: boolean;
   customRulepack: boolean;
+  sheetNesting: boolean;
 }
 
 export interface PlanDefinition {
@@ -52,6 +54,7 @@ export const PLANS: Record<PlanTier, PlanDefinition> = {
       accountingExport: false,
       aiLayout: false,
       customRulepack: false,
+      sheetNesting: false,
     },
   },
   starter: {
@@ -68,6 +71,7 @@ export const PLANS: Record<PlanTier, PlanDefinition> = {
       accountingExport: false,
       aiLayout: true,
       customRulepack: false,
+      sheetNesting: false,
     },
   },
   pro: {
@@ -84,6 +88,7 @@ export const PLANS: Record<PlanTier, PlanDefinition> = {
       accountingExport: true,
       aiLayout: true,
       customRulepack: false,
+      sheetNesting: true,
     },
   },
   enterprise: {
@@ -100,6 +105,7 @@ export const PLANS: Record<PlanTier, PlanDefinition> = {
       accountingExport: true,
       aiLayout: true,
       customRulepack: true,
+      sheetNesting: true,
     },
   },
   inhouse: {
@@ -116,6 +122,7 @@ export const PLANS: Record<PlanTier, PlanDefinition> = {
       accountingExport: true,
       aiLayout: true,
       customRulepack: true,
+      sheetNesting: true,
     },
   },
 };
@@ -227,6 +234,18 @@ export function checkEntitlement(
           reason: 'Custom tenant manufacturing rule packs require an Enterprise plan.',
           currentTier: tier,
           minRequiredTier: 'enterprise',
+        };
+      }
+      return { allowed: true, currentTier: tier };
+    }
+
+    case 'sheet.nesting': {
+      if (!plan.features.sheetNesting) {
+        return {
+          allowed: false,
+          reason: '2D Sheet Nesting and cutting layout optimization requires a Pro or Enterprise plan.',
+          currentTier: tier,
+          minRequiredTier: 'pro',
         };
       }
       return { allowed: true, currentTier: tier };

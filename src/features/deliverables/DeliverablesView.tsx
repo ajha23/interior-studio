@@ -1,4 +1,4 @@
-import { AlertTriangle, BookOpen, CheckCircle2, Download, FileSpreadsheet, FileText, History, Layers, MonitorPlay, Receipt, RefreshCw, ShieldAlert, ShieldCheck, Table2 } from 'lucide-react';
+import { AlertTriangle, BookOpen, CheckCircle2, Download, FileSpreadsheet, FileText, History, Layers, MonitorPlay, Receipt, RefreshCw, Scissors, ShieldAlert, ShieldCheck, Table2 } from 'lucide-react';
 import { useMemo, type ReactNode } from 'react';
 import { buildBom } from '@/engine/deliverables/bom';
 import { SCALES, type Paper, type ScaleChoice } from '@/engine/deliverables/drawing';
@@ -20,6 +20,7 @@ import { QuotationPanel } from './QuotationPanel';
 import { ReadinessPanel } from './ReadinessPanel';
 import { ScheduleTable } from './ScheduleTable';
 import { TileSchedulePanel } from './TileSchedulePanel';
+import { CuttingLayoutsPanel } from '@/features/manufacturing/CuttingLayoutsPanel';
 import { useBillingStore, useEntitlement } from '@/state/billingStore';
 import { UpgradeModal } from '@/features/billing/UpgradeModal';
 
@@ -97,6 +98,7 @@ export function DeliverablesView() {
         {nav('bom', 'Bill of materials', !bom.complete ? <span className="text-[10px] text-amber-600">partial</span> : undefined)}
         {nav('quotation', 'Quotation & GST', <Receipt className="size-3.5 text-muted-foreground" />)}
         {nav('tile', 'Tile schedule', <Layers className="size-3.5 text-muted-foreground" />)}
+        {nav('nesting', 'Cutting layouts', <Scissors className="size-3.5 text-muted-foreground" />)}
         <h3 className="px-2 pt-3 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">Share</h3>
         {nav('package', 'Client package', <BookOpen className="size-3.5 text-muted-foreground" />)}
         {nav('history', 'Generated files', history.some((r) => isStale(r, approvals)) ? <span className="text-[10px] text-amber-600">stale</span> : <History className="size-3.5 text-muted-foreground" />)}
@@ -306,6 +308,9 @@ export function DeliverablesView() {
             <Panel title="Backsplash Tile Quantity & Civil Schedule" subtitle={`Revision ${shortRevision(src.revision)}${approved ? ' · approved' : ''}`}>
               <TileSchedulePanel project={src.project} revision={src.revision} />
             </Panel>
+          )}
+          {section === 'nesting' && (
+            <CuttingLayoutsPanel />
           )}
           {section === 'history' && (
             <Panel title="Generated files" subtitle="Downloaded from this browser; each records the revision it was made from">

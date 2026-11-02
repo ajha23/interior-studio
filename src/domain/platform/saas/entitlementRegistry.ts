@@ -81,6 +81,15 @@ export class EntitlementRegistry {
       },
     ],
     [
+      'feature.manufacturing.sheet_nesting',
+      {
+        key: 'feature.manufacturing.sheet_nesting',
+        category: 'feature',
+        displayName: '2D Sheet Nesting & Cutting Optimization',
+        description: 'Algorithmic 2D guillotine sheet nesting, kerf compensation, and visual workshop layouts',
+      },
+    ],
+    [
       'feature.commercial.margin_editor',
       {
         key: 'feature.commercial.margin_editor',
@@ -152,6 +161,15 @@ export class EntitlementRegistry {
         category: 'quota',
         displayName: 'Monthly AI Operations',
         description: 'AI layout generations and automated design consultations',
+      },
+    ],
+    [
+      'quota.nesting_runs.monthly.max',
+      {
+        key: 'quota.nesting_runs.monthly.max',
+        category: 'quota',
+        displayName: 'Monthly Sheet Nesting Runs',
+        description: 'Maximum automated nesting and cutting optimization runs per month',
       },
     ],
 

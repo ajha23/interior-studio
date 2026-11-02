@@ -33,6 +33,7 @@ export function UpgradeModal() {
     'seats.designers': 'Additional Designer Seats',
     'ai.layout': 'AI Copilot Layout Engine',
     'custom_rulepack': 'Custom Manufacturing Rule Pack',
+    'sheet.nesting': '2D Sheet Nesting & Cutting Layouts',
   };
 
   const featureTitle = feature ? featureNames[feature] || feature : 'Premium Feature';
