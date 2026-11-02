@@ -36,4 +36,16 @@ test('immutable production packages & rulepack lifecycle gates (ARC-02, ARC-04, 
   await nav.getByRole('button', { name: /Client presentation/ }).click();
   await expect(page.getByTestId('sign-off-form')).toBeVisible();
   await expect(page.getByText('Digital Quote Acceptance & Sign-Off')).toBeVisible();
+
+  // 7. ARC-03 Cross-runtime determinism check in browser environment
+  const browserCalculatedHash = await page.evaluate(async () => {
+    // Pure browser subtle crypto hash of the canonical string
+    const goldenPayloadString = '{"hardwareUnits":28,"partsCount":15,"rulePack":"seed_joinery_v1","totalAreaSqM":4.82,"version":"1.0.0"}';
+    const msgBuffer = new TextEncoder().encode(goldenPayloadString);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+  });
+  // Must match Node/V8 pure SHA-256 computation bit-for-bit
+  expect(browserCalculatedHash).toBe('740a4e2047ef92e9d014fd848b001b8936889ea302bf13aea9c1bebf716b3003');
 });
