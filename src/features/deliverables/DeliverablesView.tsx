@@ -1,4 +1,4 @@
-import { BookOpen, CheckCircle2, Download, FileSpreadsheet, FileText, History, MonitorPlay, Receipt, RefreshCw, Table2 } from 'lucide-react';
+import { BookOpen, CheckCircle2, Download, FileSpreadsheet, FileText, History, Layers, MonitorPlay, Receipt, RefreshCw, Table2 } from 'lucide-react';
 import { useMemo, type ReactNode } from 'react';
 import { buildBom } from '@/engine/deliverables/bom';
 import { SCALES, type Paper, type ScaleChoice } from '@/engine/deliverables/drawing';
@@ -17,6 +17,9 @@ import { PresentationPortal } from './PresentationPortal';
 import { QuotationPanel } from './QuotationPanel';
 import { ReadinessPanel } from './ReadinessPanel';
 import { ScheduleTable } from './ScheduleTable';
+import { TileSchedulePanel } from './TileSchedulePanel';
+import { useBillingStore, useEntitlement } from '@/state/billingStore';
+import { UpgradeModal } from '@/features/billing/UpgradeModal';
 
 /** Deliverables: readiness, dimensioned drawings, schedule, BOM, exports, history and presentation. */
 export function DeliverablesView() {
@@ -24,6 +27,9 @@ export function DeliverablesView() {
   const { source, approvals, history, section, config: stored } = useDeliverablesStore();
   const { setSection, setConfig, setSource, approveCurrent, generate, regenerate } = useDeliverablesStore.getState();
   const config = configFor(project, stored);
+  const dxfEntitlement = useEntitlement('drawings.dxf');
+  const accountingEntitlement = useEntitlement('accounting.export');
+  const { openUpgradeModal } = useBillingStore.getState();
   // Everything below is recomputed from the exact revision whenever the design or settings change.
   const set = useMemo(() => drawingSetFor(source, approvals, stored), [project, source, approvals, stored]); // eslint-disable-line react-hooks/exhaustive-deps
   const src = useMemo(() => sourceProject(source, approvals), [project, source, approvals]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -73,6 +79,7 @@ export function DeliverablesView() {
         {nav('schedule', 'Cabinet schedule', <Table2 className="size-3.5 text-muted-foreground" />)}
         {nav('bom', 'Bill of materials', !bom.complete ? <span className="text-[10px] text-amber-600">partial</span> : undefined)}
         {nav('quotation', 'Quotation & GST', <Receipt className="size-3.5 text-muted-foreground" />)}
+        {nav('tile', 'Tile schedule', <Layers className="size-3.5 text-muted-foreground" />)}
         <h3 className="px-2 pt-3 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">Share</h3>
         {nav('package', 'Client package', <BookOpen className="size-3.5 text-muted-foreground" />)}
         {nav('history', 'Generated files', history.some((r) => isStale(r, approvals)) ? <span className="text-[10px] text-amber-600">stale</span> : <History className="size-3.5 text-muted-foreground" />)}
@@ -137,7 +144,19 @@ export function DeliverablesView() {
                   <Download /> SVG
                 </Button>
                 {currentSheet.id === 'plan' && (
-                  <Button size="xs" variant="outline" onClick={() => exportFile('dxf-plan')} title="AutoCAD 2D DXF with layers">
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    onClick={() => {
+                      if (!dxfEntitlement.allowed) {
+                        openUpgradeModal('drawings.dxf', 'pro');
+                        return;
+                      }
+                      exportFile('dxf-plan');
+                    }}
+                    title="AutoCAD 2D DXF with layers"
+                    data-testid="export-dxf-btn"
+                  >
                     <Download /> DXF CAD
                   </Button>
                 )}
@@ -149,9 +168,26 @@ export function DeliverablesView() {
               </Button>
             )}
             {section === 'quotation' && (
-              <Button size="xs" variant="outline" onClick={() => exportFile('quotation-csv')}>
-                <FileSpreadsheet /> Quotation CSV
-              </Button>
+              <>
+                <Button size="xs" variant="outline" onClick={() => exportFile('quotation-csv')}>
+                  <FileSpreadsheet /> Quotation CSV
+                </Button>
+                <Button
+                  size="xs"
+                  variant="outline"
+                  onClick={() => {
+                    if (!accountingEntitlement.allowed) {
+                      openUpgradeModal('accounting.export', 'pro');
+                      return;
+                    }
+                    exportFile('accounting-csv');
+                  }}
+                  title="Export sales voucher CSV for Tally Prime and Zoho Books"
+                  data-testid="export-accounting-csv-btn"
+                >
+                  <FileSpreadsheet /> Tally / Zoho CSV
+                </Button>
+              </>
             )}
             {section === 'bom' && (
               <>
@@ -163,6 +199,9 @@ export function DeliverablesView() {
                 </Button>
                 <Button size="xs" variant="outline" onClick={() => exportFile('opticut-csv')} title="Factory 16-column CSV for panel saw optimizers">
                   <FileSpreadsheet /> OptiCut CSV
+                </Button>
+                <Button size="xs" variant="outline" onClick={() => exportFile('part-labels')} title="Printable factory part labels with QR codes">
+                  <FileText /> Part Labels
                 </Button>
               </>
             )}
@@ -202,6 +241,11 @@ export function DeliverablesView() {
               <QuotationPanel project={src.project} revision={src.revision} />
             </Panel>
           )}
+          {section === 'tile' && (
+            <Panel title="Backsplash Tile Quantity & Civil Schedule" subtitle={`Revision ${shortRevision(src.revision)}${approved ? ' · approved' : ''}`}>
+              <TileSchedulePanel project={src.project} revision={src.revision} />
+            </Panel>
+          )}
           {section === 'history' && (
             <Panel title="Generated files" subtitle="Downloaded from this browser; each records the revision it was made from">
               {history.length === 0 && <p className="text-sm text-muted-foreground">Nothing generated yet.</p>}
@@ -229,6 +273,7 @@ export function DeliverablesView() {
           )}
         </div>
       </div>
+      <UpgradeModal />
     </div>
   );
 }

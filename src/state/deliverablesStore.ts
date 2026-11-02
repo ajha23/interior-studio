@@ -24,10 +24,23 @@ import { explodeScene } from '@/engine/manufacturing/explode';
 import { exportOptiCutCsv } from '@/engine/manufacturing/opticutCsv';
 import { calculateQuotation, type QuotationLineItem } from '@/engine/commercial/gst';
 import { exportPlanDxf } from '@/engine/deliverables/dxf';
+import { generatePartLabelsSvg } from '@/engine/deliverables/partLabels';
+import { generateAccountingCsv } from '@/engine/commercial/accountingCsv';
 import type { LengthUnit } from '@/engine/measurement/units';
 import { useEditorStore } from './editorStore';
 
-export type DeliverableKind = 'pdf-set' | 'pdf-sheet' | 'svg-sheet' | 'schedule-csv' | 'bom-csv' | 'cutlist-csv' | 'opticut-csv' | 'quotation-csv' | 'dxf-plan';
+export type DeliverableKind =
+  | 'pdf-set'
+  | 'pdf-sheet'
+  | 'svg-sheet'
+  | 'schedule-csv'
+  | 'bom-csv'
+  | 'cutlist-csv'
+  | 'opticut-csv'
+  | 'quotation-csv'
+  | 'accounting-csv'
+  | 'dxf-plan'
+  | 'part-labels';
 
 export const KIND_LABEL: Record<DeliverableKind, string> = {
   'pdf-set': 'Drawing set (PDF)',
@@ -38,7 +51,9 @@ export const KIND_LABEL: Record<DeliverableKind, string> = {
   'cutlist-csv': 'Cut list (CSV)',
   'opticut-csv': 'OptiCut 16-col (CSV)',
   'quotation-csv': 'Quotation & GST (CSV)',
+  'accounting-csv': 'Tally / Zoho Accounting (CSV)',
   'dxf-plan': 'CAD Floor Plan (DXF)',
+  'part-labels': 'Part Labels (SVG/Print)',
 };
 
 export interface Approval {
@@ -259,10 +274,63 @@ export const useDeliverablesStore = create<DeliverablesState>()((set, get) => ({
         `"TOTAL",,,,,"${quote.formatted.totalTaxable}","${quote.formatted.totalTax}","${quote.formatted.grandTotal}"`,
       ];
       data = csvLines.join('\r\n');
+    } else if (kind === 'accounting-csv') {
+      const cabinetCount = Math.max(1, s.project.cabinets.length);
+      const items: QuotationLineItem[] = [
+        {
+          id: 'item_carcass',
+          description: '18mm Modular Carcass (BWP/MR Plywood)',
+          code: '9403',
+          type: 'goods',
+          quantity: cabinetCount * 2.5,
+          unit: 'sqm',
+          unitRatePaise: 240000,
+        },
+        {
+          id: 'item_shutters',
+          description: '18mm Shutters & Fronts with 2.0mm ABS Edge Banding',
+          code: '9403',
+          type: 'goods',
+          quantity: cabinetCount * 0.8,
+          unit: 'sqm',
+          unitRatePaise: 360000,
+        },
+        {
+          id: 'item_installation',
+          description: 'On-site Installation & Precision Alignment',
+          code: '9954',
+          type: 'services',
+          quantity: cabinetCount,
+          unit: 'nos',
+          unitRatePaise: 120000,
+        },
+      ];
+      const quote = calculateQuotation(`QT-${s.project.id.slice(0, 6).toUpperCase()}`, items, 'INTRA_STATE');
+      fileName = `${base}-tally-accounting.csv`;
+      mime = 'text/csv;charset=utf-8';
+      data = generateAccountingCsv(quote, {
+        voucherNumber: `INV-${s.project.id.slice(0, 8).toUpperCase()}`,
+        customerName: s.project.name || 'Cash Customer',
+        placeOfSupply: '29-Karnataka',
+        studioGstin: '29AABCS1429B1ZB',
+      });
     } else if (kind === 'dxf-plan') {
       fileName = `${base}-cad-plan.dxf`;
       mime = 'application/dxf';
       data = exportPlanDxf(s.project);
+    } else if (kind === 'part-labels') {
+      fileName = `${base}-part-labels.svg`;
+      mime = 'image/svg+xml;charset=utf-8';
+      const pkg = explodeScene(
+        s.project.cabinets.map((c) => ({
+          id: c.id,
+          type: c.type,
+          dimensions: c.dimensions,
+        })),
+        SEED_RULE_PACK_V1,
+        s.project.id
+      );
+      data = generatePartLabelsSvg(pkg.parts, { projectCode: s.project.id });
     } else {
       const rules = constructionOf(s.project.production.constructionId);
       if (!rules) return null;

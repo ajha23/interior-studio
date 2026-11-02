@@ -56,7 +56,7 @@ export const GST_RATES = {
   SAC_9954: 18, // Interior decoration & Installation Services
 } as const;
 
-function formatInr(paise: number): string {
+export function formatInr(paise: number): string {
   const rupees = paise / 100;
   return new Intl.NumberFormat('en-IN', {
     style: 'currency',

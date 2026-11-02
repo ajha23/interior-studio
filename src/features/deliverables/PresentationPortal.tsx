@@ -8,6 +8,7 @@ import {
   Sparkles,
   ShieldCheck,
   MonitorPlay,
+  Film,
 } from 'lucide-react';
 import type { KitchenProject } from '@/domain/schema';
 import { calculateQuotation, type QuotationLineItem } from '@/engine/commercial/gst';
@@ -15,6 +16,10 @@ import { diffQuotes, calculateFinishOptionDelta } from '@/engine/commercial/quot
 import { explodeScene } from '@/engine/manufacturing/explode';
 import { SEED_RULE_PACK_V1 } from '@/domain/manufacturing/rulePack';
 import { createClientSignOff, type ClientSignOff } from '@/domain/platform/signOff';
+import { analyzeCostDownOpportunities, type CostDownSuggestion } from '@/engine/commercial/costDown';
+import { CostDownCard } from '@/features/commercial/CostDownCard';
+import { WalkthroughVideoModal } from '@/features/deliverables/WalkthroughVideoModal';
+import { useWalkthroughStore } from '@/state/walkthroughStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useEditorStore } from '@/state/editorStore';
@@ -33,6 +38,22 @@ const FINISH_OPTIONS = [
 
 export function PresentationPortal({ project, revision }: PresentationPortalProps) {
   const setPresenting = useEditorStore((s) => s.setPresenting);
+  const openVideoModal = useWalkthroughStore((s) => s.openModal);
+
+  // Cost-down advisor recommendations
+  const costDownSuggestions = analyzeCostDownOpportunities(
+    project.cabinets.map((c) => ({
+      id: c.id,
+      type: c.type,
+      dimensions: c.dimensions,
+    })),
+    SEED_RULE_PACK_V1
+  );
+  const [appliedCostDownIds, setAppliedCostDownIds] = useState<string[]>([]);
+
+  const handleApplyCostDown = (suggestion: CostDownSuggestion) => {
+    setAppliedCostDownIds((prev) => [...prev, suggestion.id]);
+  };
 
   // Derive quotation
   const explodePkg = explodeScene(
@@ -160,6 +181,13 @@ export function PresentationPortal({ project, revision }: PresentationPortalProp
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={openVideoModal}
+            data-testid="open-video-walkthrough-btn"
+          >
+            <Film className="size-4 mr-1.5 text-primary" /> Render 30s 1080p Video
+          </Button>
           <Button onClick={() => setPresenting(true)} data-testid="start-presentation-walkthrough">
             <MonitorPlay className="size-4 mr-1.5" /> Start 3D Walkthrough
           </Button>
@@ -307,8 +335,15 @@ export function PresentationPortal({ project, revision }: PresentationPortalProp
           </div>
         </div>
 
-        {/* Right Column: Finish Option Boards */}
+        {/* Right Column: Finish Option Boards & Cost-Down Advisor */}
         <div className="flex flex-col gap-4">
+          {/* Cost-Down Advisor (AI-03 / CP-05) */}
+          <CostDownCard
+            suggestions={costDownSuggestions}
+            onApply={handleApplyCostDown}
+            appliedIds={appliedCostDownIds}
+          />
+
           <div className="rounded-lg border bg-card p-5">
             <div className="flex items-center gap-2 pb-3 border-b">
               <Sparkles className="size-5 text-amber-500" />
@@ -360,6 +395,15 @@ export function PresentationPortal({ project, revision }: PresentationPortalProp
           </div>
         </div>
       </div>
+
+      <WalkthroughVideoModal
+        projectId={project.id}
+        room={{
+          width: project.room.width,
+          length: project.room.length,
+          height: project.room.height,
+        }}
+      />
     </div>
   );
 }

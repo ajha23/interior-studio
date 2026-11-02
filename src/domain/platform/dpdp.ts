@@ -120,3 +120,73 @@ export function toSafeClient(client: ClientRecord, canViewPii: boolean): SafeCli
   };
 }
 
+export interface ClientDataExport {
+  exportVersion: string;
+  exportedAt: string;
+  client: {
+    id: string;
+    orgId: string;
+    name: string;
+    mobile: string;
+    email: string | null;
+    siteAddress: string | null;
+    gstin: string | null;
+  };
+  consent: ConsentRecord | null;
+  associatedProjects: string[];
+}
+
+/**
+ * Generates an authoritative DPDP Section 11 Data Portability export bundle.
+ */
+export function exportClientData(
+  client: ClientRecord,
+  consent: ConsentRecord | null = null,
+  associatedProjects: string[] = []
+): ClientDataExport {
+  return {
+    exportVersion: 'DPDP-2023-EXPORT-V1',
+    exportedAt: new Date().toISOString(),
+    client: {
+      id: client.id,
+      orgId: client.orgId,
+      name: client.name,
+      mobile: client.mobile,
+      email: client.email || null,
+      siteAddress: client.siteAddress || null,
+      gstin: client.gstin || null,
+    },
+    consent,
+    associatedProjects,
+  };
+}
+
+/**
+ * Executes statutory DPDP Section 12 Right to Erasure:
+ * Redacts personal identifiers while preserving anonymized geometric project data & tax records.
+ */
+export function eraseClientData(
+  client: ClientRecord,
+  reason: string = 'DPDP Section 12 Erasure Request'
+): { erasedClient: ClientRecord; auditPayload: Record<string, unknown> } {
+  const erasedClient: ClientRecord = {
+    ...client,
+    name: 'Anonymized Client',
+    mobile: '0000000000',
+    email: null,
+    siteAddress: 'Redacted per DPDP Section 12',
+    gstin: null,
+  };
+
+  const auditPayload = {
+    action: 'client.erased',
+    clientId: client.id,
+    orgId: client.orgId,
+    reason,
+    timestamp: new Date().toISOString(),
+    retainedData: 'Project geometry, cut lists, and tax invoice records retained in anonymized form.',
+  };
+
+  return { erasedClient, auditPayload };
+}
+

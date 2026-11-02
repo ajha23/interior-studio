@@ -5,6 +5,8 @@ import {
   maskAddress,
   isConsentActive,
   toSafeClient,
+  exportClientData,
+  eraseClientData,
   type ClientRecord,
   type ConsentRecord,
 } from './dpdp';
@@ -83,6 +85,60 @@ describe('DPDP Act 2023 Masking & Consent (Step A)', () => {
     expect(maskedView.siteAddress).toBe('[Protected Site Address]');
     expect(maskedView.name).toBe('Dr. Rahul Sharma'); // Name remains visible for identification
     expect(maskedView.gstin).toBe('29ABCDE1234F1Z5');
+  });
+
+  it('exports structured client data bundle per DPDP Section 11', () => {
+    const rawClient: ClientRecord = {
+      id: 'client_202',
+      orgId: 'org1',
+      name: 'Pooja Hegde',
+      mobile: '9845012345',
+      email: 'pooja@example.com',
+      siteAddress: 'Indiranagar 100ft Rd, Bangalore',
+      gstin: null,
+      consentId: 'consent_99',
+    };
+
+    const consent: ConsentRecord = {
+      id: 'consent_99',
+      orgId: 'org1',
+      noticeVersion: 'DPDP-2023-V1',
+      purpose: 'kitchen_design_and_execution',
+      capturedAt: '2026-03-01T10:00:00.000Z',
+    };
+
+    const exported = exportClientData(rawClient, consent, ['proj_villa_01']);
+    expect(exported.exportVersion).toBe('DPDP-2023-EXPORT-V1');
+    expect(exported.client.name).toBe('Pooja Hegde');
+    expect(exported.client.mobile).toBe('9845012345');
+    expect(exported.consent?.noticeVersion).toBe('DPDP-2023-V1');
+    expect(exported.associatedProjects).toEqual(['proj_villa_01']);
+  });
+
+  it('erases client PII per DPDP Section 12 while preserving project link and generating audit payload', () => {
+    const rawClient: ClientRecord = {
+      id: 'client_303',
+      orgId: 'org1',
+      name: 'Amitabh Sen',
+      mobile: '9900112233',
+      email: 'amitabh@sen.org',
+      siteAddress: 'Salt Lake Sector V, Kolkata',
+      gstin: '19ABCDE1234F1Z5',
+      consentId: 'c_amitabh',
+    };
+
+    const { erasedClient, auditPayload } = eraseClientData(rawClient);
+
+    expect(erasedClient.id).toBe('client_303');
+    expect(erasedClient.name).toBe('Anonymized Client');
+    expect(erasedClient.mobile).toBe('0000000000');
+    expect(erasedClient.email).toBeNull();
+    expect(erasedClient.siteAddress).toBe('Redacted per DPDP Section 12');
+    expect(erasedClient.gstin).toBeNull();
+
+    expect(auditPayload.action).toBe('client.erased');
+    expect(auditPayload.clientId).toBe('client_303');
+    expect(auditPayload.retainedData).toContain('anonymized form');
   });
 });
 
