@@ -67,3 +67,4 @@ describe('WallPhotoGallery (MT-03)', () => {
     expect(handleDelete).toHaveBeenCalledWith('p1');
   });
 });
+

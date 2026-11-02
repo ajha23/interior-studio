@@ -50,3 +50,4 @@ describe('Site Capture State Store (MT-03, MT-05)', () => {
     expect(closure.closureErrorMm).toBe(30);
   });
 });
+

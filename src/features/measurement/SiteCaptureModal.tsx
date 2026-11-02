@@ -195,3 +195,4 @@ export function SiteCaptureModal({ projectId }: { projectId: string }) {
     </div>
   );
 }
+

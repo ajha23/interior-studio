@@ -153,7 +153,7 @@ export function PresentationPortal({ project, revision }: PresentationPortalProp
         id: `signoff_${Date.now()}`,
         projectId: project.id,
         quoteNumber: currentQuote.quotationNumber,
-        quoteSha256: `sha256_${Date.now().toString(16)}_${revision.slice(0, 8)}`,
+        quoteSha256: `sha256:${explodePkg.canonicalHash}`,
         clientName,
         clientMobile,
         status: 'accepted',

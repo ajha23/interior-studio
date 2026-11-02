@@ -78,3 +78,4 @@ export const useSiteCaptureStore = create<SiteCaptureState>((set, get) => ({
     });
   },
 }));
+

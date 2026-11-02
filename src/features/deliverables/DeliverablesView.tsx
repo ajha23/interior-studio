@@ -1,4 +1,4 @@
-import { BookOpen, CheckCircle2, Download, FileSpreadsheet, FileText, History, Layers, MonitorPlay, Receipt, RefreshCw, Table2 } from 'lucide-react';
+import { BookOpen, CheckCircle2, Download, FileSpreadsheet, FileText, History, Layers, MonitorPlay, Receipt, RefreshCw, ShieldAlert, ShieldCheck, Table2 } from 'lucide-react';
 import { useMemo, type ReactNode } from 'react';
 import { buildBom } from '@/engine/deliverables/bom';
 import { SCALES, type Paper, type ScaleChoice } from '@/engine/deliverables/drawing';
@@ -6,6 +6,8 @@ import { designRevision, shortRevision } from '@/engine/deliverables/revision';
 import { scheduleRows } from '@/engine/deliverables/schedule';
 import { sheetToSvg } from '@/engine/deliverables/svg';
 import { LENGTH_UNITS, UNIT_LABEL, type LengthUnit } from '@/engine/measurement/units';
+import { explodeScene } from '@/engine/manufacturing/explode';
+import { SEED_RULE_PACK_V1 } from '@/domain/manufacturing/rulePack';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
@@ -30,6 +32,17 @@ export function DeliverablesView() {
   const dxfEntitlement = useEntitlement('drawings.dxf');
   const accountingEntitlement = useEntitlement('accounting.export');
   const { openUpgradeModal } = useBillingStore.getState();
+
+  // Explode active project into immutable manufacturing package (ARC-02, ARC-04)
+  const pkg = useMemo(
+    () =>
+      explodeScene(
+        project.cabinets.map((c) => ({ id: c.id, type: c.type, dimensions: c.dimensions })),
+        SEED_RULE_PACK_V1,
+        project.id
+      ),
+    [project]
+  );
   // Everything below is recomputed from the exact revision whenever the design or settings change.
   const set = useMemo(() => drawingSetFor(source, approvals, stored), [project, source, approvals, stored]); // eslint-disable-line react-hooks/exhaustive-deps
   const src = useMemo(() => sourceProject(source, approvals), [project, source, approvals]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -87,6 +100,37 @@ export function DeliverablesView() {
       </nav>
 
       <div className="flex min-w-0 flex-1 flex-col">
+        {/* RulePack Status & Package Hash Banner (ARC-02, ARC-04, MFG-02) */}
+        <div className="flex items-center justify-between border-b bg-accent/20 px-3 py-1 text-[11px]" data-testid="package-hash-banner">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-muted-foreground">Package Hash:</span>
+            <code className="font-mono text-[10px] text-foreground bg-card px-1.5 py-0.5 rounded border" data-testid="package-hash-code">
+              {pkg.canonicalHash}
+            </code>
+          </div>
+          <div className="flex items-center gap-2">
+            <span
+              className={cn(
+                'inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium',
+                pkg.rulePackStatus === 'production_approved'
+                  ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20'
+                  : 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20'
+              )}
+              data-testid="rulepack-status-badge"
+            >
+              {pkg.rulePackStatus === 'production_approved' ? (
+                <>
+                  <ShieldCheck className="size-3 text-emerald-600" /> Factory Approved
+                </>
+              ) : (
+                <>
+                  <ShieldAlert className="size-3 text-amber-600" /> Provisional Fixture
+                </>
+              )}
+            </span>
+          </div>
+        </div>
+
         <div className="flex flex-wrap items-center gap-1.5 border-b bg-card px-3 py-1.5 text-xs" role="toolbar" aria-label="Deliverable settings">
           <Select aria-label="Revision" value={source.kind === 'current' ? 'current' : source.revision} onChange={(e) => setSource(e.target.value === 'current' ? { kind: 'current' } : { kind: 'approved', revision: e.target.value })} className="h-7 w-56 text-xs" data-testid="revision-select">
             <option value="current">Current design · {shortRevision(designRevision(project))}</option>

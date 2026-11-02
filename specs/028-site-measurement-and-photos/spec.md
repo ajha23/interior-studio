@@ -27,3 +27,4 @@ PRD v2 Section B details site capture requirements:
   - Wall selector tabs with photo upload & preview.
   - Live closure diagnostic badge (Green: "Closed within 4mm" / Amber: "Closure gap: 14mm — Check measurements").
   - TopBar integration for easy access.
+

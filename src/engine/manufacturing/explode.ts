@@ -9,7 +9,8 @@
  * - Exact floating deductions for edge-banding thickness.
  */
 
-import { type RulePack, SEED_RULE_PACK_V1 } from '../../domain/manufacturing/rulePack';
+import { type RulePack, type RulePackStatus, SEED_RULE_PACK_V1 } from '../../domain/manufacturing/rulePack';
+import { computeCanonicalSha256 } from './packageHash';
 
 export interface BoringHole {
   face: 'A' | 'B' | 'EDGE_TOP' | 'EDGE_BOTTOM' | 'EDGE_LEFT' | 'EDGE_RIGHT';
@@ -53,6 +54,10 @@ export interface ManufacturingHardware {
 
 export interface ManufacturingPackage {
   projectCode: string;
+  rulePackId: string;
+  rulePackVersion: number;
+  rulePackStatus: RulePackStatus;
+  canonicalHash: string; // 64-char lowercase SHA-256 hex (ARC-02)
   elementCount: number;
   parts: ManufacturingPart[];
   hardware: ManufacturingHardware[];
@@ -538,7 +543,7 @@ export function explodeScene(
     }
   }
 
-  return {
+  const rawPackage = {
     projectCode,
     elementCount: cabinets.length,
     parts: allParts,
@@ -552,5 +557,23 @@ export function explodeScene(
         Object.entries(edgeBandMeters).map(([k, v]) => [k, round2(v)])
       ),
     },
+  };
+
+  // Compute immutable content hash across canonical package representation (ARC-02)
+  const canonicalHash = computeCanonicalSha256({
+    projectCode: rawPackage.projectCode,
+    rulePackId: rulePack.id,
+    rulePackVersion: rulePack.version,
+    parts: rawPackage.parts,
+    hardware: rawPackage.hardware,
+    summary: rawPackage.summary,
+  });
+
+  return {
+    ...rawPackage,
+    rulePackId: rulePack.id,
+    rulePackVersion: rulePack.version,
+    rulePackStatus: rulePack.status ?? 'provisional',
+    canonicalHash,
   };
 }

@@ -52,3 +52,4 @@ export function evaluateRoomClosure(measurements: WallMeasurement[]): ClosureRes
     message: `Closure warning: Discrepancy is ${closureErrorMm}mm (exceeds ${MAX_CLOSURE_TOLERANCE_MM}mm limit). Please re-measure wall lengths or out-of-square diagonals.`,
   };
 }
+

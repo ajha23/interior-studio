@@ -28,3 +28,4 @@ export interface ClosureResult {
   status: 'acceptable' | 'warning';
   message: string;
 }
+

@@ -47,3 +47,4 @@ test('site measurement & wall photos: mobile capture wizard, closure diagnostic,
   await page.getByTestId('close-site-capture-btn').click();
   await expect(modal).not.toBeVisible();
 });
+

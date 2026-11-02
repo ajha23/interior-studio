@@ -44,3 +44,4 @@ describe('Room Closure Solver (MT-04)', () => {
     expect(result.message).toContain('Incomplete measurements');
   });
 });
+

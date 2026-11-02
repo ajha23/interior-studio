@@ -67,3 +67,4 @@ For a 4-wall rectangular loop:
 - Total diagonal check or Cartesian vector sum error: $\Delta = \sqrt{(L_{back} - L_{front})^2 + (L_{left} - L_{right})^2}$
 - If $\Delta \le 10$ mm: Status is `acceptable`.
 - If $\Delta > 10$ mm: Status is `warning` with recommended check.
+

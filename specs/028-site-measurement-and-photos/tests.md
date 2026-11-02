@@ -23,3 +23,4 @@
 - Enter wall dimensions with 5mm discrepancy -> Verify green "Closure error: 5mm (Acceptable)" badge.
 - Enter wall dimensions with 25mm discrepancy -> Verify amber "Closure error: 25mm (Warning: Re-measure)" badge.
 - Attach a photo to the Back wall -> Verify thumbnail appears under Back wall gallery.
+

@@ -53,3 +53,4 @@ describe('SiteCaptureModal (MT-04, MT-05)', () => {
     expect(useSiteCaptureStore.getState().closure.status).toBe('warning');
   });
 });
+

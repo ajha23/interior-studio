@@ -42,3 +42,4 @@ describe('Site Measurement Domain Models (MT-01, MT-03)', () => {
     expect(parsed.success).toBe(true);
   });
 });
+

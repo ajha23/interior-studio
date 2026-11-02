@@ -83,6 +83,26 @@ describe('Manufacturing Explode Engine (Step B)', () => {
     expect(pkg.summary.totalShutterAreaSqM).toBeGreaterThan(0);
     expect(pkg.summary.edgeBandLinearMeters['EB-0.8-PVC']).toBeGreaterThan(0);
     expect(pkg.summary.edgeBandLinearMeters['EB-2.0-ABS']).toBeGreaterThan(0);
+
+    // ARC-02 & ARC-04 assertions
+    expect(pkg.canonicalHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(pkg.rulePackId).toBe(SEED_RULE_PACK_V1.id);
+    expect(pkg.rulePackStatus).toBe('provisional');
+  });
+
+  it('produces distinct SHA-256 hashes when cabinet dimensions are modified', () => {
+    const pkgA = explodeScene(
+      [{ id: 'b1', type: 'base', dimensions: { width: 600, height: 720, depth: 560 } }],
+      SEED_RULE_PACK_V1,
+      'KITCHEN_01'
+    );
+    const pkgB = explodeScene(
+      [{ id: 'b1', type: 'base', dimensions: { width: 605, height: 720, depth: 560 } }], // 5mm diff
+      SEED_RULE_PACK_V1,
+      'KITCHEN_01'
+    );
+
+    expect(pkgA.canonicalHash).not.toBe(pkgB.canonicalHash);
   });
 
   it('explodes a 2-door wardrobe with hanging rail and tall shutters', () => {
