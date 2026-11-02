@@ -19,6 +19,9 @@ import { Badge } from '@/components/ui/badge';
 import { type BillingCycle } from '@/domain/platform/billing';
 import { PLANS, type PlanTier } from '@/domain/platform/entitlements';
 import { useBillingStore } from '@/state/billingStore';
+import { useSubscriptionStore } from '@/state/subscriptionStore';
+import { UsageQuotaTracker, type QuotaMeterItem } from './UsageQuotaTracker';
+import { PlanUpgradeModal } from './PlanUpgradeModal';
 
 export function BillingSettingsView() {
   const currentTier = useBillingStore((s) => s.currentTier);
@@ -27,10 +30,41 @@ export function BillingSettingsView() {
   const invoices = useBillingStore((s) => s.invoices);
   const { setCycle, upgradePlan, cancelSubscription } = useBillingStore.getState();
 
+  const upgradeModalOpen = useSubscriptionStore((s) => s.upgradeModalOpen);
+  const upgradeModalTargetTier = useSubscriptionStore((s) => s.upgradeModalTargetTier);
+  const upgradeModalFeatureKey = useSubscriptionStore((s) => s.upgradeModalFeatureKey);
+  const upgradeModalQuotaKey = useSubscriptionStore((s) => s.upgradeModalQuotaKey);
+  const upgradeModalReason = useSubscriptionStore((s) => s.upgradeModalReason);
+  const { openUpgradeModal, closeUpgradeModal, upgradePlan: upgradeSaasPlan } = useSubscriptionStore.getState();
+
   const [notification, setNotification] = useState<string | null>(null);
 
   const activePlan = PLANS[currentTier];
   const isCancelled = subscription?.status === 'cancelled';
+
+  const liveQuotas: QuotaMeterItem[] = [
+    {
+      key: 'quota.projects.active.max',
+      label: 'Active Projects',
+      consumed: 4,
+      limit: activePlan.features.maxActiveProjects,
+      unit: 'projects',
+    },
+    {
+      key: 'quota.seats.designers.max',
+      label: 'Designer Seats',
+      consumed: 2,
+      limit: activePlan.features.maxDesigners,
+      unit: 'seats',
+    },
+    {
+      key: 'quota.renderings.monthly.max',
+      label: 'Monthly Renders',
+      consumed: 30,
+      limit: currentTier === 'starter' ? 50 : currentTier === 'pro' ? 200 : -1,
+      unit: 'renders',
+    },
+  ];
 
   const handleCycleChange = (newCycle: BillingCycle) => {
     setCycle(newCycle);
@@ -119,6 +153,12 @@ export function BillingSettingsView() {
           </div>
         </div>
       </div>
+
+      {/* Live Commercial Quota Meters */}
+      <UsageQuotaTracker
+        quotas={liveQuotas}
+        onUpgradeClick={(key) => openUpgradeModal('pro', undefined, key as never)}
+      />
 
       {/* Plan Selection Section */}
       <div className="space-y-3">
@@ -301,6 +341,21 @@ export function BillingSettingsView() {
           </table>
         </div>
       </div>
+
+      {/* Plan Upgrade Modal Dialog */}
+      <PlanUpgradeModal
+        isOpen={upgradeModalOpen}
+        onClose={closeUpgradeModal}
+        onUpgrade={(tier) => {
+          handleSelectPlan(tier as PlanTier);
+          upgradeSaasPlan(tier);
+        }}
+        currentTier={currentTier}
+        targetTier={upgradeModalTargetTier}
+        featureKey={upgradeModalFeatureKey}
+        quotaKey={upgradeModalQuotaKey}
+        reason={upgradeModalReason}
+      />
     </div>
   );
 }

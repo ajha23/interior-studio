@@ -129,3 +129,65 @@
 - [Assumption about scope boundaries, e.g., "Mobile support is out of scope for v1"]
 - [Assumption about data/environment, e.g., "Existing authentication system will be reused"]
 - [Dependency on existing system/service, e.g., "Requires access to the existing user profile API"]
+
+---
+
+## SaaS Subscription, Entitlement and Authorization Requirements *(mandatory per Constitution Principle X)*
+
+### 1. Module Registration
+- **Module Identifier**: `[e.g., module-cad-engine, module-commercial]`
+- **Parent Module**: `[none / parent module ID]`
+- **Module Capabilities**: `[list of capability keys declared by this module]`
+- **Dependencies on Other Modules**: `[prerequisite modules]`
+
+### 2. Subscription Entitlement Requirements
+- **Required Entitlement Identifiers**: `[e.g., feature.design.3d.render, feature.manufacturing.cnc_cutlist]`
+- **Plans That Include This Capability**: `[e.g., Starter, Pro, Enterprise]`
+- **Available Add-ons**: `[optional commercial add-on entitlements]`
+- **Feature Availability Conditions**: `[any specific conditions required]`
+
+### 3. Usage and Commercial Limits
+- **Applicable Quotas**: `[e.g., quota.renderings.monthly.max, quota.projects.active.max]`
+- **Seat Requirements**: `[e.g., requires active designer license]`
+- **Usage Measurement**: `[how consumption is tracked and reserved]`
+- **Monthly / Billing-Period Reset Rules**: `[reset interval and policies]`
+- **Behavior When Limits Are Reached**: `[block, warn, or prompt upgrade]`
+- **Overage or Upgrade Behavior**: `[upgrade flow trigger]`
+
+### 4. RBAC Requirements
+- **Required Permissions**: `[canonical namespaced actions: <module>.<resource>.<action>]`
+- **Applicable System and Tenant Roles**: `[roles that can execute this operation]`
+- **Resource-Level Permissions**: `[scopes: all_projects, assigned_projects, team_projects, client_projects]`
+- **Administrative Management Requirements**: `[custom role configurability]`
+
+### 5. Multi-Tenant Requirements
+- **Tenant-Owned Resources**: `[resources strictly partitioned by org_id]`
+- **Tenant Isolation Requirements**: `[RLS policies and security definer functions]`
+- **Storage and Cache Isolation**: `[isolated bucket prefixes, tenant cache keys]`
+- **Background Worker Tenant Context**: `[worker tenant context propagation]`
+
+### 6. Subscription Lifecycle Behavior
+- **Trial Behavior**: `[behavior during 14-day trial]`
+- **Upgrade Behavior**: `[immediate access unlock upon upgrade]`
+- **Downgrade Behavior**: `[existing data preserved; read-only lock for excess items; block additions]`
+- **Payment Failure / Past Due**: `[grace period access and warning banners]`
+- **Cancellation / Expiration**: `[read-only retention until statutory export/erasure]`
+- **Existing Customer Data Preservation**: `[zero silent deletion guarantee]`
+
+### 7. Enforcement Requirements
+- **Frontend Visibility & Interaction Rules**: `[button states, upgrade banners, tooltips]`
+- **Backend / API Authorization Guards**: `[server middleware and RPC guards with deny-by-default]`
+- **Background Worker Enforcement**: `[worker tenant & entitlement checks]`
+- **Quota Reservation & Enforcement**: `[atomic reservation to prevent concurrency breaches]`
+- **Audit Requirements**: `[emits typed audit record to audit_log]`
+- **Entitlement Cache Invalidation**: `[immediate cache burst on subscription/plan update]`
+
+### 8. Acceptance Criteria and Security Tests
+- **Included-Plan Access Tests**: `[verify successful execution when entitled]`
+- **Excluded-Plan Denial Tests**: `[verify 403 Forbidden / prompt when unentitled]`
+- **RBAC Permission Tests**: `[positive and negative role tests]`
+- **Tenant Isolation Tests**: `[verify Cross-Tenant access rejection]`
+- **Quota Boundary Tests**: `[test exact boundary: limit - 1, limit, limit + 1]`
+- **Concurrent Usage Tests**: `[verify concurrency safety without over-allocation]`
+- **Subscription Transition Tests**: `[verify behavior across upgrade/downgrade/grace states]`
+

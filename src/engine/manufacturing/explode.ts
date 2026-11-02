@@ -31,6 +31,10 @@ export interface ManufacturingPart {
   partId: string;
   moduleCode: string;
   elementId: string;
+  moduleType?: string;
+  rulePackId?: string;
+  rulePackVersion?: number;
+  generationAlgorithmVersion?: string;
   name: string;
   material: string;
   role: 'carcass' | 'shutter' | 'back' | 'shelf' | 'stretcher' | 'drawer';
@@ -226,7 +230,15 @@ export function explodeCabinet(
       quantity: 8,
     });
 
-    return { parts, hardware };
+    const tracedParts: ManufacturingPart[] = parts.map((p) => ({
+      ...p,
+      moduleType: cabinet.type,
+      rulePackId: rulePack.id,
+      rulePackVersion: rulePack.version,
+      generationAlgorithmVersion: '2.1.0',
+    }));
+
+    return { parts: tracedParts, hardware };
   }
 
   // 1. Left & Right Carcass Sides (Gables)
@@ -490,7 +502,15 @@ export function explodeCabinet(
     });
   }
 
-  return { parts, hardware };
+  const tracedParts: ManufacturingPart[] = parts.map((p) => ({
+    ...p,
+    moduleType: cabinet.type,
+    rulePackId: rulePack.id,
+    rulePackVersion: rulePack.version,
+    generationAlgorithmVersion: '2.1.0',
+  }));
+
+  return { parts: tracedParts, hardware };
 }
 
 /**

@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import type { KitchenProject } from '@/domain/schema';
 import { calculateQuotation, type QuotationLineItem } from '@/engine/commercial/gst';
+import { DEFAULT_RATE_CARD_V1 } from '@/domain/commercial/rateCard';
 import { diffQuotes, calculateFinishOptionDelta } from '@/engine/commercial/quoteDiff';
 import { explodeScene } from '@/engine/manufacturing/explode';
 import { SEED_RULE_PACK_V1 } from '@/domain/manufacturing/rulePack';
@@ -108,7 +109,10 @@ export function PresentationPortal({ project, revision }: PresentationPortalProp
     },
   ];
 
-  const currentQuote = calculateQuotation(`QT-${revision.slice(0, 8)}`, quoteItems, 'INTRA_STATE');
+  const currentQuote = calculateQuotation(`QT-${revision.slice(0, 8)}`, quoteItems, 'INTRA_STATE', {
+    id: DEFAULT_RATE_CARD_V1.id,
+    version: DEFAULT_RATE_CARD_V1.version,
+  });
 
   // Baseline mock quote for diffing (e.g. without tall or extra shutters)
   const baselineQuote = calculateQuotation(

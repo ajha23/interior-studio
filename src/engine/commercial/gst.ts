@@ -32,6 +32,8 @@ export interface CommercialQuotation {
   quotationNumber: string;
   taxType: TaxType;
   currency: string;
+  rateCardId?: string;
+  rateCardVersion?: string;
   items: QuotationLineItem[];
   hsnSummary: Record<string, TaxBreakdown>;
   totalTaxablePaise: number;
@@ -71,7 +73,8 @@ export function formatInr(paise: number): string {
 export function calculateQuotation(
   quotationNumber: string,
   items: QuotationLineItem[],
-  taxType: TaxType = 'INTRA_STATE'
+  taxType: TaxType = 'INTRA_STATE',
+  rateCardInfo?: { id: string; version: string }
 ): CommercialQuotation {
   const hsnSummary: Record<string, TaxBreakdown> = {};
   let totalTaxable = 0;
@@ -135,6 +138,8 @@ export function calculateQuotation(
     quotationNumber,
     taxType,
     currency: 'INR',
+    rateCardId: rateCardInfo?.id,
+    rateCardVersion: rateCardInfo?.version,
     items,
     hsnSummary,
     totalTaxablePaise: totalTaxable,

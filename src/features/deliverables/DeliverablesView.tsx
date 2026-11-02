@@ -1,4 +1,4 @@
-import { BookOpen, CheckCircle2, Download, FileSpreadsheet, FileText, History, Layers, MonitorPlay, Receipt, RefreshCw, ShieldAlert, ShieldCheck, Table2 } from 'lucide-react';
+import { AlertTriangle, BookOpen, CheckCircle2, Download, FileSpreadsheet, FileText, History, Layers, MonitorPlay, Receipt, RefreshCw, ShieldAlert, ShieldCheck, Table2 } from 'lucide-react';
 import { useMemo, type ReactNode } from 'react';
 import { buildBom } from '@/engine/deliverables/bom';
 import { SCALES, type Paper, type ScaleChoice } from '@/engine/deliverables/drawing';
@@ -80,6 +80,10 @@ export function DeliverablesView() {
   );
   const dot = (status: string) => <span className={cn('size-2 shrink-0 rounded-full', status === 'ready' ? 'bg-success' : status === 'warnings' ? 'bg-amber-500' : 'bg-destructive')} />;
 
+  const currentRev = designRevision(project);
+  const latestApproved = approvals[0];
+  const isInvalidated = Boolean(latestApproved && latestApproved.revision !== currentRev);
+
   return (
     <div className="flex size-full min-h-0" data-testid="drawings-view">
       <nav className="w-56 shrink-0 overflow-y-auto border-r bg-card p-2 max-md:w-40" aria-label="Sheets">
@@ -130,6 +134,19 @@ export function DeliverablesView() {
             </span>
           </div>
         </div>
+
+        {/* Invalidation Alert Banner (UX-07) */}
+        {isInvalidated && latestApproved && (
+          <div
+            className="flex items-center gap-2 border-b border-amber-500/20 bg-amber-500/10 px-3 py-1 text-xs text-amber-700 dark:text-amber-300"
+            data-testid="invalidation-alert-banner"
+          >
+            <AlertTriangle className="size-3.5 shrink-0 text-amber-600" />
+            <span>
+              <strong>Design Invalidation (UX-07):</strong> Current design ({shortRevision(currentRev)}) differs from approved revision ({shortRevision(latestApproved.revision)}). Prior approvals, quotes and production exports are invalidated.
+            </span>
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center gap-1.5 border-b bg-card px-3 py-1.5 text-xs" role="toolbar" aria-label="Deliverable settings">
           <Select aria-label="Revision" value={source.kind === 'current' ? 'current' : source.revision} onChange={(e) => setSource(e.target.value === 'current' ? { kind: 'current' } : { kind: 'approved', revision: e.target.value })} className="h-7 w-56 text-xs" data-testid="revision-select">

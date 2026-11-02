@@ -30,8 +30,10 @@ import { type AuditRecord, createAuditEvent } from '@/domain/platform/audit';
 import { type Role, ROLE_RANK } from '@/domain/platform/rbac';
 import { useEditorStore } from '@/state/editorStore';
 import { BillingSettingsView } from '@/features/billing/BillingSettingsView';
+import { RoleManagementPanel } from './RoleManagementPanel';
+import { AdminRoleService } from '@/domain/platform/authorization/adminRoleService';
 
-export type TableTab = 'clients' | 'projects' | 'members' | 'audit' | 'billing';
+export type TableTab = 'clients' | 'projects' | 'members' | 'roles' | 'audit' | 'billing';
 
 export interface StudioMember {
   id: string;
@@ -147,6 +149,7 @@ export function StudioTableEditor({
   const [auditLogs, setAuditLogs] = useState<AuditRecord[]>(initialAuditLogs);
   const [expandedAuditId, setExpandedAuditId] = useState<string | null>(null);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
+  const [adminService] = useState(() => new AdminRoleService());
 
   if (!isOpen) return null;
 
@@ -298,6 +301,18 @@ export function StudioTableEditor({
             >
               <ShieldAlert className="size-3.5" />
               Team Members ({members.length})
+            </Button>
+            <Button
+              size="xs"
+              variant={activeTab === 'roles' ? 'selected' : 'ghost'}
+              role="tab"
+              aria-selected={activeTab === 'roles'}
+              onClick={() => setActiveTab('roles')}
+              className="gap-1.5"
+              data-testid="tab-roles-btn"
+            >
+              <ShieldCheck className="size-3.5" />
+              Roles & Scopes
             </Button>
             <Button
               size="xs"
@@ -583,6 +598,17 @@ export function StudioTableEditor({
                   </tbody>
                 </table>
               </div>
+            </div>
+          )}
+
+          {/* TAB 3.5: ROLES & SCOPES */}
+          {activeTab === 'roles' && (
+            <div className="space-y-4">
+              <RoleManagementPanel
+                adminService={adminService}
+                orgId="org_inhouse_01"
+                actorRank={ROLE_RANK[currentUserRole]}
+              />
             </div>
           )}
 

@@ -14,3 +14,4 @@ export * from './project/presets';
 export * from './project/serialization';
 export * from './bom/bom';
 export * from './home/schema';
+export * from './platform/authorization';
