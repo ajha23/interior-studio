@@ -34,3 +34,4 @@ PRD v2.1 Section 6 & 8 introduces foundational enterprise manufacturing constrai
 - **FR-05**: UI Display of Package Hash & RulePack Status:
   - Display `Package Hash: sha256:...` in Deliverables view, cabinet schedule, and Client Presentation portal.
   - Display Rule Pack verification badge (Amber "Provisional" vs Green "Factory Approved").
+

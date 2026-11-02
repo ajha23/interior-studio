@@ -88,3 +88,4 @@ graph TD
 3. **Interim Monolith-to-Monorepo Bridge:**
    - The codebase maintains these 8 modular domains under `src/domain/`, `src/engine/`, `src/features/` with isolated directory boundaries, verified by `tsconfig.json` path mappings and strict lint rules.
    - Migration to pnpm workspaces preserves existing import paths through package namespace aliases.
+

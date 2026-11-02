@@ -20,3 +20,4 @@
 - Open project and go to Deliverables Studio.
 - Verify Package Hash badge displays a valid 64-character SHA-256 string.
 - Open Client Presentation Portal and verify digital sign-off records the package's canonical SHA-256 hash.
+
