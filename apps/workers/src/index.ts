@@ -4,3 +4,4 @@
  */
 
 export * from '../../../src/domain/platform/walkthroughVideo';
+
