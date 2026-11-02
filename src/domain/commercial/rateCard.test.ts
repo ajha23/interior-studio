@@ -51,3 +51,4 @@ describe('COST-01 Rate Card Versioning & Pricing Snapshotting', () => {
     expect(quote.grandTotalPaise).toBeGreaterThan(0);
   });
 });
+

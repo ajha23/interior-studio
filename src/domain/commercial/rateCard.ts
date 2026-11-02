@@ -31,3 +31,4 @@ export const DEFAULT_RATE_CARD_V1: RateCard = {
   installationRatePerSqMPaise: 35000, // ₹350/sqm
   standardMarginPercent: 20,
 };
+

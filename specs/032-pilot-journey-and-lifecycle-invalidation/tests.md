@@ -22,3 +22,4 @@
      - Step 6: Mutate design -> verify invalidation banner appears.
      - Step 7: Factory approved RulePack -> verify canonical SHA-256 package hash.
      - Step 8: Verify 100% part lineage traceability.
+

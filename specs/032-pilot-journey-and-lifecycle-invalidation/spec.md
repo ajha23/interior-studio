@@ -40,3 +40,4 @@ PRD v2.1 mandates that:
 - **Given** a new studio client,
 - **When** following the 12-step pilot workflow in Playwright,
 - **Then** all steps execute cleanly with zero errors, producing an immutable production package with a verified SHA-256 digest and full audit logging.
+
