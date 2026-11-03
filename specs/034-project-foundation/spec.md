@@ -1,195 +1,229 @@
 # Feature Specification: 034 — Project Foundation and Cloud Persistence
 
-**Feature Branch**: `034-project-foundation`  
-**Status**: Draft — proposed baseline  
-**Target integration branch**: `refactorV2`  
-**Priority**: P0  
-**Scope**: architecture, database, security, workflow foundation
+**Feature Branch:** `034-project-foundation`  
+**Status:** Revised draft — repository-reviewed, pending approval  
+**Integration candidate:** `refactorV2`  
+**Priority:** P0  
+**Review:** See [repository-level design review](../../docs/implementation/FEATURE_034_DESIGN_REVIEW.md)
 
 ## 1. Summary
 
-Establish the server-authoritative project foundation required to connect the existing Interior Studio design editor to a multi-tenant, multi-space project lifecycle.
+Introduce the canonical SaaS project foundation around the existing design editor. PostgreSQL becomes authoritative for committed tenant, client, project, space and design-revision metadata. Existing `KitchenProject` and `Home` schemas, command execution, scene IDs and versioned file envelopes remain compatible.
 
-This feature introduces the canonical client/project/space relationship, verified actor and tenant context, cloud-backed project metadata and versioned design revisions, while retaining the existing editor command pipeline and local persistence as a cache/import/export mechanism.
+A SaaS Project represents the customer engagement. A Space represents a room/area within that engagement. A DesignRevision is an immutable version of the design document for one Space.
 
-This feature does not implement the complete survey, MOM, MEP, production or handover workflows. It provides the durable project and revision foundation those features depend on.
+**Critical identity rule:** `KitchenProject.id` is an existing editor/local-storage identity, not the SaaS Project primary key. New relational entities use UUIDs. Existing editor IDs remain opaque strings inside snapshots and import mappings.
 
-## 2. Source hierarchy and provenance
+## 2. Evidence and provenance
 
-- [M] Product direction: evolve the current interior design application into a design-to-manufacture workflow system; support multiple spaces, exact editable design data, client deliverables and traceability.
-- [E] Existing repository: `KitchenProject`, `Home`, typed design commands, IndexedDB persistence, Supabase migrations and package shells exist in `refactorV2`.
-- [D] Derived requirement: PostgreSQL must become authoritative for committed tenant/project/revision state; IndexedDB can remain a cache/offline draft.
-- [V] Confirm actual Supabase region, identifier migration strategy, offline conflict policy and user onboarding behavior.
+- [E] `KitchenProjectSchema` uses string IDs, integer millimetre dimensions and includes cabinets, appliances, furniture, materials, openings, MEP and production settings.
+- [E] Kitchen files use the `interior-studio/kitchen` envelope and schema migrations.
+- [E] `HomeSchema` embeds `KitchenProject` per `HomeRoom`; room IDs and `roomProjectId` are derived strings.
+- [E] IndexedDB stores projects, homes, packages and assets locally.
+- [E] Existing migration chain creates organizations, RBAC, clients/consents and project_members but does not create a canonical projects table in the inspected migration content.
+- [D] New SaaS Project/Space UUIDs are required while preserving legacy IDs.
+- [V] Region, PII/consent policy, client cardinality, offline behavior and deployment auth boundary require validation.
 
-Do not treat feature shells or migrations as proof that a complete cloud repository exists.
+## 3. Goals
 
-## 3. Users
-
-- Studio owner/admin: creates organization, manages team and projects.
-- Designer: creates and edits projects/spaces and commits design revisions.
-- Project manager: assigns members and tracks project status.
-- Viewer/client: later-phase read-only access; not required for this feature.
+1. Create a tenant-owned Project and one or more Spaces.
+2. Associate an optional or required Client according to the approved product rule; do not assume mobile must be mandatory without product confirmation.
+3. Open the existing kitchen editor for a Kitchen Space without changing scene semantics.
+4. Import whole-home files into one Project with one Space per room, preserving room order, level, plan coordinates and embedded design.
+5. Persist immutable design revisions centrally.
+6. Prevent cross-tenant and out-of-scope access.
+7. Reject stale revision commits and make retries idempotent.
+8. Preserve existing file import/export and local drafts.
 
 ## 4. User stories
 
 ### US-01 Organization context [P0]
-As a studio member, I need to operate within an authenticated organization so that project data is isolated by tenant.
+A member operates within an active organization resolved from verified authentication and database membership.
 
-Acceptance:
-- An authenticated user can resolve an organization only through verified membership.
-- A user cannot select an arbitrary organization ID and gain access.
-- A user with no active membership receives an explicit authorization failure.
+### US-02 Client and project [P0]
+An authorized member creates a project in an organization and optionally associates a same-tenant client. Required client fields are governed by an explicit approved client policy.
 
-### US-02 Client and project creation [P0]
-As an authorized studio member, I need to create a client and project so that work is organized around a customer engagement.
+### US-03 Multi-space [P0]
+A project contains multiple spaces with stable UUID identity, type, name and level. Space identity is independent of design revisions.
 
-Acceptance:
-- Client and project are created under the same organization.
-- Cross-organization client references are rejected by database constraints and application validation.
-- Project owner/creator and timestamps are recorded.
-- Client PII is not copied into general project design snapshots.
+### US-04 Kitchen editor integration [P0]
+A Kitchen space opens the current `KitchenProjectSchema` editor document. No parallel scene schema is introduced.
 
-### US-03 Multi-space project [P0]
-As a designer, I need a project to contain multiple spaces so that a home or commercial project can hold separate kitchens, bedrooms, bathrooms and other areas.
+### US-05 Whole-home import [P0]
+A `Home` file maps to one SaaS Project; each `HomeRoom` maps to one Space; each embedded `design` maps to an initial DesignRevision. Preserve home metadata and each room's level, x/z placement, type and original IDs as provenance.
 
-Acceptance:
-- Project can contain one or more spaces.
-- Each space has a stable ID, type, name and optional floor/level.
-- Existing kitchen editor can open a selected kitchen space.
-- Existing editor model is not replaced by a parallel scene model.
+### US-06 Revision commit [P0]
+A committed revision is immutable and points to the expected parent revision. A stale commit fails without overwriting the latest revision.
 
-### US-04 Cloud-backed design revision [P0]
-As a designer, I need committed design revisions to persist centrally so that authorized users can reopen the same project and revision on another device.
+### US-07 Authorization [P0]
+Every read/write checks verified actor, active organization membership, permission and project/space scope. Caller-supplied IDs are selectors, never authority.
 
-Acceptance:
-- A revision contains a versioned canonical scene snapshot and content hash.
-- Revision records are immutable.
-- Project/space current revision pointer is updated transactionally.
-- A stale expected revision cannot overwrite a newer committed revision.
-- Idempotent retries do not create duplicate commits.
-
-### US-05 Local cache and import/export [P1]
-As a designer, I need local drafts and file import/export so that temporary connectivity loss does not destroy work.
-
-Acceptance:
-- IndexedDB is treated as cache/draft, not cloud authority.
-- Drafts are associated with project, space and base revision.
-- Conflict is surfaced for explicit resolution; no silent last-write-wins.
-- Existing versioned JSON import/export remains supported.
-
-### US-06 Project authorization [P0]
-As an organization member, I need project-level access to be enforced by the backend so that UI visibility cannot bypass tenant or project scope.
-
-Acceptance:
-- Every project read/write resolves verified actor and organization membership.
-- Project assignment scopes are enforced.
-- Missing project context for project-scoped operations is denied.
-- Forged identity/role headers do not authorize access.
+### US-08 Local cache and migration [P1]
+IndexedDB remains available for cache/offline drafts and import/export. Explicit import creates a cloud mapping; no silent data adoption or last-write-wins.
 
 ## 5. Functional requirements
 
-- FR-001: System MUST model Organization, Client, Project, ProjectMember and Space as separate entities.
-- FR-002: Every tenant-owned entity MUST be associated with an organization directly or through an enforceable parent relationship.
-- FR-003: Client and Project MUST be linked using tenant-consistent foreign keys.
-- FR-004: Project MUST support multiple Spaces.
-- FR-005: Space MUST retain stable identity independent of its design revisions.
-- FR-006: The existing kitchen design model MUST be usable as the initial design type for a Kitchen space.
-- FR-007: The system MUST resolve actor identity from a verified authentication context, not caller-controlled identity/role headers.
-- FR-008: Backend MUST validate tenant membership and project scope for every protected operation.
-- FR-009: The system MUST persist committed project and space metadata in PostgreSQL.
-- FR-010: The system MUST persist immutable design revision snapshots with schema version, parent revision, actor, timestamp and canonical hash.
-- FR-011: Commit MUST include expected revision and reject stale writes.
-- FR-012: Commit MUST support idempotency keys.
-- FR-013: Local IndexedDB data MUST NOT be treated as authoritative cloud approval or production state.
-- FR-014: Existing JSON import/export and schema migration behavior MUST remain compatible during transition.
-- FR-015: Sensitive client PII MUST be protected separately from general project design data.
-- FR-016: Every mutation MUST create an auditable event or transactional outbox record.
-- FR-017: RLS MUST be enabled and tested for every tenant-owned table.
-- FR-018: Application and database tests MUST include cross-tenant negative cases.
+- FR-001: Create relational `projects` table; do not assume it exists.
+- FR-002: Create relational `spaces` table with same-tenant FK to projects.
+- FR-003: Create `design_revisions` with immutable snapshot, schema/canonicalizer versions and lineage.
+- FR-004: Create/repair `project_members` with FK to projects and organization membership.
+- FR-005: Use UUID primary keys for SaaS Project, Space and DesignRevision.
+- FR-006: Preserve existing editor IDs as text inside snapshots and import mapping; do not convert them to UUID.
+- FR-007: Support standalone kitchen import as one Project + one Kitchen Space.
+- FR-008: Support Home import as one Project + one Space per HomeRoom, preserving level and plan x/z.
+- FR-009: Keep `KitchenProjectSchema`, `HomeSchema`, file formats and existing migrations compatible.
+- FR-010: Resolve actor from verified Supabase auth/session; caller-controlled identity/role headers MUST NOT grant access.
+- FR-011: Resolve active organization membership from database.
+- FR-012: Deny project-scoped access if project context is missing.
+- FR-013: Implement all supported scope semantics or explicitly reject unsupported scopes; never broaden unsupported scope to all projects.
+- FR-014: Enforce tenant consistency with composite FKs and RLS.
+- FR-015: Persist project and space metadata in PostgreSQL.
+- FR-016: Persist immutable revision snapshots with actor, time, parent, format, schema version and hash.
+- FR-017: Commit revision and update `spaces.current_revision_id` atomically using expected-revision compare-and-swap.
+- FR-018: Support idempotency key with request-hash conflict detection.
+- FR-019: Write required audit and outbox events in the same transaction as revision commit.
+- FR-020: Preserve local drafts with base revision and sync status.
+- FR-021: Never silently overwrite a newer server revision with a stale local draft.
+- FR-022: Store binary assets in object storage; persist tenant-scoped metadata/checksum in DB. Asset upload is not required for the initial design-only slice unless the existing app requires it.
+- FR-023: Enable and test RLS for every new tenant-owned table.
+- FR-024: Prevent ordinary app roles from updating/deleting committed revision snapshots.
+- FR-025: Provide explicit archive/delete policy; do not cascade-delete audit history.
 
-## 6. Non-functional requirements
+## 6. Data contracts
 
-- NFR-001 Security: deny by default; tenant and resource checks on server.
-- NFR-002 Consistency: revision pointer update and revision insert are one transaction.
-- NFR-003 Reliability: idempotent retries and explicit conflict handling.
-- NFR-004 Compatibility: existing editor command pipeline and file envelope retained.
-- NFR-005 Traceability: revision snapshots record schema/generator metadata as applicable.
-- NFR-006 Privacy: minimize PII duplication and sensitive logs.
-- NFR-007 Maintainability: domain logic remains framework-free and package boundaries are enforced.
-- NFR-008 Testability: database policies and application use cases have positive and negative tests.
+### Organization
+Existing UUID organization identity; active membership is resolved through `org_members`.
 
-## 7. Data contracts
+### Client
+- `id: UUID`
+- `org_id: UUID`
+- `name: string`
+- contact/PII fields governed by approved client policy
+- created/updated timestamps
+
+Client association on Project is nullable unless product policy explicitly requires a client before a project can be created. Client consent is a separate event history, not a single mutable boolean.
 
 ### Project
-- id (canonical database UUID; application mapping documented)
-- orgId
-- clientId
-- name
-- status
-- currentRevisionId (optional until first design commit)
-- createdBy
-- createdAt
-- updatedAt
+- `id: UUID`
+- `org_id: UUID`
+- `client_id: UUID | null`
+- `name: string`
+- `status: draft | active | archived`
+- `created_by: UUID`
+- timestamps
+
+Do not put a single `current_revision_id` on Project because a project can contain multiple independently revised spaces.
 
 ### Space
-- id
-- orgId
-- projectId
-- name
-- type
-- level
-- status
-- currentRevisionId
+- `id: UUID`
+- `org_id: UUID`
+- `project_id: UUID`
+- `name: string`
+- `space_type: string enum` (initially kitchen plus room types already represented by Home schema)
+- `level: integer`
+- `plan_position_mm: {x,z} | null`
+- `status: active | archived`
+- `current_revision_id: UUID | null`
 
 ### DesignRevision
-- id
-- orgId
-- projectId
-- spaceId
-- parentRevisionId
-- schemaVersion
-- snapshot
-- canonicalHash
-- createdBy
-- createdAt
+- `id: UUID`
+- `org_id: UUID`
+- `project_id: UUID`
+- `space_id: UUID`
+- `parent_revision_id: UUID | null`
+- `snapshot_format: interior-studio/kitchen | interior-studio/home-room-design`
+- `snapshot_schema_version: integer`
+- `canonicalizer_version: string`
+- `snapshot_jsonb: object`
+- `canonical_hash: 64-char lowercase SHA-256 hex`
+- `created_by: UUID`
+- `created_at: timestamptz`
+- `source_type: native | import | migration`
+- `source_mapping_id: UUID | null`
 
-The scene snapshot must preserve the existing domain schema contract. Do not duplicate or independently edit geometry in a second data model.
+### LegacyImportMapping
+- `id: UUID`
+- `org_id: UUID`
+- `source_format: string`
+- `source_entity_type: kitchen | home | home_room`
+- `source_entity_id: text`
+- `target_project_id: UUID`
+- `target_space_id: UUID | null`
+- `first_imported_revision_id: UUID | null`
+- `imported_by: UUID`
+- `imported_at: timestamptz`
 
-## 8. Authorization contract
+Unique mapping key: `(org_id, source_format, source_entity_type, source_entity_id)`. Explicit import-as-copy creates a new mapping and does not overwrite an existing mapping.
 
-Required capabilities (canonical names to reconcile with the existing permission registry):
-- `projects.create`
-- `projects.read`
-- `projects.edit`
-- `projects.assign_members`
-- `spaces.create`
-- `spaces.read`
-- `spaces.edit`
-- `design_revisions.commit`
+### Revision commit request
+- `orgId`, `projectId`, `spaceId` (selectors)
+- `expectedRevisionId: UUID | null`
+- `snapshotFormat`, `snapshotSchemaVersion`, `snapshot`
+- `idempotencyKey`
+- actor is derived from verified auth, never request payload.
 
-The server derives actor identity from verified Supabase auth. The organization and project IDs supplied by the client are selectors, not proof of access.
+### Revision commit result
+- `revisionId`
+- `parentRevisionId`
+- `currentRevisionId`
+- `canonicalHash`
+- `committedAt`
+- `replayed: boolean`
 
-The evaluator must support all declared scope types or reject unsupported scope configuration. A missing resource context must not turn a scoped grant into organization-wide access.
+Conflict result returns current revision ID and does not mutate state.
+
+## 7. Authorization and entitlement contract
+
+Minimum capabilities must be mapped to the existing permission registry before implementation. Do not introduce a parallel permission vocabulary without an explicit mapping.
+
+Required actions:
+- create/read/update/archive project;
+- create/read/update/archive space;
+- assign project members;
+- commit/read design revisions;
+- import legacy design.
+
+Authorization order:
+1. verified actor;
+2. active org membership;
+3. role permission;
+4. resource scope;
+5. subscription entitlement only where an approved feature gate applies.
+
+Feature 034 does not introduce new project quotas. Missing resource context denies scoped permissions. If the current policy evaluator cannot safely support a scope, reject that scope configuration.
+
+## 8. Non-functional requirements
+
+- Security: deny by default, RLS plus application authorization.
+- Consistency: revision insert, current pointer, idempotency, audit and outbox atomic.
+- Reliability: stale writes return conflict; retries are idempotent.
+- Compatibility: existing editor schema and file envelopes remain readable/writable.
+- Privacy: minimize client PII; consent and retention require approved policy.
+- Traceability: all revisions have actor/time/parent/hash/source metadata.
+- Determinism: canonical hash is versioned and stable across supported runtimes.
+- Maintainability: no database/network dependency in pure domain/engine packages.
+- Testability: clean DB migrations, representative import fixtures, cross-tenant negative tests.
 
 ## 9. Out of scope
 
-- Complete survey capture and polygon solver.
-- MOM/requirements builder.
-- MEP editing and coordination.
-- Client portal and external share links.
-- Quote generation and tax engine.
-- Manufacturing package generation and release.
-- Installation/handover workflow.
-- Full offline multi-user merge.
-- Full extraction of all eight packages.
+- Full survey/MOM/MEP workflows.
+- Client portal/external share links.
+- Full offline collaborative merge.
+- Full subscription engine redesign.
+- Full custom role-management UI.
+- Production package generation and factory release.
+- Work orders/installation/handover.
+- Converting editor element IDs to UUID.
+- Destructive migration of IndexedDB stores.
 
-These are later features that depend on this foundation.
+## 10. Open decisions [V]
 
-## 10. Risks and open decisions
-
-- [V] Confirm whether existing string IDs are migrated to UUID or mapped at the persistence boundary.
-- [V] Confirm how existing IndexedDB projects are associated with an organization during onboarding.
-- [V] Define behavior for projects created offline before tenant membership is available.
-- [V] Confirm actual Supabase region and privacy obligations.
-- [V] Define revision retention and deletion/anonymization policy.
-- [V] Confirm whether a project can have multiple clients or client organizations.
+- Whether client is mandatory and which fields are mandatory.
+- Whether one project may have multiple client contacts/entities.
+- Consent notice/purpose/capture requirements and retention.
+- Project archival/deletion and PII erasure behavior.
+- Whether Feature 034 needs team/client/specific-project scopes or only all/assigned.
+- Whether app accesses Supabase with user JWT directly or uses server APIs/RPCs.
+- Actual Supabase region and deployment configuration.
+- Offline draft behavior before organization selection.
+- Whole-home floor-plan artifact ownership and versioning.
