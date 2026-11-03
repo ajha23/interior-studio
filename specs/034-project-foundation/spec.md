@@ -227,3 +227,19 @@ Feature 034 does not introduce new project quotas. Missing resource context deni
 - Actual Supabase region and deployment configuration.
 - Offline draft behavior before organization selection.
 - Whole-home floor-plan artifact ownership and versioning.
+
+## 11. Approved product decisions — authoritative
+
+The following decisions were confirmed by the product owner and supersede conflicting open questions or conditional wording elsewhere in this specification.
+
+1. **Client is optional.** A Project may be created with `client_id = NULL`. Client creation or association may happen later. No client name, mobile number, consent event or client record is a prerequisite for project creation. When a client is associated, it must belong to the same organization. Client PII remains outside design snapshots.
+2. **Authorization scope for Feature 034 is assigned-project scope.** Implement and test `assigned_projects` for project-scoped operations. Organization-wide access may be granted only through an explicitly configured `all_projects` permission. Do not enable team/client/specific-project scopes in this feature; reject those scope configurations rather than broadening access. Project-scoped operations with missing project context deny.
+3. **Offline strategy is to preserve existing IndexedDB behavior and add cloud sync.** Keep local editing and existing import/export. Track the server base revision and sync state. No full offline-first collaborative merge is required. Stale drafts must be preserved and surfaced as conflicts; never silently overwrite the server.
+
+### Updated acceptance implications
+
+- Project creation without a client succeeds for an authorized member.
+- Project creation with a same-org client succeeds; cross-org association fails.
+- Assigned members can access their assigned projects; unassigned members cannot access them unless they have an explicit all-projects grant.
+- Team/client/specific-project scope assignments are rejected for Feature 034.
+- A user can continue editing an existing local draft while offline; sync occurs when connectivity returns and uses expected-revision concurrency.
