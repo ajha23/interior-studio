@@ -275,3 +275,23 @@ Do not enable cloud writes until:
 - Confirm actual Supabase region and deployment project.
 - Confirm offline drafts can be created before tenant selection.
 - Confirm whether whole-home floor-plan geometry is a project-level artifact in the first release.
+
+## 8. Product decisions confirmed after review
+
+The product owner has confirmed the following; these are no longer open decisions for Feature 034:
+
+1. **Client requirement: optional.** A project may be created without a client. The relational `client_id` is nullable; later association is allowed only to a client in the same organization. No mobile number, consent or client PII is required at project creation.
+2. **Authorization scopes: assigned.** Feature 034 implements assigned-project scope. An explicit all-projects permission remains available for roles that are intentionally organization-wide. Team, client and specific-project scopes are out of scope and must be rejected rather than silently expanded. Missing project context denies scoped access.
+3. **Offline strategy: existing.** Preserve IndexedDB local editing and add cloud synchronization. Do not introduce full offline collaborative merge. Store base revision/sync status and preserve local drafts on stale-write conflict.
+
+### Resulting implementation order
+
+1. Nullable client association and tenant-safe FK.
+2. Verified identity and assigned-project evaluator, with explicit all-projects grant.
+3. Atomic revision commit and cloud persistence.
+4. IndexedDB-to-cloud synchronization and conflict handling.
+5. Kitchen/Home import and end-to-end verification.
+
+Client/consent schema repair is not a blocker for clientless project creation, but remains required before storing or exposing client consent/PII through the cloud project workflow.
+
+**Code-change status:** no application code changed. Only Feature 034 documentation is updated.
