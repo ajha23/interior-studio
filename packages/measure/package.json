@@ -12,7 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@studio/core": "workspace:*",
+    "@studio/core": "*",
     "zod": "4.6.7"
   }
 }

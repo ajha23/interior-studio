@@ -12,9 +12,9 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@studio/core": "workspace:*",
-    "@studio/catalog": "workspace:*",
-    "@studio/engine": "workspace:*"
+    "@studio/core": "*",
+    "@studio/catalog": "*",
+    "@studio/engine": "*"
   }
 }
 

@@ -9,10 +9,10 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@studio/core": "workspace:*",
-    "@studio/engine": "workspace:*",
-    "@studio/deliverables": "workspace:*",
-    "@studio/ai": "workspace:*"
+    "@studio/core": "*",
+    "@studio/engine": "*",
+    "@studio/deliverables": "*",
+    "@studio/ai": "*"
   }
 }
 

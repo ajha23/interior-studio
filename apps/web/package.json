@@ -10,14 +10,14 @@
     "typecheck": "tsc -b"
   },
   "dependencies": {
-    "@studio/core": "workspace:*",
-    "@studio/platform": "workspace:*",
-    "@studio/catalog": "workspace:*",
-    "@studio/engine": "workspace:*",
-    "@studio/measure": "workspace:*",
-    "@studio/commercial": "workspace:*",
-    "@studio/deliverables": "workspace:*",
-    "@studio/ai": "workspace:*"
+    "@studio/core": "*",
+    "@studio/platform": "*",
+    "@studio/catalog": "*",
+    "@studio/engine": "*",
+    "@studio/measure": "*",
+    "@studio/commercial": "*",
+    "@studio/deliverables": "*",
+    "@studio/ai": "*"
   }
 }
 
