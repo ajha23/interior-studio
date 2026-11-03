@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Box, ChevronLeft, Columns2, Database, Download, FileText, Map as MapIcon, Redo2, Ruler, Save, Shield, ShieldCheck, Table2, Undo2 } from 'lucide-react';
+import { Box, ChevronLeft, Columns2, Database, Download, FileText, Map as MapIcon, Redo2, Ruler, Save, Search, Shield, ShieldCheck, Table2, Undo2 } from 'lucide-react';
 import { useDesignChecks } from '@/features/checks/useDesignChecks';
 import { navigate } from '@/app/router';
 import { useHomeStore } from '@/state/homeStore';
@@ -14,6 +14,7 @@ import { StudioTableEditor } from '@/features/table-editor/StudioTableEditor';
 import { SiteCaptureModal } from '@/features/measurement/SiteCaptureModal';
 import { useSiteCaptureStore } from '@/state/siteCaptureStore';
 import { SettingsLayout } from '@/features/settings/SettingsLayout';
+import { useCommandPaletteStore } from '@/features/command-palette/commandPaletteStore';
 
 export function TopBar() {
   const project = useEditorStore((s) => s.project)!;
@@ -32,6 +33,7 @@ export function TopBar() {
   const [showTables, setShowTables] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const openSiteCapture = useSiteCaptureStore((s) => s.openModal);
+  const openCommandPalette = useCommandPaletteStore((s) => s.open);
 
   const commitName = () => {
     if (name !== null && name.trim() && name.trim() !== project.name) dispatch({ type: 'rename_project', name: name.trim() });
@@ -107,6 +109,18 @@ export function TopBar() {
         </Button>
         <Button size="sm" variant="ghost" onClick={openSiteCapture} aria-label="Site Measurement" title="Site Measurement & Wall Photos (MT-03, MT-05)" data-testid="site-capture-btn">
           <Ruler /> Site Capture
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={openCommandPalette}
+          className="h-8 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
+          title="Command Palette (⌘K)"
+          data-testid="command-palette-btn"
+        >
+          <Search className="size-3.5" />
+          <span className="hidden sm:inline">Commands</span>
+          <kbd className="rounded border bg-muted px-1 text-[10px] font-semibold">⌘K</kbd>
         </Button>
       </div>
 
