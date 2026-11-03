@@ -30,3 +30,4 @@
    - Type "Plan" -> press Enter -> verify switches to Plan view.
    - Select an element -> verify contextual floating toolbar appears with quick actions.
    - Open left sidebar Outliner tab -> verify hierarchical tree view displays walls and cabinets.
+

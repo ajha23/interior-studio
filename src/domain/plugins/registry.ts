@@ -109,3 +109,4 @@ export class StudioPluginRegistry {
 
 /** Default singleton instance of the studio plugin registry. */
 export const defaultPluginRegistry = new StudioPluginRegistry();
+

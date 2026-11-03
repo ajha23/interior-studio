@@ -62,3 +62,4 @@ export const builtInPlugins: StudioPlugin[] = [
   officePlugin,
   lightingPlugin,
 ];
+

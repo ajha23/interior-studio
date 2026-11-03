@@ -65,3 +65,4 @@ describe('HierarchicalOutliner (Task 5)', () => {
     expect(screen.getByTestId('outliner-node-wall-back')).toBeInTheDocument();
   });
 });
+

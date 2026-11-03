@@ -13,3 +13,4 @@ export const useCommandPaletteStore = create<CommandPaletteState>((set) => ({
   close: () => set({ isOpen: false }),
   toggle: () => set((s) => ({ isOpen: !s.isOpen })),
 }));
+

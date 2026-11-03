@@ -59,3 +59,4 @@ As Interior Studio expands from kitchen layout modeling to comprehensive multi-r
 - **Acceptance Criteria:**
   1. Keyboard shortcuts for grid toggle, view toggle (`1` for 3D, `2` for Plan, `3` for Split, `4` for Deliverables), undo (`Cmd+Z`), redo (`Shift+Cmd+Z`), and focus (`F`).
   2. Visual snapping indicator highlights wall alignment and module snaps during drag operations.
+

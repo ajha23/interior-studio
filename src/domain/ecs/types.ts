@@ -72,3 +72,4 @@ export const WorkspaceEntitySchema = z.object({
   customComponents: z.record(z.string(), z.unknown()).optional(),
 });
 export type WorkspaceEntity = z.infer<typeof WorkspaceEntitySchema>;
+

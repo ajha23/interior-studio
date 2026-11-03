@@ -23,3 +23,4 @@ export interface StudioPlugin {
   onActivate?: () => void;
   onDeactivate?: () => void;
 }
+

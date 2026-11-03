@@ -159,3 +159,4 @@ export interface StudioPlugin {
    - Tab switch between Outliner and Catalog
 4. **Contextual Floating Toolbar**:
    - Appears immediately above or adjacent to selected 2D/3D entities with fast actions (Rotate 90°, Focus F, Duplicate, Delete).
+

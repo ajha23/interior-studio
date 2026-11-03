@@ -95,3 +95,4 @@ describe('Studio Plugin Registry & Domain Plugins (Task 3)', () => {
     expect(registry.getActivePlugins()).toHaveLength(0);
   });
 });
+
