@@ -1,71 +1,116 @@
-# 034 — Project Foundation and Cloud Persistence: Tasks
+# 034 — Project Foundation and Cloud Persistence: Repository-Reviewed Tasks
 
-Tasks are ordered. Keep each task independently reviewable and preserve a runnable application after each increment. Do not implement later lifecycle features in this feature.
+Tasks are ordered and independently reviewable. No task may change the existing scene model or remove local persistence without explicit compatibility evidence.
 
-## T0 — Baseline and contracts
-- [ ] T001 Record current `refactorV2` commit SHA and existing check results.
-- [ ] T002 Read and reconcile `AGENTS.md`, `docs/PRD.md`, `docs/ARCHITECTURE.md`, `docs/DOMAIN_MODEL.md` and relevant specs.
-- [ ] T003 Define canonical identifier mapping between current string IDs and database UUIDs.
-- [ ] T004 Define repository interfaces for Client, Project, Space and DesignRevision.
-- [ ] T005 Define canonical permission keys and resource context contract.
+## T0 — Baseline and decisions
+- [ ] T001 Pin exact `refactorV2` commit SHA used for implementation.
+- [ ] T002 Record existing lint, typecheck, unit, build and E2E baseline; do not assume tests pass.
+- [ ] T003 Confirm Supabase project/environment and auth boundary.
+- [ ] T004 Confirm client-required fields/cardinality and consent policy with product owner/legal reviewer.
+- [ ] T005 Confirm project archive/delete and PII retention policy.
+- [ ] T006 Define permission-key mapping to existing permission registry; no parallel key vocabulary.
+- [ ] T007 Confirm whether only all_projects/assigned_projects scopes are needed in this feature.
+- [ ] T008 Document current IndexedDB fixtures and Home/kitchen file formats.
+- [ ] T009 Approve UUID relational IDs + legacy editor ID mapping decision.
 
-## T1 — Database foundation
-- [ ] T101 Design additive migrations for project/client/space/revision relationships.
-- [ ] T102 Add tenant-consistent unique constraints and foreign keys.
-- [ ] T103 Add RLS to every new tenant-owned table.
-- [ ] T104 Add explicit SELECT/INSERT/UPDATE/DELETE policies.
-- [ ] T105 Add same-tenant relationship constraints.
-- [ ] T106 Add revision and project lookup indexes.
-- [ ] T107 Add migration tests against clean database and representative existing data.
+## T1 — Schema and migration design
+- [ ] T101 Inspect all existing migrations and deployed schema before allocating new migration numbers.
+- [ ] T102 Create canonical projects table with UUID PK and org_id.
+- [ ] T103 Add optional client_id according to approved policy and composite same-tenant FK.
+- [ ] T104 Create spaces table with UUID PK, project/org FK, type, level and plan coordinates.
+- [ ] T105 Create design_revisions table with UUID PK, same-space parent relation, snapshot wrapper and immutable metadata.
+- [ ] T106 Add spaces.current_revision_id same-space FK with valid transactional insertion strategy.
+- [ ] T107 Repair project_members with project/org/member FKs; detect and reconcile orphan rows before constraints.
+- [ ] T108 Add legacy_import_mappings with scoped unique key and explicit import-as-copy behavior.
+- [ ] T109 Add idempotency_records with unique org/actor/operation/key and request hash.
+- [ ] T110 Add transactional outbox table or document reuse of an existing tested outbox.
+- [ ] T111 Add indexes for org/project/space/revision and idempotency lookup.
+- [ ] T112 Add additive migration comments, preconditions, verification queries and forward-recovery notes.
+- [ ] T113 Do not modify already-applied migrations.
 
-## T2 — Authentication and authorization
-- [ ] T201 Implement verified Supabase actor resolver.
-- [ ] T202 Remove production reliance on caller-controlled identity/role headers.
-- [ ] T203 Consolidate resource-scope evaluation.
-- [ ] T204 Fail closed when required project context is missing.
-- [ ] T205 Add direct API and direct database negative authorization tests.
-- [ ] T206 Add tenant-isolation tests for clients, projects, spaces and revisions.
+## T2 — Client and consent relationship
+- [ ] T201 Confirm whether a project can exist without a client.
+- [ ] T202 Confirm whether a client can have multiple consent events and contacts.
+- [ ] T203 Add client/consent same-tenant relationship and RLS.
+- [ ] T204 Preserve historical consent events; model withdrawal and notice version.
+- [ ] T205 Avoid mandatory mobile/PII assumptions until approved.
+- [ ] T206 Add direct-table and view tests for PII access/masking.
+- [ ] T207 Define data retention, export and deletion/anonymization behavior.
 
-## T3 — Project and space use cases
-- [ ] T301 Implement create/list/open client use cases.
-- [ ] T302 Implement create/list/open project use cases.
-- [ ] T303 Implement add/list/update space use cases.
-- [ ] T304 Enforce client/project organization consistency.
-- [ ] T305 Add project-member assignment and scope validation.
-- [ ] T306 Add audit/outbox events for sensitive mutations.
+## T3 — Authentication and authorization
+- [ ] T301 Implement verified Supabase session/JWT actor resolver.
+- [ ] T302 Remove default production reliance on x-user-id/x-org-id/x-user-roles/x-team-id/x-client-id.
+- [ ] T303 Resolve active org membership from database for selected org.
+- [ ] T304 Consolidate project/space authorization at one application boundary.
+- [ ] T305 Deny scoped permission when project context is absent.
+- [ ] T306 Implement all_projects and assigned_projects correctly or reject unsupported scope types.
+- [ ] T307 Ensure SQL authorize RPC cannot allow assigned_projects when project_id is NULL.
+- [ ] T308 Do not use service-role bypass for user-facing writes.
+- [ ] T309 Add RLS for projects, spaces, revisions, mappings, idempotency and outbox as appropriate.
+- [ ] T310 Add explicit INSERT WITH CHECK / UPDATE WITH CHECK or make writes RPC-only with grants revoked.
+- [ ] T311 Harden SECURITY DEFINER search_path, execute grants and actor checks.
+- [ ] T312 Add object-storage bucket policies if assets are included.
 
-## T4 — Revision persistence
-- [ ] T401 Implement immutable design revision repository.
-- [ ] T402 Implement expected-revision commit contract.
-- [ ] T403 Implement idempotency key handling.
-- [ ] T404 Validate snapshot with existing Zod schema and domain invariants.
-- [ ] T405 Calculate canonical revision hash.
-- [ ] T406 Atomically insert revision and update current revision pointer.
-- [ ] T407 Return conflict on stale expected revision.
-- [ ] T408 Add revision history query.
+## T4 — Revision and hash contract
+- [ ] T401 Define snapshot wrapper referencing existing inferred KitchenProject/HomeRoom types.
+- [ ] T402 Preserve scene document IDs and existing schema/file format.
+- [ ] T403 Implement versioned canonicalizer with deterministic key/number/default behavior.
+- [ ] T404 Encode canonical bytes as UTF-8 and compute SHA-256.
+- [ ] T405 Add golden vectors including non-ASCII strings and half-mm positions.
+- [ ] T406 Implement immutable revision insert and same-space parent validation.
+- [ ] T407 Implement compare-and-swap update of spaces.current_revision_id.
+- [ ] T408 Ensure stale CAS failure rolls back revision, audit and outbox inserts.
+- [ ] T409 Implement idempotency replay and same-key/different-payload conflict.
+- [ ] T410 Add revision history query and immutable read path.
 
-## T5 — Web integration
-- [ ] T501 Add project/client creation UI.
-- [ ] T502 Add project overview and space list.
-- [ ] T503 Add space creation/edit UI.
-- [ ] T504 Open existing editor for selected Kitchen space.
-- [ ] T505 Add cloud save/sync status.
-- [ ] T506 Add stale revision conflict UI.
-- [ ] T507 Preserve existing IndexedDB import/export and local draft support.
+## T5 — Project/space use cases and UI
+- [ ] T501 Implement create/list/open/update/archive Project use cases.
+- [ ] T502 Implement create/list/update/archive Space use cases.
+- [ ] T503 Implement project member assignment use case with scope validation.
+- [ ] T504 Add project list/create UI and project overview.
+- [ ] T505 Add multi-space list/create UI.
+- [ ] T506 Open existing editor for selected Kitchen Space.
+- [ ] T507 Preserve project context while editor remains driven by existing KitchenProject schema/commands.
+- [ ] T508 Add cloud sync state: local draft, syncing, synced, conflict, failed.
+- [ ] T509 Add explicit permission/entitlement/prerequisite failure messages.
+- [ ] T510 Keep client PII out of project/scene snapshot and general activity payload.
 
-## T6 — Migration and compatibility
-- [ ] T601 Add explicit import flow for existing IndexedDB projects.
-- [ ] T602 Require authorized target organization/project/space selection.
-- [ ] T603 Validate imported scene before creating cloud revision.
-- [ ] T604 Preserve stable element IDs and schema version.
-- [ ] T605 Add migration and round-trip tests.
+## T6 — Import and local compatibility
+- [ ] T601 Implement standalone kitchen file import preview and validation.
+- [ ] T602 Implement Home import preview with one target project and one target space per HomeRoom.
+- [ ] T603 Preserve Home kind/BHK/plot/levels/floorHeight/style and room level/x/z/type/name.
+- [ ] T604 Preserve original Home, room and embedded design IDs as source provenance.
+- [ ] T605 Create import mappings and first revisions atomically or through resumable idempotent import batches.
+- [ ] T606 Preserve local source until cloud commit confirmation.
+- [ ] T607 Mark local records with mapped server IDs and synced revision.
+- [ ] T608 Implement explicit import-as-copy.
+- [ ] T609 Preserve existing file export/round-trip compatibility.
+- [ ] T610 Define offline draft conflict UX; do not implement multi-user merge in this feature.
 
 ## T7 — Verification and release
-- [ ] T701 Unit tests for project/space invariants.
-- [ ] T702 Integration tests for transaction and revision concurrency.
-- [ ] T703 RLS tests for every tenant-owned table.
-- [ ] T704 Cross-tenant negative API tests.
-- [ ] T705 E2E: create client → project → space → edit → commit → reopen.
-- [ ] T706 E2E: stale revision conflict preserves local draft.
-- [ ] T707 Run lint, typecheck, unit tests, build and E2E.
-- [ ] T708 Document unresolved requirements and operational setup.
+- [ ] T701 Unit tests for project/space invariants and schema wrappers.
+- [ ] T702 Migration tests against clean database.
+- [ ] T703 Migration tests against representative restored database.
+- [ ] T704 RLS tests for every new tenant-owned table and operation.
+- [ ] T705 Cross-tenant and forged-header API tests.
+- [ ] T706 RPC direct-invocation and SECURITY DEFINER tests.
+- [ ] T707 Revision atomicity, CAS concurrency and idempotency integration tests.
+- [ ] T708 Canonical hash golden vectors across browser/server runtime.
+- [ ] T709 Kitchen import/reopen/export round-trip E2E.
+- [ ] T710 Home multi-room import/reopen/plan-position round-trip E2E.
+- [ ] T711 Two-session cloud reopen and stale conflict E2E.
+- [ ] T712 Run lint, typecheck, unit, build and E2E; attach CI evidence.
+- [ ] T713 Run backup/restore and migration recovery exercise.
+- [ ] T714 Document deployment variables, auth configuration, storage policy and operator runbook.
+
+## Definition of Done
+
+- No unresolved P0 authorization or tenant-isolation defect.
+- No production use of unverified identity headers.
+- Projects/spaces/revisions have tenant-consistent relational constraints.
+- Commit is atomic, immutable, compare-and-swap protected and idempotent.
+- Kitchen and Home import preserve existing design data and IDs.
+- Existing editor and IndexedDB file compatibility remain functional.
+- Clean and representative migration suites pass.
+- All P0 acceptance tests pass.
+- Security reviewer approves the deployed RLS/auth path before cloud writes are enabled.
