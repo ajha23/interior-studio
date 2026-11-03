@@ -258,3 +258,18 @@ Before production:
 - monitoring for conflict/error rates;
 - migration rollback/forward-recovery notes;
 - no real PII in fixtures.
+
+## 15. Approved product decisions — authoritative
+
+These decisions supersede any open questions in earlier sections:
+
+- **Client optional:** `projects.client_id` is nullable. Create Project does not create or require a Client. A same-organization Client may be attached later. Composite tenant FK still applies when client_id is non-null. Do not require client mobile, consent or PII for project creation.
+- **Assigned-project authorization:** Feature 034 implements `assigned_projects` as the default project-scoped access model. `all_projects` is permitted only as an explicit role permission. The assignment lookup must require a non-null project ID and a matching active project_members row. Team, client and specific-project scopes are not supported in this feature and must be rejected, not treated as all-projects.
+- **Existing offline behavior:** IndexedDB remains the local editor/draft store. Cloud sync is additive. No full offline collaborative merge is in scope. Local drafts carry their base server revision; stale sync returns a conflict and preserves the local draft.
+
+### Updated policy predicate
+
+For a project-scoped action, allow only when:
+`verified_actor AND active_org_membership AND permission_grant AND ((scope = all_projects) OR (scope = assigned_projects AND project_id IS NOT NULL AND active_project_membership))`.
+
+The all-projects branch must be explicit and auditable. Missing project context never satisfies assigned-project scope.
