@@ -114,3 +114,32 @@ Tasks are ordered and independently reviewable. No task may change the existing 
 - Clean and representative migration suites pass.
 - All P0 acceptance tests pass.
 - Security reviewer approves the deployed RLS/auth path before cloud writes are enabled.
+
+## 8. Approved product decisions — task plan update
+
+These decisions are confirmed and are no longer blockers:
+
+- [x] D034-01 Client association is optional; projects may be created with NULL client_id.
+- [x] D034-02 Feature 034 supports assigned_projects and explicitly granted all_projects only.
+- [x] D034-03 Preserve IndexedDB and add cloud sync; no full offline merge.
+
+### Revised task priorities and additions
+
+- [ ] T103a Implement nullable `projects.client_id`; add composite same-org FK for non-null values.
+- [ ] T201a Remove client creation/mobile/consent as a project-create prerequisite; support later client association.
+- [ ] T304a Implement one canonical project-scope evaluator for all project/space/revision use cases.
+- [ ] T305a Enforce assigned-project scope with non-null project ID and active project_members membership.
+- [ ] T306a Support explicit all_projects permission plus assigned_projects; reject team_projects, client_projects and specific_projects assignments/requests in Feature 034.
+- [ ] T306b Add tests proving unassigned project denial and explicit all-projects grant behavior.
+- [ ] T508a Preserve existing IndexedDB save/open/edit behavior while recording base server revision and sync status.
+- [ ] T610a Implement reconnect sync using expected-revision CAS; preserve local draft on conflict.
+- [ ] T610b Do not implement offline collaborative merge, CRDTs or automatic last-write-wins.
+
+### Revised sequencing
+
+1. T1 schema: create projects with nullable client_id and same-tenant FK.
+2. T3 authorization: assigned-project evaluator and explicit all-projects grant; reject other scope types.
+3. T5/T6 integration: retain local persistence; add cloud sync metadata and conflict UX.
+4. T7 tests: prove offline editing, reconnect success, stale conflict preservation and assigned/unassigned access.
+
+The client/consent relationship repair remains a separate privacy/data-model task; it is not a dependency for creating a Project with no client.
