@@ -116,3 +116,18 @@ All tests use synthetic users, tenants and design files. Never use production cl
 ## Release gate
 
 Do not enable cloud writes until all P0 tests pass, a security reviewer verifies the deployed auth/RLS boundary, and clean plus representative database migration suites pass. A green UI-only test is not evidence of tenant isolation.
+
+## J. Approved product-decision acceptance tests
+
+85. [P0] Authorized user can create a Project with `client_id = NULL`; no Client row, mobile number or consent event is required.
+86. [P0] Authorized user can create a Project with a Client from the same organization.
+87. [P0] Project cannot be associated with a Client from another organization.
+88. [P0] A user with assigned_projects permission can read and mutate a project only while an active project_members assignment exists.
+89. [P0] A user without project assignment is denied even if they belong to the same organization, unless an explicit all_projects permission is granted.
+90. [P0] Explicit all_projects permission grants project access within the same organization, subject to the permission itself.
+91. [P0] team_projects, client_projects and specific_projects scope assignments are rejected for Feature 034 and never broadened to all_projects.
+92. [P0] assigned_projects with NULL/missing project context is denied in application and SQL/RPC authorization paths.
+93. [P0] Existing IndexedDB project and Home records remain editable while offline.
+94. [P0] Reconnecting syncs a local draft when its base revision is still current.
+95. [P0] Reconnecting with a stale base revision returns conflict and preserves the local draft unchanged.
+96. [P0] Repeated reconnect/retry after a successful commit is idempotent and does not create duplicate revisions.
