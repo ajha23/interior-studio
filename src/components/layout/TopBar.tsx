@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Box, ChevronLeft, Columns2, Database, Download, FileText, Map as MapIcon, Redo2, Ruler, Save, ShieldCheck, Table2, Undo2 } from 'lucide-react';
+import { Box, ChevronLeft, Columns2, Database, Download, FileText, Map as MapIcon, Redo2, Ruler, Save, Shield, ShieldCheck, Table2, Undo2 } from 'lucide-react';
 import { useDesignChecks } from '@/features/checks/useDesignChecks';
 import { navigate } from '@/app/router';
 import { useHomeStore } from '@/state/homeStore';
@@ -13,6 +13,7 @@ import { selectIsDirty, useEditorStore } from '@/state/editorStore';
 import { StudioTableEditor } from '@/features/table-editor/StudioTableEditor';
 import { SiteCaptureModal } from '@/features/measurement/SiteCaptureModal';
 import { useSiteCaptureStore } from '@/state/siteCaptureStore';
+import { SettingsLayout } from '@/features/settings/SettingsLayout';
 
 export function TopBar() {
   const project = useEditorStore((s) => s.project)!;
@@ -29,6 +30,7 @@ export function TopBar() {
   const [name, setName] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [showTables, setShowTables] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const openSiteCapture = useSiteCaptureStore((s) => s.openModal);
 
   const commitName = () => {
@@ -100,6 +102,9 @@ export function TopBar() {
         <Button size="sm" variant={showTables ? 'selected' : 'ghost'} aria-pressed={showTables} onClick={() => setShowTables(true)} aria-label="Studio Tables" title="Studio Data Tables & Governance (SEC-08)" data-testid="studio-tables-btn">
           <Database /> Studio Tables
         </Button>
+        <Button size="sm" variant={showSettings ? 'selected' : 'ghost'} aria-pressed={showSettings} onClick={() => setShowSettings(true)} aria-label="Access & Security Settings" title="Roles, Permissions & Access Settings (Feature 033)" data-testid="access-settings-btn">
+          <Shield /> Roles & Access
+        </Button>
         <Button size="sm" variant="ghost" onClick={openSiteCapture} aria-label="Site Measurement" title="Site Measurement & Wall Photos (MT-03, MT-05)" data-testid="site-capture-btn">
           <Ruler /> Site Capture
         </Button>
@@ -130,6 +135,11 @@ export function TopBar() {
         <Save /> Save
       </Button>
       <StudioTableEditor isOpen={showTables} onClose={() => setShowTables(false)} />
+      {showSettings && (
+        <div className="fixed inset-0 z-50 bg-background overflow-y-auto" data-testid="settings-modal-wrapper">
+          <SettingsLayout onClose={() => setShowSettings(false)} />
+        </div>
+      )}
       <SiteCaptureModal projectId={project.id} />
     </header>
   );
