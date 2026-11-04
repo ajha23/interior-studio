@@ -32,7 +32,19 @@ function assistantApi(mode: string): Plugin {
 
 export default defineConfig(({ mode }) => ({
   plugins: [react(), tailwindcss(), assistantApi(mode)],
-  resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
+  resolve: {
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+      '@studio/core': fileURLToPath(new URL('./packages/core/src', import.meta.url)),
+      '@studio/platform': fileURLToPath(new URL('./packages/platform/src', import.meta.url)),
+      '@studio/catalog': fileURLToPath(new URL('./packages/catalog/src', import.meta.url)),
+      '@studio/engine': fileURLToPath(new URL('./packages/engine/src', import.meta.url)),
+      '@studio/measure': fileURLToPath(new URL('./packages/measure/src', import.meta.url)),
+      '@studio/commercial': fileURLToPath(new URL('./packages/commercial/src', import.meta.url)),
+      '@studio/deliverables': fileURLToPath(new URL('./packages/deliverables/src', import.meta.url)),
+      '@studio/ai': fileURLToPath(new URL('./packages/ai/src', import.meta.url)),
+    },
+  },
   build: {
     rolldownOptions: {
       output: {

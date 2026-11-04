@@ -1,0 +1,23 @@
+{
+  "name": "@studio/web",
+  "version": "1.0.0-alpha.1",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "typecheck": "tsc -b"
+  },
+  "dependencies": {
+    "@studio/core": "*",
+    "@studio/platform": "*",
+    "@studio/catalog": "*",
+    "@studio/engine": "*",
+    "@studio/measure": "*",
+    "@studio/commercial": "*",
+    "@studio/deliverables": "*",
+    "@studio/ai": "*"
+  }
+}
+

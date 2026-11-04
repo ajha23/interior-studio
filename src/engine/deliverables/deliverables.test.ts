@@ -8,6 +8,7 @@ import { elevationView } from './elevationView';
 import { sheetsToPdf } from './pdf';
 import { DEFAULT_ANNOTATIONS, missingMeasurements, planView } from './plan';
 import { checkReadiness } from './readiness';
+import { SEED_RULE_PACK_V1, FACTORY_VALIDATED_RULE_PACK_V1 } from '@/domain/manufacturing/rulePack';
 import { designRevision, stableJson } from './revision';
 import { querySchedule, scheduleRows } from './schedule';
 import { bomCsv, buildDrawingSet, DEFAULT_CONFIG, scheduleCsv } from './set';
@@ -254,6 +255,13 @@ describe('revisions and readiness', () => {
     expect(checkReadiness(noCorner, 'r').outputs.manufacturing).toEqual({ status: 'ready', label: 'Manufacturing-ready' });
     const partial = executeCommand(withRules(p, { hinge: 'H', handle: 'Bar', wastePercent: 10 }), { type: 'remove_entity', entityId: 'corner' }).project;
     expect(checkReadiness(partial, 'r').outputs.manufacturing).toEqual({ status: 'warnings', label: 'Draft: not manufacturing-ready' });
+    // ARC-04 & MFG-02: Rule pack lifecycle checks
+    const provCheck = checkReadiness(noCorner, 'r', SEED_RULE_PACK_V1);
+    expect(provCheck.outputs.manufacturing.status).toBe('blocked');
+    expect(provCheck.issues.some((i) => i.code === 'provisional-rulepack')).toBe(true);
+
+    const approvedCheck = checkReadiness(noCorner, 'r', FACTORY_VALIDATED_RULE_PACK_V1);
+    expect(approvedCheck.outputs.manufacturing.status).toBe('ready');
   });
 
   it('unresolved geometry blocks drawings and manufacturing but not a presentation', () => {

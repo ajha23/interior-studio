@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Box, ChevronLeft, Columns2, Download, FileText, Map as MapIcon, Redo2, Save, ShieldCheck, Table2, Undo2 } from 'lucide-react';
+import { Box, ChevronLeft, Cloud, Columns2, Database, Download, FileText, Map as MapIcon, Redo2, Ruler, Save, Search, Shield, ShieldCheck, Table2, Undo2 } from 'lucide-react';
 import { useDesignChecks } from '@/features/checks/useDesignChecks';
 import { navigate } from '@/app/router';
 import { useHomeStore } from '@/state/homeStore';
@@ -10,6 +10,12 @@ import { LENGTH_UNITS, UNIT_LABEL, type LengthUnit } from '@/engine/measurement/
 import { Separator } from '@/components/ui/separator';
 import { exportProject, saveCurrentProject } from '@/features/projects/projectActions';
 import { selectIsDirty, useEditorStore } from '@/state/editorStore';
+import { StudioTableEditor } from '@/features/table-editor/StudioTableEditor';
+import { SiteCaptureModal } from '@/features/measurement/SiteCaptureModal';
+import { useSiteCaptureStore } from '@/state/siteCaptureStore';
+import { SettingsLayout } from '@/features/settings/SettingsLayout';
+import { useCommandPaletteStore } from '@/features/command-palette/commandPaletteStore';
+import { CloudProjectModal } from '@/features/projects/CloudProjectModal';
 
 export function TopBar() {
   const project = useEditorStore((s) => s.project)!;
@@ -25,6 +31,11 @@ export function TopBar() {
   const { undo, redo, setView, toggleBom, toggleChecks, dispatch } = useEditorStore.getState();
   const [name, setName] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [showTables, setShowTables] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showCloud, setShowCloud] = useState(false);
+  const openSiteCapture = useSiteCaptureStore((s) => s.openModal);
+  const openCommandPalette = useCommandPaletteStore((s) => s.open);
 
   const commitName = () => {
     if (name !== null && name.trim() && name.trim() !== project.name) dispatch({ type: 'rename_project', name: name.trim() });
@@ -92,6 +103,30 @@ export function TopBar() {
           <ShieldCheck /> Checks
           {warningCount > 0 && <span className="rounded-full bg-amber-500 px-1.5 text-[10px] font-semibold text-white" data-testid="checks-count">{warningCount}</span>}
         </Button>
+        <Button size="sm" variant={showCloud ? 'selected' : 'ghost'} aria-pressed={showCloud} onClick={() => setShowCloud(true)} aria-label="SaaS Cloud Projects" title="SaaS Cloud Projects, Spaces & Sync (Feature 034)" data-testid="cloud-projects-btn">
+          <Cloud /> Cloud Sync
+        </Button>
+        <Button size="sm" variant={showTables ? 'selected' : 'ghost'} aria-pressed={showTables} onClick={() => setShowTables(true)} aria-label="Studio Tables" title="Studio Data Tables & Governance (SEC-08)" data-testid="studio-tables-btn">
+          <Database /> Studio Tables
+        </Button>
+        <Button size="sm" variant={showSettings ? 'selected' : 'ghost'} aria-pressed={showSettings} onClick={() => setShowSettings(true)} aria-label="Access & Security Settings" title="Roles, Permissions & Access Settings (Feature 033)" data-testid="access-settings-btn">
+          <Shield /> Roles & Access
+        </Button>
+        <Button size="sm" variant="ghost" onClick={openSiteCapture} aria-label="Site Measurement" title="Site Measurement & Wall Photos (MT-03, MT-05)" data-testid="site-capture-btn">
+          <Ruler /> Site Capture
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={openCommandPalette}
+          className="h-8 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
+          title="Command Palette (⌘K)"
+          data-testid="command-palette-btn"
+        >
+          <Search className="size-3.5" />
+          <span className="hidden sm:inline">Commands</span>
+          <kbd className="rounded border bg-muted px-1 text-[10px] font-semibold">⌘K</kbd>
+        </Button>
       </div>
 
       <Select
@@ -118,6 +153,14 @@ export function TopBar() {
       >
         <Save /> Save
       </Button>
+      <StudioTableEditor isOpen={showTables} onClose={() => setShowTables(false)} />
+      <CloudProjectModal isOpen={showCloud} onClose={() => setShowCloud(false)} />
+      {showSettings && (
+        <div className="fixed inset-0 z-50 bg-background overflow-y-auto" data-testid="settings-modal-wrapper">
+          <SettingsLayout onClose={() => setShowSettings(false)} />
+        </div>
+      )}
+      <SiteCaptureModal projectId={project.id} />
     </header>
   );
 }

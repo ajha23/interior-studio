@@ -1,0 +1,132 @@
+import { beforeEach, describe, expect, it } from 'vitest';
+import { createExampleProject } from '@/domain/project/presets';
+import { serializeHome, serializeProject, type Home } from '@/domain';
+import { useCloudProjectStore } from './cloudProjectStore';
+import { useEditorStore } from './editorStore';
+
+describe('useCloudProjectStore (Feature 034 State & Integration Tests)', () => {
+  beforeEach(() => {
+    useEditorStore.setState({
+      project: createExampleProject(),
+      selectedId: null,
+    });
+    useCloudProjectStore.setState({
+      currentOrgId: '00000000-0000-4000-8000-000000000001',
+      currentProject: null,
+      projects: [],
+      spaces: [],
+      activeSpaceId: null,
+      revisions: {},
+      legacyMappings: [],
+      idempotencyRecords: [],
+      syncState: {
+        localProjectId: 'init',
+        syncStatus: 'draft',
+        baseRevisionId: null,
+      },
+      isSyncing: false,
+    });
+  });
+
+  it('creates SaaS project and spaces within tenant boundary', async () => {
+    const store = useCloudProjectStore.getState();
+    const project = await store.createProject('Ocean View Residence');
+
+    expect(project.id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(project.name).toBe('Ocean View Residence');
+    expect(useCloudProjectStore.getState().currentProject?.id).toBe(project.id);
+
+    const space = await store.createSpace('Gourmet Kitchen', 'kitchen', 0);
+    expect(space.projectId).toBe(project.id);
+    expect(space.spaceType).toBe('kitchen');
+    expect(useCloudProjectStore.getState().activeSpaceId).toBe(space.id);
+  });
+
+  it('commits design revision atomically and updates current revision pointer', async () => {
+    const store = useCloudProjectStore.getState();
+    await store.createProject('Skyline Penthouse');
+    const space = await store.createSpace('Kitchen Suite');
+
+    const result = await store.commitCurrentDesign();
+    expect(result.success).toBe(true);
+
+    if (result.success) {
+      expect(result.revision.spaceId).toBe(space.id);
+      expect(result.revision.canonicalHash).toHaveLength(64);
+
+      // Verify space pointer advanced
+      const updatedSpace = useCloudProjectStore.getState().spaces.find((s) => s.id === space.id);
+      expect(updatedSpace?.currentRevisionId).toBe(result.revision.id);
+
+      // Verify sync state updated
+      const syncState = useCloudProjectStore.getState().syncState;
+      expect(syncState.baseRevisionId).toBe(result.revision.id);
+      expect(syncState.syncStatus).toBe('synced');
+    }
+  });
+
+  it('imports standalone kitchen file and opens document in editor', async () => {
+    const example = createExampleProject();
+    example.name = 'Nordic Modern Kitchen';
+    const file = serializeProject(example);
+
+    const store = useCloudProjectStore.getState();
+    const imported = await store.importKitchen(file, 'Imported Nordic Residence');
+
+    expect(imported.project.name).toBe('Imported Nordic Residence');
+    expect(imported.space.spaceType).toBe('kitchen');
+
+    // Verify active in editorStore
+    const activeEditorProject = useEditorStore.getState().project;
+    expect(activeEditorProject?.name).toBe('Nordic Modern Kitchen');
+    expect(activeEditorProject?.cabinets.length).toBe(example.cabinets.length);
+  });
+
+  it('imports whole-home file creating multi-space SaaS structure', async () => {
+    const kitchenProject = createExampleProject();
+    const bedroomProject = createExampleProject();
+    bedroomProject.id = 'bed-1';
+    bedroomProject.name = 'Master Suite';
+
+    const home: Home = {
+      schemaVersion: 1,
+      id: 'home-villa-777',
+      name: 'Contemporary Villa 2BHK',
+      kind: 'villa',
+      bhk: 2,
+      plot: { width: 12000, length: 18000 },
+      levels: 2,
+      floorHeight: 3000,
+      style: 'minimalist',
+      rooms: [
+        {
+          id: 'kitch-room',
+          name: 'Main Kitchen',
+          type: 'kitchen',
+          level: 0,
+          x: 1000,
+          z: 2000,
+          design: kitchenProject,
+        },
+        {
+          id: 'bed-room',
+          name: 'Primary Bedroom',
+          type: 'bedroom',
+          level: 1,
+          x: 0,
+          z: 0,
+          design: bedroomProject,
+        },
+      ],
+    };
+
+    const file = serializeHome(home);
+    const store = useCloudProjectStore.getState();
+    const imported = await store.importHome(file);
+
+    expect(imported.project.name).toBe('Contemporary Villa 2BHK');
+    expect(imported.spaces).toHaveLength(2);
+    expect(imported.spaces[0]!.name).toBe('Main Kitchen');
+    expect(imported.spaces[1]!.name).toBe('Primary Bedroom');
+  });
+});

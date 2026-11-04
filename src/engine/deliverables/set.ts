@@ -13,6 +13,8 @@ import { DEFAULT_ANNOTATIONS, missingMeasurements, planView, type AnnotationOpti
 import { checkReadiness, type Readiness } from './readiness';
 import { designRevision, shortRevision } from './revision';
 import { SCHEDULE_COLUMNS, scheduleRows } from './schedule';
+import { mepPlanView, buildMepScheduleSheet } from './mepSheet';
+import { buildTileScheduleSheet } from './tileSheet';
 
 export interface DeliverableConfig {
   unit: LengthUnit;
@@ -115,6 +117,23 @@ export function buildDrawingSet(project: KitchenProject, config: DeliverableConf
       titles.push({ title: 'Bill of materials', status: readiness.outputs.manufacturing.label, scale: '—' });
     });
   }
+
+  // MEP Services Plan & Schedule Sheets (DR-03, DR-04)
+  if (project.mep && project.mep.length > 0) {
+    const mepP = scaled((_s) => mepPlanView(project), config.paper, config.scale);
+    sheets.push({ id: 'mep-plan', paper: config.paper, body: { kind: 'view', view: mepP.view, scale: mepP.scale } });
+    titles.push({ title: 'MEP Services Plan', status: drawingStatus, scale: mepP.label });
+    scales['mep-plan'] = mepP.label;
+
+    const mepSched = buildMepScheduleSheet(project, revision);
+    sheets.push(mepSched);
+    titles.push({ title: 'MEP Services Schedule', status: drawingStatus, scale: '—' });
+  }
+
+  // Backsplash Tile Quantity & Civil Schedule Sheet (DR-05)
+  const tileSched = buildTileScheduleSheet(project, revision);
+  sheets.push(tileSched);
+  titles.push({ title: 'Tile Schedule', status: drawingStatus, scale: '—' });
 
   const short = project.id.replace(/[^a-z0-9]/gi, '').slice(-4).toUpperCase() || 'PRJ';
   const rev = `${shortRevision(revision)}${meta.revisionNote ? ` (${meta.revisionNote})` : ''}`;

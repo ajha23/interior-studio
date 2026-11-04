@@ -5,7 +5,9 @@
  * warning = usable with stated assumptions or omissions; info = more data would help.
  */
 import { allElements, validateProject, type KitchenProject } from '@/domain';
+import type { RulePack } from '@/domain/manufacturing/rulePack';
 import { designChecks } from '../checks/designChecks';
+import { checkMepSafety } from '../checks/mepChecks';
 import { buildModel } from '../geometry/parts';
 import { unitRefs } from '../production/schedule';
 import { constructionOf } from './construction';
@@ -40,11 +42,25 @@ const LABELS: Record<OutputKind, Record<OutputReadiness['status'], string>> = {
   manufacturing: { ready: 'Manufacturing-ready', warnings: 'Draft: not manufacturing-ready', blocked: 'Not ready for manufacturing' },
 };
 
-export function checkReadiness(project: KitchenProject, revision: string): Readiness {
+export function checkReadiness(
+  project: KitchenProject,
+  revision: string,
+  rulePack?: RulePack
+): Readiness {
   const issues: ReadinessIssue[] = [];
   const add = (severity: Severity, outputs: OutputKind[], code: string, message: string, entityIds: string[] = []) => issues.push({ severity, outputs, code, message, entityIds });
   const refs = unitRefs(project);
   const label = (id: string) => refs.get(id) ?? id;
+
+  // ARC-04 & MFG-02: Rule pack lifecycle status check
+  if (rulePack && rulePack.status === 'provisional') {
+    add(
+      'blocking',
+      ['manufacturing'],
+      'provisional-rulepack',
+      `Provisional Joinery Rule Pack (“${rulePack.name}”): Machine saw parameters, reveals, and board deductions have not received factory sign-off. Cannot certify factory-ready packages.`
+    );
+  }
 
   for (const m of missingMeasurements(project, 'plan').concat(missingMeasurements(project, 'elevation'))) add('blocking', ['drawings', 'manufacturing'], 'missing-dimension', `Missing measurement: ${m}.`);
 
@@ -55,6 +71,7 @@ export function checkReadiness(project: KitchenProject, revision: string): Readi
   for (const i of validateProject(project)) add('blocking', ['drawings', 'manufacturing'], `geometry-${i.code}`, `Unresolved geometry conflict: ${i.message}`, i.entityIds);
   if (validateProject(project).length) add('warning', ['presentation'], 'geometry', 'The design has unresolved conflicts; the presentation shows them as modelled.');
   for (const c of designChecks(project).filter((x) => x.severity === 'warning')) add('warning', ['drawings', 'manufacturing'], `check-${c.code}`, c.message, c.entityIds);
+  for (const m of checkMepSafety(project)) add(m.severity, ['drawings', 'manufacturing'], `mep-${m.code}`, m.message, m.elementId ? [m.elementId] : []);
 
   const rules = constructionOf(project.production.constructionId);
   if (!project.production.constructionId) add('blocking', ['manufacturing'], 'no-construction', 'No construction method is chosen, so there are no panel thicknesses, joinery or edge-banding rules. Choose one in Deliverables › Manufacturing settings.');

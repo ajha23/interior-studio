@@ -5,10 +5,33 @@ These rules apply to every agent (Codex, Claude Code, others) and every human wo
 
 ## Before writing code
 
-1. Read `docs/PRD.md`, `docs/ARCHITECTURE.md` and `docs/DOMAIN_MODEL.md`.
+1. Read `docs/PRD.md`, `docs/ARCHITECTURE.md`, `docs/DOMAIN_MODEL.md`, and the project constitution in `.specify/memory/constitution.md`.
 2. Read the feature spec you are working on in `specs/NNN-*/` (`spec.md`, `design.md`, `tasks.md`, `tests.md`).
-   If there is no spec for the change, write one first (copy the layout of an existing spec).
+   If there is no spec for the change, create one using `/speckit-specify` or copy the layout of an existing spec.
 3. Work on one task from `tasks.md` at a time. Keep the repository runnable after each task.
+
+## GitHub Spec Kit Workflow
+
+The project uses [GitHub Spec Kit](https://github.com/github/spec-kit) for Spec-Driven Development (SDD).
+The project constitution is ratified at `.specify/memory/constitution.md`.
+
+Spec Kit skills are installed and configured for supported coding agents:
+- **Antigravity**: `.agents/skills/speckit-*`
+- **Claude Code**: `.claude/skills/speckit-*`
+- **GitHub Copilot**: `.github/skills/speckit-*`
+
+### Core workflow skills / slash commands
+- `/speckit-constitution` — Review or amend project principles and governance.
+- `/speckit-specify` — Create or update feature specification in `specs/NNN-<name>/spec.md`.
+- `/speckit-clarify` — De-risk ambiguous requirements before technical design.
+- `/speckit-plan` — Generate architectural blueprint and technical plan in `design.md`.
+- `/speckit-checklist` — Generate quality checklists to validate requirements.
+- `/speckit-tasks` — Decompose the design into sequential, testable tasks in `tasks.md`.
+- `/speckit-analyze` — Verify cross-artifact consistency between spec, plan, and tasks.
+- `/speckit-implement` — Implement tasks sequentially against the specification.
+- `/speckit-converge` — Verify implementation completeness against the spec and capture follow-ups.
+- `/speckit-taskstoissues` — Export tasks into GitHub Issues.
+
 
 ## Architecture rules
 

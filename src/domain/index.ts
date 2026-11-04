@@ -14,3 +14,7 @@ export * from './project/presets';
 export * from './project/serialization';
 export * from './bom/bom';
 export * from './home/schema';
+export * from './platform/authorization';
+export * from './project/canonicalHash';
+export * from './project/cloudTypes';
+export * from './project/cloudPersistence';

@@ -1,0 +1,18 @@
+{
+  "name": "@studio/workers",
+  "version": "1.0.0-alpha.1",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@studio/core": "*",
+    "@studio/engine": "*",
+    "@studio/deliverables": "*",
+    "@studio/ai": "*"
+  }
+}
+
