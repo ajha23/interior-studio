@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Box, ChevronLeft, Columns2, Database, Download, FileText, Map as MapIcon, Redo2, Ruler, Save, Search, Shield, ShieldCheck, Table2, Undo2 } from 'lucide-react';
+import { Box, ChevronLeft, Cloud, Columns2, Database, Download, FileText, Map as MapIcon, Redo2, Ruler, Save, Search, Shield, ShieldCheck, Table2, Undo2 } from 'lucide-react';
 import { useDesignChecks } from '@/features/checks/useDesignChecks';
 import { navigate } from '@/app/router';
 import { useHomeStore } from '@/state/homeStore';
@@ -15,6 +15,7 @@ import { SiteCaptureModal } from '@/features/measurement/SiteCaptureModal';
 import { useSiteCaptureStore } from '@/state/siteCaptureStore';
 import { SettingsLayout } from '@/features/settings/SettingsLayout';
 import { useCommandPaletteStore } from '@/features/command-palette/commandPaletteStore';
+import { CloudProjectModal } from '@/features/projects/CloudProjectModal';
 
 export function TopBar() {
   const project = useEditorStore((s) => s.project)!;
@@ -32,6 +33,7 @@ export function TopBar() {
   const [saving, setSaving] = useState(false);
   const [showTables, setShowTables] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showCloud, setShowCloud] = useState(false);
   const openSiteCapture = useSiteCaptureStore((s) => s.openModal);
   const openCommandPalette = useCommandPaletteStore((s) => s.open);
 
@@ -101,6 +103,9 @@ export function TopBar() {
           <ShieldCheck /> Checks
           {warningCount > 0 && <span className="rounded-full bg-amber-500 px-1.5 text-[10px] font-semibold text-white" data-testid="checks-count">{warningCount}</span>}
         </Button>
+        <Button size="sm" variant={showCloud ? 'selected' : 'ghost'} aria-pressed={showCloud} onClick={() => setShowCloud(true)} aria-label="SaaS Cloud Projects" title="SaaS Cloud Projects, Spaces & Sync (Feature 034)" data-testid="cloud-projects-btn">
+          <Cloud /> Cloud Sync
+        </Button>
         <Button size="sm" variant={showTables ? 'selected' : 'ghost'} aria-pressed={showTables} onClick={() => setShowTables(true)} aria-label="Studio Tables" title="Studio Data Tables & Governance (SEC-08)" data-testid="studio-tables-btn">
           <Database /> Studio Tables
         </Button>
@@ -149,6 +154,7 @@ export function TopBar() {
         <Save /> Save
       </Button>
       <StudioTableEditor isOpen={showTables} onClose={() => setShowTables(false)} />
+      <CloudProjectModal isOpen={showCloud} onClose={() => setShowCloud(false)} />
       {showSettings && (
         <div className="fixed inset-0 z-50 bg-background overflow-y-auto" data-testid="settings-modal-wrapper">
           <SettingsLayout onClose={() => setShowSettings(false)} />

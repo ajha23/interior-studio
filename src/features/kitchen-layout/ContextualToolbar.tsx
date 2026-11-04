@@ -66,7 +66,7 @@ export function ContextualToolbar() {
   return (
     <div
       data-testid="contextual-toolbar"
-      className="absolute top-4 left-1/2 z-30 flex -translate-x-1/2 items-center gap-1.5 rounded-xl border border-border bg-card/90 px-3 py-1.5 shadow-lg backdrop-blur-md animate-in fade-in slide-in-from-top-2 duration-150"
+      className="absolute bottom-12 left-1/2 z-30 flex -translate-x-1/2 items-center gap-1.5 rounded-xl border border-border bg-card/90 px-3 py-1.5 shadow-lg backdrop-blur-md animate-in fade-in slide-in-from-bottom-2 duration-150"
     >
       <div className="flex items-center gap-2 border-r border-border pr-2.5">
         <span className="text-xs font-semibold text-foreground truncate max-w-[140px]" title={title}>
