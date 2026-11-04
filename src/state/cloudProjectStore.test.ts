@@ -13,6 +13,7 @@ describe('useCloudProjectStore (Feature 034 State & Integration Tests)', () => {
       selectedId: null,
     });
     useCloudProjectStore.setState({
+      readinessState: 'ready',
       currentOrgId: '00000000-0000-4000-8000-000000000001',
       activeActorId: '00000000-0000-4000-8000-000000000002',
       currentProject: null,
@@ -176,9 +177,10 @@ describe('useCloudProjectStore (Feature 034 State & Integration Tests)', () => {
   });
 
   it('rejects mutating operations when unauthenticated (activeActorId is null)', async () => {
-    useCloudProjectStore.setState({ activeActorId: null });
+    useCloudProjectStore.getState().setActiveActor(null);
     const store = useCloudProjectStore.getState();
 
+    expect(store.readinessState).toBe('unauthenticated');
     await expect(store.createProject('Unauthorized Project')).rejects.toThrow();
 
     const commitResult = await store.commitCurrentDesign();
@@ -186,6 +188,64 @@ describe('useCloudProjectStore (Feature 034 State & Integration Tests)', () => {
     if (!commitResult.success && !commitResult.conflict) {
       expect(commitResult.error).toContain('Authentication required');
     }
+  });
+
+  it('rejects mutating operations when active organization is missing (currentOrgId is null)', async () => {
+    useCloudProjectStore.getState().setActiveActor('00000000-0000-4000-8000-000000000002');
+    useCloudProjectStore.getState().setOrgId(null);
+    const store = useCloudProjectStore.getState();
+
+    expect(store.readinessState).toBe('organization_required');
+    await expect(store.createProject('No Org Project')).rejects.toThrow(
+      'Active organization membership is required for cloud operations',
+    );
+
+    const commitResult = await store.commitCurrentDesign();
+    expect(commitResult.success).toBe(false);
+    if (!commitResult.success && !commitResult.conflict) {
+      expect(commitResult.error).toContain('Active organization membership is required');
+    }
+  });
+
+  it('clears remote caches and updates readiness on organization switch (FR-04, T206)', async () => {
+    const store = useCloudProjectStore.getState();
+    const project = await store.createProject('Org A Project');
+    await store.createSpace('Org A Space');
+
+    expect(useCloudProjectStore.getState().projects).toHaveLength(1);
+    expect(useCloudProjectStore.getState().currentProject?.id).toBe(project.id);
+    expect(useCloudProjectStore.getState().spaces).toHaveLength(1);
+
+    // Switch to Org B
+    store.setOrgId('00000000-0000-4000-8000-000000000099');
+
+    // Remote caches must be purged to prevent cross-tenant leakage
+    expect(useCloudProjectStore.getState().currentOrgId).toBe('00000000-0000-4000-8000-000000000099');
+    expect(useCloudProjectStore.getState().projects).toEqual([]);
+    expect(useCloudProjectStore.getState().currentProject).toBeNull();
+    expect(useCloudProjectStore.getState().spaces).toEqual([]);
+    expect(useCloudProjectStore.getState().activeSpaceId).toBeNull();
+    expect(useCloudProjectStore.getState().readinessState).toBe('ready');
+  });
+
+  it('clears remote caches on sign-out while preserving local drafts (FR-04, T207)', async () => {
+    const store = useCloudProjectStore.getState();
+    await store.createProject('Signed-In Project');
+
+    expect(useCloudProjectStore.getState().projects).toHaveLength(1);
+    expect(useEditorStore.getState().project).not.toBeNull();
+
+    // Sign out
+    store.setActiveActor(null);
+
+    expect(useCloudProjectStore.getState().activeActorId).toBeNull();
+    expect(useCloudProjectStore.getState().currentOrgId).toBeNull();
+    expect(useCloudProjectStore.getState().readinessState).toBe('unauthenticated');
+    expect(useCloudProjectStore.getState().projects).toEqual([]);
+    expect(useCloudProjectStore.getState().currentProject).toBeNull();
+
+    // Editor local draft remains intact
+    expect(useEditorStore.getState().project).not.toBeNull();
   });
 
   it('resolves conflict by fetching authoritative remote revision from persistence adapter', async () => {
@@ -206,7 +266,7 @@ describe('useCloudProjectStore (Feature 034 State & Integration Tests)', () => {
     // Another client commits revision 2 directly into the adapter (not in store memory)
     const rev2Doc = { ...createExampleProject(), name: 'Remote Updated Kitchen 2' };
     const rev2Outcome = await adapter.commitDesignRevision({
-      orgId: useCloudProjectStore.getState().currentOrgId,
+      orgId: useCloudProjectStore.getState().currentOrgId!,
       actorId: useCloudProjectStore.getState().activeActorId!,
       projectId: project.id,
       spaceId: space.id,
