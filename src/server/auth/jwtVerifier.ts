@@ -149,10 +149,17 @@ export async function verifyJwtSignature(
   const now = Math.floor(Date.now() / 1000);
   const skew = options.clockSkewSeconds ?? 60;
 
-  if (typeof payload.exp === 'number') {
-    if (now > payload.exp + skew) {
-      return { valid: false, error: 'TOKEN_EXPIRED', message: `Token expired at ${payload.exp} (current time: ${now})` };
-    }
+  // exp is mandatory (FR-01, T101)
+  if (typeof payload.exp !== 'number' || !Number.isFinite(payload.exp)) {
+    return {
+      valid: false,
+      error: 'MALFORMED_TOKEN',
+      message: 'Token must contain a valid numeric expiration ("exp") claim',
+    };
+  }
+
+  if (now > payload.exp + skew) {
+    return { valid: false, error: 'TOKEN_EXPIRED', message: `Token expired at ${payload.exp} (current time: ${now})` };
   }
 
   if (typeof payload.nbf === 'number') {
@@ -169,12 +176,23 @@ export async function verifyJwtSignature(
     };
   }
 
-  if (options.expectedAudience && payload.aud !== options.expectedAudience) {
-    return {
-      valid: false,
-      error: 'INVALID_AUDIENCE',
-      message: `Token audience "${payload.aud}" does not match expected "${options.expectedAudience}"`,
-    };
+  // aud can be string or string[] (FR-02, T102)
+  if (options.expectedAudience) {
+    const aud = payload.aud;
+    const matchesAudience =
+      typeof aud === 'string'
+        ? aud === options.expectedAudience
+        : Array.isArray(aud)
+          ? aud.includes(options.expectedAudience)
+          : false;
+
+    if (!matchesAudience) {
+      return {
+        valid: false,
+        error: 'INVALID_AUDIENCE',
+        message: `Token audience "${JSON.stringify(aud)}" does not match expected "${options.expectedAudience}"`,
+      };
+    }
   }
 
   return { valid: true, payload };

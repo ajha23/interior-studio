@@ -27,7 +27,7 @@ describe('Cryptographic JWT Verification (Feature 034.2 FR-02)', () => {
   });
 
   it('rejects token when secret does not match', async () => {
-    const claims = { sub: 'user_123' };
+    const claims = { sub: 'user_123', exp: Math.floor(Date.now() / 1000) + 3600 };
     const token = await signJwtHs256(claims, secret);
 
     const result = await verifyJwtSignature(token, { secret: wrongSecret });
@@ -38,11 +38,16 @@ describe('Cryptographic JWT Verification (Feature 034.2 FR-02)', () => {
   });
 
   it('rejects token when payload has been tampered with', async () => {
-    const token = await signJwtHs256({ sub: 'user_regular' }, secret);
+    const token = await signJwtHs256(
+      { sub: 'user_regular', exp: Math.floor(Date.now() / 1000) + 3600 },
+      secret
+    );
     const parts = token.split('.');
 
     // Tamper with payload in the middle to elevate privilege
-    const tamperedPayload = btoa(JSON.stringify({ sub: 'user_admin' })).replace(/=+$/, '');
+    const tamperedPayload = btoa(
+      JSON.stringify({ sub: 'user_admin', exp: Math.floor(Date.now() / 1000) + 3600 })
+    ).replace(/=+$/, '');
     const tamperedToken = `${parts[0]}.${tamperedPayload}.${parts[2]}`;
 
     const result = await verifyJwtSignature(tamperedToken, { secret });
@@ -70,9 +75,55 @@ describe('Cryptographic JWT Verification (Feature 034.2 FR-02)', () => {
     }
   });
 
+  it('rejects token missing mandatory exp claim', async () => {
+    const claims = { sub: 'user_123' };
+    const token = await signJwtHs256(claims, secret);
+
+    const result = await verifyJwtSignature(token, { secret });
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.error).toBe('MALFORMED_TOKEN');
+      expect(result.message).toContain('expiration ("exp") claim');
+    }
+  });
+
+  it('verifies token with array audience when expected audience is present', async () => {
+    const claims = {
+      sub: 'user_123',
+      aud: ['authenticated', 'storage_user'],
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    };
+    const token = await signJwtHs256(claims, secret);
+
+    const result = await verifyJwtSignature(token, {
+      secret,
+      expectedAudience: 'authenticated',
+    });
+    expect(result.valid).toBe(true);
+  });
+
+  it('rejects token with array audience when expected audience is missing', async () => {
+    const claims = {
+      sub: 'user_123',
+      aud: ['analytics_consumer', 'storage_user'],
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    };
+    const token = await signJwtHs256(claims, secret);
+
+    const result = await verifyJwtSignature(token, {
+      secret,
+      expectedAudience: 'authenticated',
+    });
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.error).toBe('INVALID_AUDIENCE');
+    }
+  });
+
   it('rejects token before valid window (nbf in future)', async () => {
     const claims = {
       sub: 'user_123',
+      exp: Math.floor(Date.now() / 1000) + 3600,
       nbf: Math.floor(Date.now() / 1000) + 500, // 500s in future
     };
     const token = await signJwtHs256(claims, secret);
@@ -92,6 +143,7 @@ describe('Cryptographic JWT Verification (Feature 034.2 FR-02)', () => {
     const claims = {
       sub: 'user_123',
       aud: 'unauthorized_audience',
+      exp: Math.floor(Date.now() / 1000) + 3600,
     };
     const token = await signJwtHs256(claims, secret);
 
@@ -110,6 +162,7 @@ describe('Cryptographic JWT Verification (Feature 034.2 FR-02)', () => {
     const claims = {
       sub: 'user_123',
       iss: 'https://attacker.com/auth',
+      exp: Math.floor(Date.now() / 1000) + 3600,
     };
     const token = await signJwtHs256(claims, secret);
 
