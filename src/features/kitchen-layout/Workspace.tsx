@@ -21,6 +21,9 @@ import { selectIsDirty, useEditorStore, useSelectedElement, useSelectedOpening }
 import { ElementInspector } from './ElementInspector';
 import { FeedbackBanner } from './FeedbackBanner';
 import { SceneOutline } from './SceneOutline';
+import { HierarchicalOutliner } from './HierarchicalOutliner';
+import { ContextualToolbar } from './ContextualToolbar';
+import { CommandPalette } from '@/features/command-palette/CommandPalette';
 import { useShortcuts } from './useShortcuts';
 import { Viewport3D } from './Viewport3D';
 
@@ -83,6 +86,7 @@ export function Workspace() {
   // Either side panel can be hidden. Wide screens dock them (a hidden one leaves a slim strip);
   // below 1280 px they are drawers over the viewport, and selecting something opens the properties drawer.
   const [panels, setPanels] = useState(initialPanels);
+  const [leftTab, setLeftTab] = useState<'catalog' | 'outliner'>('catalog');
   const libraryOpen = panels.library;
   const propertiesOpen = panels.properties;
   const setPanel = useCallback((key: 'library' | 'properties', open: boolean | ((v: boolean) => boolean)) => {
@@ -138,14 +142,41 @@ export function Workspace() {
           className={cn('min-h-0 overflow-y-auto border-r bg-card max-xl:absolute max-xl:inset-y-0 max-xl:left-0 max-xl:z-30 max-xl:w-[280px] max-xl:shadow-xl', !libraryOpen && 'hidden', (presenting || documents) && 'hidden')}
           aria-label="Library"
         >
-          <PanelHeader side="left" label="Library" onClose={() => setLibraryOpen(false)} />
-          <CatalogPanel />
-          <SceneOutline />
+          <PanelHeader side="left" label={leftTab === 'catalog' ? 'Library' : 'Outliner'} onClose={() => setLibraryOpen(false)} />
+          <div className="flex border-b p-1 gap-1 bg-muted/20">
+            <Button
+              size="xs"
+              variant={leftTab === 'catalog' ? 'selected' : 'ghost'}
+              className="flex-1 text-xs"
+              onClick={() => setLeftTab('catalog')}
+              data-testid="tab-catalog"
+            >
+              Catalog
+            </Button>
+            <Button
+              size="xs"
+              variant={leftTab === 'outliner' ? 'selected' : 'ghost'}
+              className="flex-1 text-xs"
+              onClick={() => setLeftTab('outliner')}
+              data-testid="tab-outliner"
+            >
+              Outliner
+            </Button>
+          </div>
+          {leftTab === 'catalog' ? (
+            <>
+              <CatalogPanel />
+              <SceneOutline />
+            </>
+          ) : (
+            <HierarchicalOutliner />
+          )}
         </aside>
         <main className="flex min-h-0 flex-col bg-viewport">
           {/* The canvas stays mounted while the plan is shown: remounting WebGL is slow and loses the camera. */}
           <CandidateBanner />
           <div className="relative min-h-0 flex-1">
+            {!presenting && <ContextualToolbar />}
             <div
               className={view === '3d' ? 'size-full' : view === 'split' ? 'absolute inset-y-0 left-0 w-1/2 border-r' : 'invisible absolute inset-0'}
               aria-hidden={view !== '3d' && view !== 'split'}
@@ -196,6 +227,7 @@ export function Workspace() {
       </div>
       {!presenting && <AssistantLauncher />}
       <RenderDialog />
+      <CommandPalette />
       {!presenting && <StatusBar />}
     </div>
   );
