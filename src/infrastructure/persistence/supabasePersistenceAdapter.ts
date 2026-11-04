@@ -22,11 +22,23 @@ import type {
 } from '@/domain/project/cloudPersistencePort';
 import type {
   DesignRevision,
+  DesignSnapshot,
   IdempotencyRecord,
   LocalProjectSyncState,
   SaaSProject,
   Space,
 } from '@/domain/project/cloudTypes';
+
+function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
 
 export interface SupabaseFilterBuilder {
   select(columns?: string): SupabaseFilterBuilder;
@@ -242,6 +254,32 @@ export class SupabasePersistenceAdapter implements CloudPersistencePort {
     };
   }
 
+  async getRevision(params: { orgId: string; revisionId: string }): Promise<DesignRevision | null> {
+    const { data, error } = await this.client
+      .from('design_revisions')
+      .select()
+      .eq('id', params.revisionId)
+      .eq('org_id', params.orgId)
+      .single();
+
+    if (error || !data) return null;
+
+    const d = data as Record<string, unknown>;
+    return {
+      id: String(d.id),
+      orgId: String(d.org_id),
+      projectId: String(d.project_id),
+      spaceId: String(d.space_id),
+      parentRevisionId: (d.parent_revision_id as string) || null,
+      schemaVersion: Number(d.schema_version) || 2,
+      format: String(d.format),
+      snapshot: d.snapshot_jsonb as DesignRevision['snapshot'],
+      canonicalHash: String(d.canonical_hash),
+      createdBy: (d.created_by as string) || undefined,
+      createdAt: String(d.created_at),
+    };
+  }
+
   async commitDesignRevision(params: CommitDesignRevisionParams): Promise<CommitRevisionOutcome> {
     const canonicalHash = computeCanonicalSha256(params.snapshot);
 
@@ -334,89 +372,216 @@ export class SupabasePersistenceAdapter implements CloudPersistencePort {
     };
   }
 
-  async importKitchen(params: ImportKitchenParams) {
-    const project = await this.createProject({
-      orgId: params.orgId,
-      actorId: params.actorId,
-      name: params.projectName || 'Imported Kitchen Project',
-    });
-
-    const space = await this.createSpace({
-      orgId: params.orgId,
-      actorId: params.actorId,
-      projectId: project.id,
-      name: 'Kitchen',
-      type: 'kitchen',
-    });
-
-    const snapshot = {
+  async importKitchen(params: ImportKitchenParams): Promise<{
+    project: SaaSProject;
+    space: Space;
+    revision: DesignRevision;
+  }> {
+    const doc = JSON.parse(params.fileContent);
+    const snapshot: DesignSnapshot = {
       schemaVersion: 2,
-      format: 'interior-studio/kitchen' as const,
-      document: JSON.parse(params.fileContent),
+      format: 'interior-studio/kitchen',
+      document: doc,
     };
+    const snapshotHash = computeCanonicalSha256(snapshot);
+    const projectName = params.projectName || doc.name || 'Imported Kitchen Project';
+    const sourceFileId = params.sourceFileId || 'kitchen_upload';
 
-    const commitResult = await this.commitDesignRevision({
+    // Full-request normalized hash covering all semantic request parameters (Feature 034.2.2 FR-05, T401)
+    const requestHash = computeCanonicalSha256({
+      operation: 'import_kitchen',
       orgId: params.orgId,
-      actorId: params.actorId,
-      projectId: project.id,
-      spaceId: space.id,
-      expectedRevisionId: null,
-      snapshot,
-      idempotencyKey: params.idempotencyKey || `import_kitch_${Date.now()}`,
+      projectName,
+      sourceFileId,
+      snapshotHash,
+    });
+    const idempotencyKey = params.idempotencyKey || `import_kitch_${generateUUID()}`;
+
+    const { data, error } = await this.client.rpc('import_kitchen_project', {
+      p_org_id: params.orgId,
+      p_actor_id: params.actorId,
+      p_project_name: projectName,
+      p_snapshot_jsonb: snapshot,
+      p_canonical_hash: requestHash,
+      p_idempotency_key: idempotencyKey,
+      p_source_file_id: sourceFileId,
     });
 
-    if (!commitResult.success) {
-      throw new Error(`Failed to commit imported kitchen: ${commitResult.error}`);
+    if (error || !data) {
+      throw CloudPersistenceError.validationFailed(
+        `Failed to import kitchen project${error?.message ? `: ${error.message}` : ''}`,
+        error
+      );
     }
 
-    return {
-      project,
-      space: commitResult.updatedSpace,
-      revision: commitResult.revision,
+    const res = data as Record<string, unknown>;
+    if (res.success === false) {
+      if (res.reason === 'UNAUTHENTICATED') {
+        throw CloudPersistenceError.unauthenticated(String(res.error || 'Authentication required'));
+      }
+      if (res.reason === 'FORBIDDEN') {
+        throw CloudPersistenceError.forbidden(String(res.error || 'Permission denied'));
+      }
+      throw new Error(`Import failed: ${res.reason || res.error}`);
+    }
+
+    const projData = res.project as Record<string, unknown>;
+    const spaceData = res.space as Record<string, unknown>;
+    const revData = res.revision as Record<string, unknown>;
+
+    const project: SaaSProject = {
+      id: String(projData.id),
+      orgId: String(projData.org_id),
+      clientId: (projData.client_id as string) || null,
+      name: String(projData.name),
+      status: projData.status as SaaSProject['status'],
+      createdBy: (projData.created_by as string) || undefined,
+      createdAt: String(projData.created_at),
+      updatedAt: String(projData.updated_at),
+      archivedAt: (projData.archived_at as string) || null,
     };
+
+    const space: Space = {
+      id: String(spaceData.id),
+      orgId: String(spaceData.org_id),
+      projectId: String(spaceData.project_id),
+      name: String(spaceData.name),
+      spaceType: spaceData.space_type as Space['spaceType'],
+      level: Number(spaceData.level) || 0,
+      planPositionMm: (spaceData.plan_position_mm as { x: number; z: number }) || { x: 0, z: 0 },
+      currentRevisionId: (spaceData.current_revision_id as string) || null,
+      createdAt: String(spaceData.created_at),
+      updatedAt: String(spaceData.updated_at),
+    };
+
+    const revision: DesignRevision = {
+      id: String(revData.id),
+      orgId: String(revData.org_id),
+      projectId: String(revData.project_id),
+      spaceId: String(revData.space_id),
+      parentRevisionId: null,
+      schemaVersion: Number(revData.schema_version) || 2,
+      format: String(revData.format),
+      snapshot: (revData.snapshot_jsonb || snapshot) as DesignRevision['snapshot'],
+      canonicalHash: String(revData.canonical_hash || snapshotHash),
+      createdBy: (revData.created_by as string) || undefined,
+      createdAt: String(revData.created_at),
+    };
+
+    return { project, space, revision };
   }
 
-  async importHome(params: ImportHomeParams) {
+  async importHome(params: ImportHomeParams): Promise<{
+    project: SaaSProject;
+    spaces: Space[];
+    revisions: DesignRevision[];
+  }> {
     const home = JSON.parse(params.fileContent);
-    const project = await this.createProject({
-      orgId: params.orgId,
-      actorId: params.actorId,
-      name: params.projectName || home.name || `${home.bhk}BHK ${home.kind}`,
+    const roomsJsonb = (home.rooms || []).map((room: Record<string, unknown>) => {
+      const snapshot: DesignSnapshot = {
+        format: 'interior-studio/home-room-design',
+        schemaVersion: 2,
+        document: room.design as DesignSnapshot['document'],
+        provenance: {
+          homeSourceId: String(home.id || ''),
+          roomSourceId: String(room.id || generateUUID()),
+          homeKind: (home.kind === 'villa' ? 'villa' : 'apartment') as 'villa' | 'apartment',
+          level: Number(room.level) || 0,
+          planPositionMm: { x: Number(room.x) || 0, z: Number(room.z) || 0 },
+        },
+      };
+      return {
+        id: String(room.id || generateUUID()),
+        name: String(room.name || 'Room'),
+        type: String(room.type || 'other'),
+        level: Number(room.level) || 0,
+        x: Number(room.x) || 0,
+        z: Number(room.z) || 0,
+        snapshot,
+        canonical_hash: computeCanonicalSha256(snapshot),
+      };
     });
 
-    const spaces: Space[] = [];
-    const revisions: DesignRevision[] = [];
+    const projectName = params.projectName || home.name || `${home.bhk || 2}BHK ${home.kind || 'apartment'}`;
+    const homeId = String(home.id || '');
+    const requestHash = computeCanonicalSha256({
+      operation: 'import_home',
+      orgId: params.orgId,
+      projectName,
+      homeId,
+      rooms: roomsJsonb.map((r: { id: string; canonical_hash: string }) => ({ id: r.id, hash: r.canonical_hash })),
+    });
+    const idempotencyKey = params.idempotencyKey || `import_home_${generateUUID()}`;
 
-    for (const room of home.rooms || []) {
-      const space = await this.createSpace({
-        orgId: params.orgId,
-        actorId: params.actorId,
-        projectId: project.id,
-        name: room.name,
-        type: room.type,
-        level: room.level,
-        planPositionMm: { x: room.x, z: room.z },
-      });
+    const { data, error } = await this.client.rpc('import_home_project', {
+      p_org_id: params.orgId,
+      p_actor_id: params.actorId,
+      p_project_name: projectName,
+      p_home_id: homeId,
+      p_rooms_jsonb: roomsJsonb,
+      p_canonical_hash: requestHash,
+      p_idempotency_key: idempotencyKey,
+    });
 
-      const commit = await this.commitDesignRevision({
-        orgId: params.orgId,
-        actorId: params.actorId,
-        projectId: project.id,
-        spaceId: space.id,
-        expectedRevisionId: null,
-        snapshot: {
-          schemaVersion: 2,
-          format: 'interior-studio/kitchen',
-          document: room.design,
-        },
-        idempotencyKey: `${params.idempotencyKey || 'import_home'}_${room.id}`,
-      });
-
-      if (commit.success) {
-        spaces.push(commit.updatedSpace);
-        revisions.push(commit.revision);
-      }
+    if (error || !data) {
+      throw CloudPersistenceError.validationFailed(
+        `Failed to import home project${error?.message ? `: ${error.message}` : ''}`,
+        error
+      );
     }
+
+    const res = data as Record<string, unknown>;
+    if (res.success === false) {
+      if (res.reason === 'UNAUTHENTICATED') {
+        throw CloudPersistenceError.unauthenticated(String(res.error || 'Authentication required'));
+      }
+      if (res.reason === 'FORBIDDEN') {
+        throw CloudPersistenceError.forbidden(String(res.error || 'Permission denied'));
+      }
+      throw new Error(`Import failed: ${res.reason || res.error}`);
+    }
+
+    const projData = res.project as Record<string, unknown>;
+    const project: SaaSProject = {
+      id: String(projData.id),
+      orgId: String(projData.org_id),
+      clientId: (projData.client_id as string) || null,
+      name: String(projData.name),
+      status: projData.status as SaaSProject['status'],
+      createdBy: (projData.created_by as string) || undefined,
+      createdAt: String(projData.created_at),
+      updatedAt: String(projData.updated_at),
+      archivedAt: (projData.archived_at as string) || null,
+    };
+
+    const spacesRows = (res.spaces as Record<string, unknown>[]) || [];
+    const spaces: Space[] = spacesRows.map((s) => ({
+      id: String(s.id),
+      orgId: String(s.org_id || params.orgId),
+      projectId: String(s.project_id || project.id),
+      name: String(s.name),
+      spaceType: (s.space_type as Space['spaceType']) || 'other',
+      level: Number(s.level) || 0,
+      planPositionMm: (s.plan_position_mm as { x: number; z: number }) || { x: 0, z: 0 },
+      currentRevisionId: (s.current_revision_id as string) || null,
+      createdAt: String(s.created_at || new Date().toISOString()),
+      updatedAt: String(s.updated_at || new Date().toISOString()),
+    }));
+
+    const revisionsRows = (res.revisions as Record<string, unknown>[]) || [];
+    const revisions: DesignRevision[] = revisionsRows.map((r) => ({
+      id: String(r.id),
+      orgId: String(r.org_id || params.orgId),
+      projectId: String(r.project_id || project.id),
+      spaceId: String(r.space_id),
+      parentRevisionId: null,
+      schemaVersion: Number(r.schema_version) || 2,
+      format: String(r.format || 'interior-studio/home-room-design'),
+      snapshot: r.snapshot_jsonb as DesignRevision['snapshot'],
+      canonicalHash: String(r.canonical_hash),
+      createdBy: (r.created_by as string) || undefined,
+      createdAt: String(r.created_at || new Date().toISOString()),
+    }));
 
     return {
       project,

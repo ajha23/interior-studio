@@ -95,6 +95,7 @@ export interface ImportKitchenParams {
   fileContent: string;
   projectName?: string;
   idempotencyKey?: string;
+  sourceFileId?: string;
 }
 
 export interface ImportHomeParams {
@@ -103,6 +104,11 @@ export interface ImportHomeParams {
   fileContent: string;
   projectName?: string;
   idempotencyKey?: string;
+}
+
+export interface GetRevisionParams {
+  orgId: string;
+  revisionId: string;
 }
 
 export interface GetSyncStateParams {
@@ -120,6 +126,7 @@ export interface CloudPersistencePort {
   createSpace(params: CreateSpaceParams): Promise<Space>;
   listSpaces(params: ListSpacesParams): Promise<Space[]>;
   getSpace(params: GetSpaceParams): Promise<Space | null>;
+  getRevision(params: GetRevisionParams): Promise<DesignRevision | null>;
   commitDesignRevision(params: CommitDesignRevisionParams): Promise<CommitRevisionOutcome>;
   importKitchen(params: ImportKitchenParams): Promise<{ project: SaaSProject; space: Space; revision: DesignRevision }>;
   importHome(params: ImportHomeParams): Promise<{ project: SaaSProject; spaces: Space[]; revisions: DesignRevision[] }>;
