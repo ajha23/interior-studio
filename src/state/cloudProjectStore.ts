@@ -1,9 +1,8 @@
 import { create } from 'zustand';
+import { InMemoryPersistenceAdapter } from '@/infrastructure/persistence/inMemoryPersistenceAdapter';
+import type { CloudPersistencePort } from '@/domain/project/cloudPersistencePort';
 import {
-  commitSpaceRevision,
   evaluateSyncConflict,
-  importStandaloneKitchenFile,
-  importWholeHomeFile,
   type CommitRevisionResult,
 } from '@/domain/project/cloudPersistence';
 import type {
@@ -18,6 +17,16 @@ import type {
   SyncStatus,
 } from '@/domain/project/cloudTypes';
 import { useEditorStore } from './editorStore';
+
+let activePersistenceAdapter: CloudPersistencePort = new InMemoryPersistenceAdapter();
+
+export function setPersistenceAdapter(adapter: CloudPersistencePort) {
+  activePersistenceAdapter = adapter;
+}
+
+export function getPersistenceAdapter(): CloudPersistencePort {
+  return activePersistenceAdapter;
+}
 
 export interface CloudProjectState {
   // Current active tenant and project context
@@ -45,6 +54,8 @@ export interface CloudProjectState {
   importKitchen: (fileContent: string, projectName?: string) => Promise<{ project: SaaSProject; space: Space }>;
   importHome: (fileContent: string, projectName?: string) => Promise<{ project: SaaSProject; spaces: Space[] }>;
   checkSyncStatus: () => { status: SyncStatus; hasConflict: boolean; reason?: string };
+  resolveConflictReloadRemote: () => Promise<void>;
+  resolveConflictForkLocalDraft: (newSpaceName?: string) => Promise<Space>;
 }
 
 const DEFAULT_ORG_ID = '00000000-0000-4000-8000-000000000001';
@@ -71,17 +82,15 @@ export const useCloudProjectStore = create<CloudProjectState>((set, get) => ({
 
   createProject: async (name: string, clientId?: string | null) => {
     const { currentOrgId, projects } = get();
-    const id = crypto.randomUUID();
-    const now = new Date().toISOString();
-    const newProject: SaaSProject = {
-      id,
+    const actorId = '00000000-0000-4000-8000-000000000002';
+
+    const newProject = await activePersistenceAdapter.createProject({
       orgId: currentOrgId,
-      clientId: clientId ?? null,
+      actorId,
       name,
-      status: 'active',
-      createdAt: now,
-      updatedAt: now,
-    };
+      clientId: clientId ?? null,
+    });
+
     set({
       projects: [newProject, ...projects],
       currentProject: newProject,
@@ -96,15 +105,18 @@ export const useCloudProjectStore = create<CloudProjectState>((set, get) => ({
   },
 
   archiveProject: async (projectId: string) => {
-    const now = new Date().toISOString();
+    const { currentOrgId } = get();
+    const actorId = '00000000-0000-4000-8000-000000000002';
+
+    const updated = await activePersistenceAdapter.archiveProject({
+      orgId: currentOrgId,
+      actorId,
+      projectId,
+    });
+
     set((state) => ({
-      projects: state.projects.map((p) =>
-        p.id === projectId ? { ...p, status: 'archived', archivedAt: now, updatedAt: now } : p
-      ),
-      currentProject:
-        state.currentProject?.id === projectId
-          ? { ...state.currentProject, status: 'archived', archivedAt: now, updatedAt: now }
-          : state.currentProject,
+      projects: state.projects.map((p) => (p.id === projectId ? updated : p)),
+      currentProject: state.currentProject?.id === projectId ? updated : state.currentProject,
     }));
   },
 
@@ -113,23 +125,26 @@ export const useCloudProjectStore = create<CloudProjectState>((set, get) => ({
     if (!currentProject) {
       throw new Error('No active SaaS project selected.');
     }
-    const spaceId = crypto.randomUUID();
-    const now = new Date().toISOString();
-    const newSpace: Space = {
-      id: spaceId,
+    const actorId = '00000000-0000-4000-8000-000000000002';
+
+    const newSpace = await activePersistenceAdapter.createSpace({
       orgId: currentOrgId,
+      actorId,
       projectId: currentProject.id,
       name,
-      spaceType,
+      type: spaceType,
       level,
-      planPositionMm: { x: 0, z: 0 },
-      currentRevisionId: null,
-      createdAt: now,
-      updatedAt: now,
-    };
+    });
+
     set({
       spaces: [...spaces, newSpace],
-      activeSpaceId: spaceId,
+      activeSpaceId: newSpace.id,
+      syncState: {
+        ...get().syncState,
+        spaceId: newSpace.id,
+        baseRevisionId: null,
+        syncStatus: 'draft',
+      },
     });
     return newSpace;
   },
@@ -141,7 +156,6 @@ export const useCloudProjectStore = create<CloudProjectState>((set, get) => ({
 
     set({ activeSpaceId: spaceId });
 
-    // If space has a committed revision, load its document into editorStore
     if (targetSpace.currentRevisionId) {
       const spaceRevs = revisions[spaceId] ?? [];
       const currentRev = spaceRevs.find((r) => r.id === targetSpace.currentRevisionId);
@@ -164,7 +178,7 @@ export const useCloudProjectStore = create<CloudProjectState>((set, get) => ({
   },
 
   commitCurrentDesign: async (idempotencyKey?: string) => {
-    const { currentOrgId, currentProject, spaces, activeSpaceId, revisions, idempotencyRecords } = get();
+    const { currentOrgId, currentProject, spaces, activeSpaceId, syncState } = get();
     const editorProject = useEditorStore.getState().project;
 
     if (!currentProject || !activeSpaceId) {
@@ -187,26 +201,25 @@ export const useCloudProjectStore = create<CloudProjectState>((set, get) => ({
       document: editorProject,
     };
 
-    const expectedRevisionId = currentSpace.currentRevisionId ?? null;
-    const existingRevs = revisions[activeSpaceId] ?? [];
+    const expectedRevisionId =
+      (syncState.spaceId === activeSpaceId
+        ? syncState.baseRevisionId
+        : currentSpace.currentRevisionId) ?? null;
+    const actorId = '00000000-0000-4000-8000-000000000002';
 
-    const result = commitSpaceRevision(
-      currentSpace,
-      existingRevs,
-      idempotencyRecords,
-      {
-        orgId: currentOrgId,
-        projectId: currentProject.id,
-        spaceId: activeSpaceId,
-        expectedRevisionId,
-        snapshot,
-        idempotencyKey,
-      }
-    );
+    const outcome = await activePersistenceAdapter.commitDesignRevision({
+      orgId: currentOrgId,
+      actorId,
+      projectId: currentProject.id,
+      spaceId: activeSpaceId,
+      expectedRevisionId,
+      snapshot,
+      idempotencyKey: idempotencyKey || `req_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    });
 
-    if (result.success) {
-      const updatedSpace = result.updatedSpace;
-      const newRev = result.revision;
+    if (outcome.success) {
+      const updatedSpace = outcome.updatedSpace;
+      const newRev = outcome.revision;
 
       set((state) => ({
         spaces: state.spaces.map((s) => (s.id === activeSpaceId ? updatedSpace : s)),
@@ -226,17 +239,49 @@ export const useCloudProjectStore = create<CloudProjectState>((set, get) => ({
         },
         isSyncing: false,
       }));
+
+      return {
+        success: true,
+        revision: outcome.revision,
+        updatedSpace: outcome.updatedSpace,
+        idempotencyRecord: outcome.idempotencyRecord,
+        conflict: false,
+      };
+    } else if (outcome.conflict) {
+      // CAS Conflict: preserve local draft, mark conflict state
+      set((state) => ({
+        isSyncing: false,
+        syncState: {
+          ...state.syncState,
+          syncStatus: 'conflict',
+        },
+      }));
+
+      return {
+        success: false,
+        conflict: true,
+        reason: 'CAS_MISMATCH',
+        currentRevisionId: outcome.currentRevisionId,
+      };
     } else {
       set({ isSyncing: false });
+      return {
+        success: false,
+        conflict: false,
+        reason: 'IDEMPOTENCY_CONFLICT',
+        error: outcome.error,
+      };
     }
-
-    return result;
   },
 
   importKitchen: async (fileContent: string, projectName?: string) => {
-    const { currentOrgId, projects, spaces, revisions, legacyMappings } = get();
-    const imported = importStandaloneKitchenFile(fileContent, {
+    const { currentOrgId, projects, spaces, revisions } = get();
+    const actorId = '00000000-0000-4000-8000-000000000002';
+
+    const imported = await activePersistenceAdapter.importKitchen({
       orgId: currentOrgId,
+      actorId,
+      fileContent,
       projectName,
     });
 
@@ -249,19 +294,23 @@ export const useCloudProjectStore = create<CloudProjectState>((set, get) => ({
         ...revisions,
         [imported.space.id]: [imported.revision],
       },
-      legacyMappings: [...legacyMappings, imported.mapping],
     });
 
-    // Open imported document into editorStore
-    useEditorStore.getState().openProject(imported.revision.snapshot.document);
+    if (imported.revision.snapshot.document) {
+      useEditorStore.getState().openProject(imported.revision.snapshot.document);
+    }
 
     return { project: imported.project, space: imported.space };
   },
 
   importHome: async (fileContent: string, projectName?: string) => {
-    const { currentOrgId, projects, spaces, revisions, legacyMappings } = get();
-    const imported = importWholeHomeFile(fileContent, {
+    const { currentOrgId, projects, spaces, revisions } = get();
+    const actorId = '00000000-0000-4000-8000-000000000002';
+
+    const imported = await activePersistenceAdapter.importHome({
       orgId: currentOrgId,
+      actorId,
+      fileContent,
       projectName,
     });
 
@@ -278,12 +327,12 @@ export const useCloudProjectStore = create<CloudProjectState>((set, get) => ({
       spaces: [...spaces, ...imported.spaces],
       activeSpaceId: firstSpace.id,
       revisions: newRevisions,
-      legacyMappings: [...legacyMappings, ...imported.mappings],
     });
 
-    // Open first room into editor
     const firstRev = imported.revisions[0]!;
-    useEditorStore.getState().openProject(firstRev.snapshot.document);
+    if (firstRev.snapshot.document) {
+      useEditorStore.getState().openProject(firstRev.snapshot.document);
+    }
 
     return { project: imported.project, spaces: imported.spaces };
   },
@@ -296,5 +345,40 @@ export const useCloudProjectStore = create<CloudProjectState>((set, get) => ({
     const spaceRevs = revisions[activeSpaceId] ?? [];
     const latestRevision = spaceRevs[spaceRevs.length - 1] ?? null;
     return evaluateSyncConflict(syncState, latestRevision);
+  },
+
+  resolveConflictReloadRemote: async () => {
+    const { activeSpaceId, currentOrgId } = get();
+    if (!activeSpaceId) return;
+
+    const space = await activePersistenceAdapter.getSpace({ orgId: currentOrgId, spaceId: activeSpaceId });
+    if (!space || !space.currentRevisionId) return;
+
+    const { revisions } = get();
+    const spaceRevs = revisions[activeSpaceId] ?? [];
+    const remoteRev = spaceRevs.find((r) => r.id === space.currentRevisionId);
+
+    if (remoteRev?.snapshot.document) {
+      useEditorStore.getState().openProject(remoteRev.snapshot.document);
+      set({
+        syncState: {
+          localProjectId: remoteRev.snapshot.document.id,
+          cloudProjectId: space.projectId,
+          spaceId: space.id,
+          baseRevisionId: remoteRev.id,
+          syncStatus: 'synced',
+          lastSyncedAt: remoteRev.createdAt,
+          serverHash: remoteRev.canonicalHash,
+          clientHash: remoteRev.canonicalHash,
+        },
+      });
+    }
+  },
+
+  resolveConflictForkLocalDraft: async (newSpaceName = 'Kitchen (Branch)') => {
+    const { createSpace, commitCurrentDesign } = get();
+    const newSpace = await createSpace(newSpaceName, 'kitchen', 0);
+    await commitCurrentDesign();
+    return newSpace;
   },
 }));

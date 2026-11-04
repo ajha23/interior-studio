@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createExampleProject } from '@/domain/project/presets';
 import { serializeHome, serializeProject, type Home } from '@/domain';
-import { useCloudProjectStore } from './cloudProjectStore';
+import { setPersistenceAdapter, useCloudProjectStore } from './cloudProjectStore';
 import { useEditorStore } from './editorStore';
+import { InMemoryPersistenceAdapter } from '@/infrastructure/persistence/inMemoryPersistenceAdapter';
 
 describe('useCloudProjectStore (Feature 034 State & Integration Tests)', () => {
   beforeEach(() => {
+    setPersistenceAdapter(new InMemoryPersistenceAdapter());
     useEditorStore.setState({
       project: createExampleProject(),
       selectedId: null,
@@ -128,5 +130,47 @@ describe('useCloudProjectStore (Feature 034 State & Integration Tests)', () => {
     expect(imported.spaces).toHaveLength(2);
     expect(imported.spaces[0]!.name).toBe('Main Kitchen');
     expect(imported.spaces[1]!.name).toBe('Primary Bedroom');
+  });
+
+  it('marks conflict on stale revision commit and preserves local draft in editor', async () => {
+    const store = useCloudProjectStore.getState();
+    await store.createProject('Conflict Project');
+    const space = await store.createSpace('Kitchen Space');
+
+    // First successful commit
+    const rev1 = await store.commitCurrentDesign();
+    expect(rev1.success).toBe(true);
+
+    // Simulate stale base revision in syncState
+    useCloudProjectStore.setState({
+      syncState: {
+        localProjectId: 'doc-1',
+        cloudProjectId: useCloudProjectStore.getState().currentProject!.id,
+        spaceId: space.id,
+        baseRevisionId: 'stale-rev-id-999',
+        syncStatus: 'draft',
+      },
+    });
+
+    // Make local edit in editorStore
+    const currentDoc = useEditorStore.getState().project!;
+    useEditorStore.setState({
+      project: { ...currentDoc, name: 'Local Draft Edits' },
+    });
+
+    const conflictResult = await store.commitCurrentDesign();
+    expect(conflictResult.success).toBe(false);
+    if (!conflictResult.success) {
+      expect(conflictResult.conflict).toBe(true);
+    }
+    expect(useCloudProjectStore.getState().syncState.syncStatus).toBe('conflict');
+
+    // Verify local editor document was NOT lost/overwritten
+    expect(useEditorStore.getState().project?.name).toBe('Local Draft Edits');
+
+    // Fork local draft into a new space branch
+    const branchedSpace = await store.resolveConflictForkLocalDraft('Kitchen (Branch Draft)');
+    expect(branchedSpace.name).toBe('Kitchen (Branch Draft)');
+    expect(useCloudProjectStore.getState().syncState.syncStatus).toBe('synced');
   });
 });

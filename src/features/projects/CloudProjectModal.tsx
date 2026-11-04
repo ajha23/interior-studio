@@ -232,6 +232,52 @@ export function CloudProjectModal({ isOpen, onClose }: { isOpen: boolean; onClos
           </div>
         )}
 
+        {/* Conflict Resolution Banner (Feature 034.1 FR-10, T604) */}
+        {syncStatus === 'conflict' && (
+          <div
+            className="mx-6 mt-3 flex items-center justify-between rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400"
+            role="alert"
+            data-testid="conflict-resolution-banner"
+          >
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+              <div>
+                <p className="font-medium">Design Revision Conflict Detected</p>
+                <p className="text-[11px] opacity-90">
+                  Remote space has newer revisions. Local draft is preserved.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                size="xs"
+                variant="outline"
+                className="h-7 text-[11px]"
+                onClick={async () => {
+                  await store.resolveConflictReloadRemote();
+                  setFeedback({ type: 'success', message: 'Reloaded remote revision.' });
+                }}
+              >
+                Reload Remote
+              </Button>
+              <Button
+                size="xs"
+                variant="secondary"
+                className="h-7 text-[11px]"
+                onClick={async () => {
+                  const branched = await store.resolveConflictForkLocalDraft();
+                  setFeedback({
+                    type: 'success',
+                    message: `Forked local draft to space "${branched.name}".`,
+                  });
+                }}
+              >
+                Keep as Branch
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Tab Content */}
         <div className="flex-1 overflow-y-auto p-6">
           {activeTab === 'overview' && (

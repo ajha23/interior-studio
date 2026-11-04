@@ -18,3 +18,5 @@ export * from './platform/authorization';
 export * from './project/canonicalHash';
 export * from './project/cloudTypes';
 export * from './project/cloudPersistence';
+export * from './project/cloudErrors';
+export * from './project/cloudPersistencePort';
