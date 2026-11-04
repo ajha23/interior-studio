@@ -145,6 +145,14 @@ export class InMemoryPersistenceAdapter implements CloudPersistencePort {
     return space;
   }
 
+  async getRevision(params: { orgId: string; revisionId: string }): Promise<DesignRevision | null> {
+    const rev = this.revisions.get(params.revisionId);
+    if (!rev || rev.orgId !== params.orgId) {
+      return null;
+    }
+    return rev;
+  }
+
   async commitDesignRevision(params: CommitDesignRevisionParams): Promise<CommitRevisionOutcome> {
     const space = await this.getSpace({ orgId: params.orgId, spaceId: params.spaceId });
     if (!space || space.projectId !== params.projectId) {

@@ -14,6 +14,7 @@ describe('useCloudProjectStore (Feature 034 State & Integration Tests)', () => {
     });
     useCloudProjectStore.setState({
       currentOrgId: '00000000-0000-4000-8000-000000000001',
+      activeActorId: '00000000-0000-4000-8000-000000000002',
       currentProject: null,
       projects: [],
       spaces: [],
@@ -172,5 +173,76 @@ describe('useCloudProjectStore (Feature 034 State & Integration Tests)', () => {
     const branchedSpace = await store.resolveConflictForkLocalDraft('Kitchen (Branch Draft)');
     expect(branchedSpace.name).toBe('Kitchen (Branch Draft)');
     expect(useCloudProjectStore.getState().syncState.syncStatus).toBe('synced');
+  });
+
+  it('rejects mutating operations when unauthenticated (activeActorId is null)', async () => {
+    useCloudProjectStore.setState({ activeActorId: null });
+    const store = useCloudProjectStore.getState();
+
+    await expect(store.createProject('Unauthorized Project')).rejects.toThrow();
+
+    const commitResult = await store.commitCurrentDesign();
+    expect(commitResult.success).toBe(false);
+    if (!commitResult.success && !commitResult.conflict) {
+      expect(commitResult.error).toContain('Authentication required');
+    }
+  });
+
+  it('resolves conflict by fetching authoritative remote revision from persistence adapter', async () => {
+    const store = useCloudProjectStore.getState();
+    const adapter = new InMemoryPersistenceAdapter();
+    setPersistenceAdapter(adapter);
+
+    const project = await store.createProject('Remote Fetch Project');
+    const space = await store.createSpace('Master Kitchen');
+
+    // Commit revision 1
+    const rev1 = await store.commitCurrentDesign();
+    expect(rev1.success).toBe(true);
+    if (!rev1.success) {
+      throw new Error('Commit should succeed');
+    }
+
+    // Another client commits revision 2 directly into the adapter (not in store memory)
+    const rev2Doc = { ...createExampleProject(), name: 'Remote Updated Kitchen 2' };
+    const rev2Outcome = await adapter.commitDesignRevision({
+      orgId: useCloudProjectStore.getState().currentOrgId,
+      actorId: useCloudProjectStore.getState().activeActorId!,
+      projectId: project.id,
+      spaceId: space.id,
+      expectedRevisionId: rev1.revision.id,
+      snapshot: {
+        format: 'interior-studio/kitchen',
+        schemaVersion: 2,
+        document: rev2Doc,
+      },
+      idempotencyKey: 'remote_client_commit_999',
+    });
+    expect(rev2Outcome.success).toBe(true);
+
+    // Local client simulates stale state
+    useCloudProjectStore.setState({
+      syncState: {
+        localProjectId: 'doc-1',
+        cloudProjectId: project.id,
+        spaceId: space.id,
+        baseRevisionId: rev1.revision.id,
+        syncStatus: 'conflict',
+      },
+      // Ensure revision 2 is NOT in store.revisions in memory
+      revisions: {
+        [space.id]: [rev1.revision],
+      },
+    });
+
+    // Call resolveConflictReloadRemote
+    await store.resolveConflictReloadRemote();
+
+    // Verify it fetched the remote revision over the wire and updated editor
+    expect(useEditorStore.getState().project?.name).toBe('Remote Updated Kitchen 2');
+    expect(useCloudProjectStore.getState().syncState.syncStatus).toBe('synced');
+    if (rev2Outcome.success) {
+      expect(useCloudProjectStore.getState().syncState.baseRevisionId).toBe(rev2Outcome.revision.id);
+    }
   });
 });

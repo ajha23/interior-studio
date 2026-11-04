@@ -107,4 +107,26 @@ describe('Verified Actor Resolver (Feature 034.1 FR-01)', () => {
       resolveVerifiedActor(req, { membershipLookup })
     ).rejects.toThrow(CloudPersistenceError);
   });
+
+  it('cryptographically verifies JWT when secret is configured', async () => {
+    const { signJwtHs256 } = await import('./jwtVerifier');
+    const secret = 'test_secret_12345';
+    const validToken = await signJwtHs256({ sub: user1, org_id: orgA }, secret);
+
+    const reqValid = new Request('http://localhost/api/projects', {
+      headers: { Authorization: `Bearer ${validToken}` },
+    });
+
+    const actor = await resolveVerifiedActor(reqValid, { jwtSecret: secret });
+    expect(actor?.id).toBe(user1);
+
+    // Tampered token must fail
+    const parts = validToken.split('.');
+    const tampered = `${parts[0]}.eyBzdWIiOiAiaGFja2VyIiB9.${parts[2]}`;
+    const reqTampered = new Request('http://localhost/api/projects', {
+      headers: { Authorization: `Bearer ${tampered}` },
+    });
+
+    await expect(resolveVerifiedActor(reqTampered, { jwtSecret: secret })).rejects.toThrow(CloudPersistenceError);
+  });
 });
