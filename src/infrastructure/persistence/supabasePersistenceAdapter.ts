@@ -242,6 +242,32 @@ export class SupabasePersistenceAdapter implements CloudPersistencePort {
     };
   }
 
+  async getRevision(params: { orgId: string; revisionId: string }): Promise<DesignRevision | null> {
+    const { data, error } = await this.client
+      .from('design_revisions')
+      .select()
+      .eq('id', params.revisionId)
+      .eq('org_id', params.orgId)
+      .single();
+
+    if (error || !data) return null;
+
+    const d = data as Record<string, unknown>;
+    return {
+      id: String(d.id),
+      orgId: String(d.org_id),
+      projectId: String(d.project_id),
+      spaceId: String(d.space_id),
+      parentRevisionId: (d.parent_revision_id as string) || null,
+      schemaVersion: Number(d.schema_version) || 2,
+      format: String(d.format),
+      snapshot: d.snapshot_jsonb as DesignRevision['snapshot'],
+      canonicalHash: String(d.canonical_hash),
+      createdBy: (d.created_by as string) || undefined,
+      createdAt: String(d.created_at),
+    };
+  }
+
   async commitDesignRevision(params: CommitDesignRevisionParams): Promise<CommitRevisionOutcome> {
     const canonicalHash = computeCanonicalSha256(params.snapshot);
 

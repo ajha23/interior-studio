@@ -5,6 +5,7 @@ import {
   evaluateSyncConflict,
   type CommitRevisionResult,
 } from '@/domain/project/cloudPersistence';
+import { CloudPersistenceError } from '@/domain/project/cloudErrors';
 import type {
   DesignRevision,
   DesignSnapshot,
@@ -29,8 +30,9 @@ export function getPersistenceAdapter(): CloudPersistencePort {
 }
 
 export interface CloudProjectState {
-  // Current active tenant and project context
+  // Current active tenant and verified actor context (Feature 034.2 FR-01)
   currentOrgId: string;
+  activeActorId: string | null;
   currentProject: SaaSProject | null;
   projects: SaaSProject[];
   spaces: Space[];
@@ -44,6 +46,7 @@ export interface CloudProjectState {
 
   // Actions
   setOrgId: (orgId: string) => void;
+  setActiveActor: (actorId: string | null) => void;
   setSyncModalOpen: (open: boolean) => void;
   createProject: (name: string, clientId?: string | null) => Promise<SaaSProject>;
   listProjects: () => SaaSProject[];
@@ -62,6 +65,7 @@ const DEFAULT_ORG_ID = '00000000-0000-4000-8000-000000000001';
 
 export const useCloudProjectStore = create<CloudProjectState>((set, get) => ({
   currentOrgId: DEFAULT_ORG_ID,
+  activeActorId: null,
   currentProject: null,
   projects: [],
   spaces: [],
@@ -78,15 +82,18 @@ export const useCloudProjectStore = create<CloudProjectState>((set, get) => ({
   syncModalOpen: false,
 
   setOrgId: (orgId: string) => set({ currentOrgId: orgId }),
+  setActiveActor: (actorId: string | null) => set({ activeActorId: actorId }),
   setSyncModalOpen: (open: boolean) => set({ syncModalOpen: open }),
 
   createProject: async (name: string, clientId?: string | null) => {
-    const { currentOrgId, projects } = get();
-    const actorId = '00000000-0000-4000-8000-000000000002';
+    const { currentOrgId, projects, activeActorId } = get();
+    if (!activeActorId) {
+      throw CloudPersistenceError.unauthenticated('Active authenticated user required for cloud operations.');
+    }
 
     const newProject = await activePersistenceAdapter.createProject({
       orgId: currentOrgId,
-      actorId,
+      actorId: activeActorId,
       name,
       clientId: clientId ?? null,
     });
@@ -105,12 +112,14 @@ export const useCloudProjectStore = create<CloudProjectState>((set, get) => ({
   },
 
   archiveProject: async (projectId: string) => {
-    const { currentOrgId } = get();
-    const actorId = '00000000-0000-4000-8000-000000000002';
+    const { currentOrgId, activeActorId } = get();
+    if (!activeActorId) {
+      throw CloudPersistenceError.unauthenticated('Active authenticated user required for cloud operations.');
+    }
 
     const updated = await activePersistenceAdapter.archiveProject({
       orgId: currentOrgId,
-      actorId,
+      actorId: activeActorId,
       projectId,
     });
 
@@ -121,15 +130,17 @@ export const useCloudProjectStore = create<CloudProjectState>((set, get) => ({
   },
 
   createSpace: async (name: string, spaceType: SpaceType = 'kitchen', level = 0) => {
-    const { currentOrgId, currentProject, spaces } = get();
+    const { currentOrgId, currentProject, spaces, activeActorId } = get();
+    if (!activeActorId) {
+      throw CloudPersistenceError.unauthenticated('Active authenticated user required for cloud operations.');
+    }
     if (!currentProject) {
       throw new Error('No active SaaS project selected.');
     }
-    const actorId = '00000000-0000-4000-8000-000000000002';
 
     const newSpace = await activePersistenceAdapter.createSpace({
       orgId: currentOrgId,
-      actorId,
+      actorId: activeActorId,
       projectId: currentProject.id,
       name,
       type: spaceType,
@@ -178,9 +189,12 @@ export const useCloudProjectStore = create<CloudProjectState>((set, get) => ({
   },
 
   commitCurrentDesign: async (idempotencyKey?: string) => {
-    const { currentOrgId, currentProject, spaces, activeSpaceId, syncState } = get();
+    const { currentOrgId, currentProject, spaces, activeSpaceId, syncState, activeActorId } = get();
     const editorProject = useEditorStore.getState().project;
 
+    if (!activeActorId) {
+      return { success: false, conflict: false, error: 'Authentication required. No active actor.' };
+    }
     if (!currentProject || !activeSpaceId) {
       return { success: false, conflict: false, error: 'No active SaaS Project or Space selected.' };
     }
@@ -205,11 +219,10 @@ export const useCloudProjectStore = create<CloudProjectState>((set, get) => ({
       (syncState.spaceId === activeSpaceId
         ? syncState.baseRevisionId
         : currentSpace.currentRevisionId) ?? null;
-    const actorId = '00000000-0000-4000-8000-000000000002';
 
     const outcome = await activePersistenceAdapter.commitDesignRevision({
       orgId: currentOrgId,
-      actorId,
+      actorId: activeActorId,
       projectId: currentProject.id,
       spaceId: activeSpaceId,
       expectedRevisionId,
@@ -275,12 +288,14 @@ export const useCloudProjectStore = create<CloudProjectState>((set, get) => ({
   },
 
   importKitchen: async (fileContent: string, projectName?: string) => {
-    const { currentOrgId, projects, spaces, revisions } = get();
-    const actorId = '00000000-0000-4000-8000-000000000002';
+    const { currentOrgId, projects, spaces, revisions, activeActorId } = get();
+    if (!activeActorId) {
+      throw CloudPersistenceError.unauthenticated('Active authenticated user required for cloud operations.');
+    }
 
     const imported = await activePersistenceAdapter.importKitchen({
       orgId: currentOrgId,
-      actorId,
+      actorId: activeActorId,
       fileContent,
       projectName,
     });
@@ -304,12 +319,14 @@ export const useCloudProjectStore = create<CloudProjectState>((set, get) => ({
   },
 
   importHome: async (fileContent: string, projectName?: string) => {
-    const { currentOrgId, projects, spaces, revisions } = get();
-    const actorId = '00000000-0000-4000-8000-000000000002';
+    const { currentOrgId, projects, spaces, revisions, activeActorId } = get();
+    if (!activeActorId) {
+      throw CloudPersistenceError.unauthenticated('Active authenticated user required for cloud operations.');
+    }
 
     const imported = await activePersistenceAdapter.importHome({
       orgId: currentOrgId,
-      actorId,
+      actorId: activeActorId,
       fileContent,
       projectName,
     });
@@ -348,19 +365,30 @@ export const useCloudProjectStore = create<CloudProjectState>((set, get) => ({
   },
 
   resolveConflictReloadRemote: async () => {
-    const { activeSpaceId, currentOrgId } = get();
+    const { activeSpaceId, currentOrgId, revisions } = get();
     if (!activeSpaceId) return;
 
     const space = await activePersistenceAdapter.getSpace({ orgId: currentOrgId, spaceId: activeSpaceId });
     if (!space || !space.currentRevisionId) return;
 
-    const { revisions } = get();
-    const spaceRevs = revisions[activeSpaceId] ?? [];
-    const remoteRev = spaceRevs.find((r) => r.id === space.currentRevisionId);
+    // Fetch authoritative remote revision over the wire via getRevision() (Feature 034.2 FR-07)
+    const remoteRev = await activePersistenceAdapter.getRevision({
+      orgId: currentOrgId,
+      revisionId: space.currentRevisionId,
+    });
 
     if (remoteRev?.snapshot.document) {
       useEditorStore.getState().openProject(remoteRev.snapshot.document);
+      const spaceRevs = revisions[activeSpaceId] ?? [];
+      const updatedRevs = [
+        ...spaceRevs.filter((r) => r.id !== remoteRev.id),
+        remoteRev,
+      ];
       set({
+        revisions: {
+          ...revisions,
+          [activeSpaceId]: updatedRevs,
+        },
         syncState: {
           localProjectId: remoteRev.snapshot.document.id,
           cloudProjectId: space.projectId,

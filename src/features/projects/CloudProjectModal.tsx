@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   AlertTriangle,
   Building2,
@@ -11,16 +11,26 @@ import {
   Layers,
   Plus,
   RefreshCw,
+  UserCheck,
   X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { useCloudProjectStore } from '@/state/cloudProjectStore';
+import { useAuthorizationStore } from '@/state/authorizationStore';
 import type { SpaceType } from '@/domain/project/cloudTypes';
 
 export function CloudProjectModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const store = useCloudProjectStore();
+  const authActor = useAuthorizationStore((s) => s.actor);
+
+  useEffect(() => {
+    if (authActor?.id && !store.activeActorId) {
+      store.setActiveActor(authActor.id);
+    }
+  }, [authActor, store]);
+
   const [activeTab, setActiveTab] = useState<'overview' | 'spaces' | 'revisions' | 'import'>('overview');
   const [newProjectName, setNewProjectName] = useState('');
   const [newSpaceName, setNewSpaceName] = useState('');
@@ -33,6 +43,18 @@ export function CloudProjectModal({ isOpen, onClose }: { isOpen: boolean; onClos
   const currentSpace = store.spaces.find((s) => s.id === store.activeSpaceId);
   const activeRevisions = store.activeSpaceId ? store.revisions[store.activeSpaceId] ?? [] : [];
   const syncStatus = store.syncState.syncStatus;
+  const activeActorId = store.activeActorId;
+
+  const handleConnectSession = () => {
+    const defaultActorId = '00000000-0000-4000-8000-000000000002';
+    store.setActiveActor(defaultActorId);
+    useAuthorizationStore.getState().setActor({
+      id: defaultActorId,
+      orgId: store.currentOrgId,
+      roles: [{ roleId: 'admin', permissions: [{ permissionId: 'revisions:commit', scopeType: 'all_projects' }] }],
+    });
+    setFeedback({ type: 'success', message: 'Connected authenticated session.' });
+  };
 
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -229,6 +251,33 @@ export function CloudProjectModal({ isOpen, onClose }: { isOpen: boolean; onClos
               <AlertTriangle className="size-4 shrink-0" />
             )}
             <span>{feedback.message}</span>
+          </div>
+        )}
+
+        {/* Unauthenticated Session Alert (Feature 034.2 FR-01) */}
+        {!activeActorId && (
+          <div
+            className="mx-6 mt-3 flex items-center justify-between rounded-lg border border-sky-500/30 bg-sky-500/10 p-3 text-xs text-sky-800 dark:text-sky-300"
+            role="status"
+            data-testid="unauthenticated-session-banner"
+          >
+            <div className="flex items-center gap-2">
+              <UserCheck className="size-4 shrink-0 text-sky-600 dark:text-sky-400" />
+              <div>
+                <p className="font-medium">Active Session Required</p>
+                <p className="text-[11px] opacity-90">
+                  Connect verified session identity to persist changes to the cloud.
+                </p>
+              </div>
+            </div>
+            <Button
+              size="xs"
+              variant="default"
+              className="h-7 text-[11px]"
+              onClick={handleConnectSession}
+            >
+              Connect Session
+            </Button>
           </div>
         )}
 

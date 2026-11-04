@@ -5,6 +5,7 @@
 
 import type { ActorContext, ActorRole } from '@/domain/platform/authorization/types';
 import { CloudPersistenceError } from '@/domain/project/cloudErrors';
+import { verifyJwtSignature } from './jwtVerifier';
 
 export interface VerifiedMembershipRecord {
   userId: string;
@@ -16,6 +17,10 @@ export interface VerifiedMembershipRecord {
 export interface ActorResolverOptions {
   /** Optional lookup to check active membership in database or directory. */
   membershipLookup?: (userId: string, orgId: string) => Promise<VerifiedMembershipRecord | null> | VerifiedMembershipRecord | null;
+  /** Cryptographic JWT verification secret. Falls back to SUPABASE_JWT_SECRET. */
+  jwtSecret?: string;
+  expectedIssuer?: string;
+  expectedAudience?: string;
   /** Allow test header bypass only when explicitly set (never in production). */
   allowTestHeaders?: boolean;
 }
@@ -57,7 +62,22 @@ export async function resolveVerifiedActor(
   // Check for Bearer token
   if (authHeader && authHeader.toLowerCase().startsWith('bearer ')) {
     const token = authHeader.slice(7).trim();
-    const payload = parseJwtPayload(token);
+    const secret = options.jwtSecret || process.env.SUPABASE_JWT_SECRET;
+
+    let payload: Record<string, unknown> | null;
+    if (secret) {
+      const verifyResult = await verifyJwtSignature(token, {
+        secret,
+        expectedIssuer: options.expectedIssuer,
+        expectedAudience: options.expectedAudience,
+      });
+      if (!verifyResult.valid) {
+        throw CloudPersistenceError.unauthenticated(`Invalid JWT: ${verifyResult.message}`);
+      }
+      payload = verifyResult.payload;
+    } else {
+      payload = parseJwtPayload(token);
+    }
 
     if (!payload || !payload.sub || typeof payload.sub !== 'string') {
       return null;

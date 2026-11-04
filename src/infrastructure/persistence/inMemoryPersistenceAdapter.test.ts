@@ -198,4 +198,34 @@ describe('InMemoryPersistenceAdapter (Feature 034.1 FR-04, FR-06, FR-07)', () =>
     expect(result.space.name).toBe('Kitchen');
     expect(result.revision.id).toBe(result.space.currentRevisionId);
   });
+
+  it('retrieves authoritative revision by ID with tenant isolation (FR-07)', async () => {
+    const adapter = new InMemoryPersistenceAdapter();
+    const project = await adapter.createProject({ orgId, actorId, name: 'Revision Fetch' });
+    const space = await adapter.createSpace({ orgId, actorId, projectId: project.id, name: 'Space 1' });
+
+    const commit = await adapter.commitDesignRevision({
+      orgId,
+      actorId,
+      projectId: project.id,
+      spaceId: space.id,
+      expectedRevisionId: null,
+      snapshot: createSnapshot('Doc 1'),
+      idempotencyKey: 'rev_get_test',
+    });
+    expect(commit.success).toBe(true);
+
+    if (commit.success) {
+      const fetched = await adapter.getRevision({ orgId, revisionId: commit.revision.id });
+      expect(fetched).not.toBeNull();
+      expect(fetched?.id).toBe(commit.revision.id);
+
+      // Other org cannot retrieve
+      const otherOrgFetched = await adapter.getRevision({
+        orgId: '99999999-9999-4999-8999-999999999999',
+        revisionId: commit.revision.id,
+      });
+      expect(otherOrgFetched).toBeNull();
+    }
+  });
 });
