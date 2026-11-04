@@ -95,6 +95,7 @@ export interface ImportKitchenParams {
   fileContent: string;
   projectName?: string;
   idempotencyKey?: string;
+  sourceFileId?: string;
 }
 
 export interface ImportHomeParams {

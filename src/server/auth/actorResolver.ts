@@ -26,27 +26,6 @@ export interface ActorResolverOptions {
 }
 
 /**
- * Safely decodes a JWT payload without external library dependencies.
- */
-function parseJwtPayload(token: string): Record<string, unknown> | null {
-  try {
-    const parts = token.split('.');
-    if (parts.length < 2) return null;
-    const base64Url = parts[1]!;
-    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-    const jsonPayload = decodeURIComponent(
-      atob(base64)
-        .split('')
-        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
-        .join('')
-    );
-    return JSON.parse(jsonPayload);
-  } catch {
-    return null;
-  }
-}
-
-/**
  * Resolves verified actor context from the request.
  * Derives user ID strictly from the verified session / JWT subject,
  * verifies active tenant membership in the target organization,
@@ -64,20 +43,22 @@ export async function resolveVerifiedActor(
     const token = authHeader.slice(7).trim();
     const secret = options.jwtSecret || process.env.SUPABASE_JWT_SECRET;
 
-    let payload: Record<string, unknown> | null;
-    if (secret) {
-      const verifyResult = await verifyJwtSignature(token, {
-        secret,
-        expectedIssuer: options.expectedIssuer,
-        expectedAudience: options.expectedAudience,
-      });
-      if (!verifyResult.valid) {
-        throw CloudPersistenceError.unauthenticated(`Invalid JWT: ${verifyResult.message}`);
-      }
-      payload = verifyResult.payload;
-    } else {
-      payload = parseJwtPayload(token);
+    // Fail closed: secret MUST be configured; unverified decoding is forbidden (FR-03, T103)
+    if (!secret) {
+      throw CloudPersistenceError.unauthenticated(
+        'JWT verification secret is required but not configured. Unverified token decoding is rejected.'
+      );
     }
+
+    const verifyResult = await verifyJwtSignature(token, {
+      secret,
+      expectedIssuer: options.expectedIssuer,
+      expectedAudience: options.expectedAudience,
+    });
+    if (!verifyResult.valid) {
+      throw CloudPersistenceError.unauthenticated(`Invalid JWT: ${verifyResult.message}`);
+    }
+    const payload = verifyResult.payload;
 
     if (!payload || !payload.sub || typeof payload.sub !== 'string') {
       return null;
@@ -100,29 +81,24 @@ export async function resolveVerifiedActor(
       return null;
     }
 
-    // Resolve active membership from database/directory
-    if (options.membershipLookup) {
-      const membership = await options.membershipLookup(userId, requestedOrgId);
-      if (!membership || membership.status !== 'active') {
-        throw CloudPersistenceError.orgMembershipRequired(
-          'User is not an active member of the requested organization'
-        );
-      }
-
-      return {
-        id: userId,
-        orgId: requestedOrgId,
-        roles: membership.roles,
-        teamId: payload.team_id as string | undefined,
-        clientId: payload.client_id as string | undefined,
-      };
+    // Active membership verification is mandatory for cloud operations (FR-04, T104)
+    if (!options.membershipLookup) {
+      throw CloudPersistenceError.unauthenticated(
+        'Active organization membership lookup is required for cloud operations.'
+      );
     }
 
-    // Default verified session claims
+    const membership = await options.membershipLookup(userId, requestedOrgId);
+    if (!membership || membership.status !== 'active') {
+      throw CloudPersistenceError.orgMembershipRequired(
+        'User is not an active member of the requested organization'
+      );
+    }
+
     return {
       id: userId,
       orgId: requestedOrgId,
-      roles: (payload.roles as ActorRole[]) || [],
+      roles: membership.roles,
       teamId: payload.team_id as string | undefined,
       clientId: payload.client_id as string | undefined,
     };
