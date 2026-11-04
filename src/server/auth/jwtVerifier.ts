@@ -4,10 +4,53 @@
  * token expirations, clock skew, issuers, and audiences without third-party dependencies.
  */
 
+export interface JwtAuthConfig {
+  secret: string;
+  expectedIssuer: string;
+  expectedAudience: string;
+  supportedAlgorithms?: Array<'HS256' | 'RS256'>;
+}
+
+export class ConfigurationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ConfigurationError';
+  }
+}
+
+/**
+ * Validates production JWT authentication configuration (Feature 034.2.2 FR-04, T301).
+ * Fails fast with ConfigurationError if secret, expectedIssuer, expectedAudience are missing
+ * or if unsupported algorithms are specified.
+ */
+export function validateJwtAuthConfig(config: Partial<JwtAuthConfig>): asserts config is JwtAuthConfig {
+  if (!config.secret || typeof config.secret !== 'string' || !config.secret.trim()) {
+    throw new ConfigurationError('JWT signing secret is required but missing or empty.');
+  }
+  if (!config.expectedIssuer || typeof config.expectedIssuer !== 'string' || !config.expectedIssuer.trim()) {
+    throw new ConfigurationError('JWT expected issuer is required for production verification but missing or empty.');
+  }
+  if (!config.expectedAudience || typeof config.expectedAudience !== 'string' || !config.expectedAudience.trim()) {
+    throw new ConfigurationError('JWT expected audience is required for production verification but missing or empty.');
+  }
+  const allowed = ['HS256', 'RS256'];
+  if (config.supportedAlgorithms) {
+    if (!Array.isArray(config.supportedAlgorithms) || config.supportedAlgorithms.length === 0) {
+      throw new ConfigurationError('Supported algorithms must be a non-empty array when provided.');
+    }
+    for (const alg of config.supportedAlgorithms) {
+      if (!allowed.includes(alg)) {
+        throw new ConfigurationError(`Algorithm "${alg}" is unsupported. Supported algorithms: ${allowed.join(', ')}.`);
+      }
+    }
+  }
+}
+
 export interface JwtVerificationOptions {
   secret: string;
   expectedIssuer?: string;
   expectedAudience?: string;
+  supportedAlgorithms?: Array<'HS256' | 'RS256'>;
   /** Clock skew allowance in seconds (default: 60). */
   clockSkewSeconds?: number;
 }
@@ -102,8 +145,21 @@ export async function verifyJwtSignature(
     return { valid: false, error: 'MALFORMED_TOKEN', message: 'Failed to decode JWT header' };
   }
 
-  if (header.alg !== 'HS256') {
-    return { valid: false, error: 'UNSUPPORTED_ALGORITHM', message: `Algorithm "${header.alg}" is not supported. Expected HS256.` };
+  const supportedAlgs = options.supportedAlgorithms ?? ['HS256'];
+  if (!header.alg || !supportedAlgs.includes(header.alg as 'HS256' | 'RS256')) {
+    return {
+      valid: false,
+      error: 'UNSUPPORTED_ALGORITHM',
+      message: `Algorithm "${header.alg}" is not supported. Expected one of: ${supportedAlgs.join(', ')}.`,
+    };
+  }
+
+  if (header.alg === 'RS256') {
+    return {
+      valid: false,
+      error: 'UNSUPPORTED_ALGORITHM',
+      message: 'RS256 asymmetric public key verification requires an RSA public key certificate.',
+    };
   }
 
   // 2. Decode payload

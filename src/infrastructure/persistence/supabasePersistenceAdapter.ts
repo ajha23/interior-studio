@@ -281,7 +281,16 @@ export class SupabasePersistenceAdapter implements CloudPersistencePort {
   }
 
   async commitDesignRevision(params: CommitDesignRevisionParams): Promise<CommitRevisionOutcome> {
-    const canonicalHash = computeCanonicalSha256(params.snapshot);
+    const snapshotHash = computeCanonicalSha256(params.snapshot);
+    // Full-request normalized hash covering complete semantic operation envelope (Feature 034.2.2 FR-06, T401, T402)
+    const requestHash = computeCanonicalSha256({
+      operation: 'commit_design_revision',
+      orgId: params.orgId,
+      projectId: params.projectId,
+      spaceId: params.spaceId,
+      expectedRevisionId: params.expectedRevisionId,
+      snapshotHash,
+    });
 
     const { data, error } = await this.client.rpc('commit_design_revision', {
       p_org_id: params.orgId,
@@ -292,8 +301,9 @@ export class SupabasePersistenceAdapter implements CloudPersistencePort {
       p_schema_version: params.snapshot.schemaVersion,
       p_format: params.snapshot.format,
       p_snapshot_jsonb: params.snapshot,
-      p_canonical_hash: canonicalHash,
+      p_canonical_hash: snapshotHash,
       p_idempotency_key: params.idempotencyKey,
+      p_request_hash: requestHash,
     });
 
     if (error) {
@@ -346,7 +356,7 @@ export class SupabasePersistenceAdapter implements CloudPersistencePort {
       schemaVersion: params.snapshot.schemaVersion,
       format: params.snapshot.format,
       snapshot: params.snapshot,
-      canonicalHash,
+      canonicalHash: snapshotHash,
       createdBy: params.actorId,
       createdAt: res.committedAt || new Date().toISOString(),
     };
@@ -357,7 +367,7 @@ export class SupabasePersistenceAdapter implements CloudPersistencePort {
       actorId: params.actorId,
       operation: 'commit_design_revision',
       idempotencyKey: params.idempotencyKey,
-      requestHash: canonicalHash,
+      requestHash,
       responseStatus: 200,
       response: res as unknown as Record<string, unknown>,
       createdAt: res.committedAt || new Date().toISOString(),
@@ -383,21 +393,35 @@ export class SupabasePersistenceAdapter implements CloudPersistencePort {
       format: 'interior-studio/kitchen',
       document: doc,
     };
-    const canonicalHash = computeCanonicalSha256(snapshot);
+    const snapshotHash = computeCanonicalSha256(snapshot);
+    const projectName = params.projectName || doc.name || 'Imported Kitchen Project';
+    const sourceFileId = params.sourceFileId || 'kitchen_upload';
+
+    // Full-request normalized hash covering all semantic request parameters (Feature 034.2.2 FR-05, T401)
+    const requestHash = computeCanonicalSha256({
+      operation: 'import_kitchen',
+      orgId: params.orgId,
+      projectName,
+      sourceFileId,
+      snapshotHash,
+    });
     const idempotencyKey = params.idempotencyKey || `import_kitch_${generateUUID()}`;
 
     const { data, error } = await this.client.rpc('import_kitchen_project', {
       p_org_id: params.orgId,
       p_actor_id: params.actorId,
-      p_project_name: params.projectName || doc.name || 'Imported Kitchen Project',
+      p_project_name: projectName,
       p_snapshot_jsonb: snapshot,
-      p_canonical_hash: canonicalHash,
+      p_canonical_hash: requestHash,
       p_idempotency_key: idempotencyKey,
-      p_source_file_id: params.sourceFileId || 'kitchen_upload',
+      p_source_file_id: sourceFileId,
     });
 
     if (error || !data) {
-      throw CloudPersistenceError.validationFailed('Failed to import kitchen project', error);
+      throw CloudPersistenceError.validationFailed(
+        `Failed to import kitchen project${error?.message ? `: ${error.message}` : ''}`,
+        error
+      );
     }
 
     const res = data as Record<string, unknown>;
@@ -449,7 +473,7 @@ export class SupabasePersistenceAdapter implements CloudPersistencePort {
       schemaVersion: Number(revData.schema_version) || 2,
       format: String(revData.format),
       snapshot: (revData.snapshot_jsonb || snapshot) as DesignRevision['snapshot'],
-      canonicalHash: String(revData.canonical_hash || canonicalHash),
+      canonicalHash: String(revData.canonical_hash || snapshotHash),
       createdBy: (revData.created_by as string) || undefined,
       createdAt: String(revData.created_at),
     };
@@ -488,24 +512,32 @@ export class SupabasePersistenceAdapter implements CloudPersistencePort {
       };
     });
 
-    const homeCanonicalHash = computeCanonicalSha256({
-      homeId: home.id,
-      rooms: roomsJsonb.map((r: { canonical_hash: string }) => r.canonical_hash),
+    const projectName = params.projectName || home.name || `${home.bhk || 2}BHK ${home.kind || 'apartment'}`;
+    const homeId = String(home.id || '');
+    const requestHash = computeCanonicalSha256({
+      operation: 'import_home',
+      orgId: params.orgId,
+      projectName,
+      homeId,
+      rooms: roomsJsonb.map((r: { id: string; canonical_hash: string }) => ({ id: r.id, hash: r.canonical_hash })),
     });
     const idempotencyKey = params.idempotencyKey || `import_home_${generateUUID()}`;
 
     const { data, error } = await this.client.rpc('import_home_project', {
       p_org_id: params.orgId,
       p_actor_id: params.actorId,
-      p_project_name: params.projectName || home.name || `${home.bhk || 2}BHK ${home.kind || 'apartment'}`,
-      p_home_id: String(home.id || ''),
+      p_project_name: projectName,
+      p_home_id: homeId,
       p_rooms_jsonb: roomsJsonb,
-      p_canonical_hash: homeCanonicalHash,
+      p_canonical_hash: requestHash,
       p_idempotency_key: idempotencyKey,
     });
 
     if (error || !data) {
-      throw CloudPersistenceError.validationFailed('Failed to import home project', error);
+      throw CloudPersistenceError.validationFailed(
+        `Failed to import home project${error?.message ? `: ${error.message}` : ''}`,
+        error
+      );
     }
 
     const res = data as Record<string, unknown>;
