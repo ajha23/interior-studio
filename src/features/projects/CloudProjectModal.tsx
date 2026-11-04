@@ -46,14 +46,19 @@ export function CloudProjectModal({ isOpen, onClose }: { isOpen: boolean; onClos
   const activeActorId = store.activeActorId;
 
   const handleConnectSession = () => {
-    const defaultActorId = '00000000-0000-4000-8000-000000000002';
-    store.setActiveActor(defaultActorId);
-    useAuthorizationStore.getState().setActor({
-      id: defaultActorId,
-      orgId: store.currentOrgId,
-      roles: [{ roleId: 'admin', permissions: [{ permissionId: 'revisions:commit', scopeType: 'all_projects' }] }],
-    });
-    setFeedback({ type: 'success', message: 'Connected authenticated session.' });
+    // Only available in development mode for developer workflow convenience
+    if (import.meta.env.DEV) {
+      const devActorId = '00000000-0000-4000-8000-000000000002';
+      const devOrgId = store.currentOrgId ?? '00000000-0000-4000-8000-000000000001';
+      store.setOrgId(devOrgId);
+      store.setActiveActor(devActorId);
+      useAuthorizationStore.getState().setActor({
+        id: devActorId,
+        orgId: devOrgId,
+        roles: [{ roleId: 'admin', permissions: [{ permissionId: 'revisions:commit', scopeType: 'all_projects' }] }],
+      });
+      setFeedback({ type: 'success', message: 'Connected authenticated development session.' });
+    }
   };
 
   const handleCreateProject = async (e: React.FormEvent) => {
@@ -254,8 +259,8 @@ export function CloudProjectModal({ isOpen, onClose }: { isOpen: boolean; onClos
           </div>
         )}
 
-        {/* Unauthenticated Session Alert (Feature 034.2 FR-01) */}
-        {!activeActorId && (
+        {/* Unauthenticated Session Alert (Feature 034.2 FR-01, Feature 034.2.2 FR-03) */}
+        {(!activeActorId || !store.currentOrgId) && (
           <div
             className="mx-6 mt-3 flex items-center justify-between rounded-lg border border-sky-500/30 bg-sky-500/10 p-3 text-xs text-sky-800 dark:text-sky-300"
             role="status"
@@ -264,20 +269,25 @@ export function CloudProjectModal({ isOpen, onClose }: { isOpen: boolean; onClos
             <div className="flex items-center gap-2">
               <UserCheck className="size-4 shrink-0 text-sky-600 dark:text-sky-400" />
               <div>
-                <p className="font-medium">Active Session Required</p>
+                <p className="font-medium">Active Session & Organization Required</p>
                 <p className="text-[11px] opacity-90">
-                  Connect verified session identity to persist changes to the cloud.
+                  {import.meta.env.DEV
+                    ? 'Connect verified session identity or dev session to persist changes to the cloud.'
+                    : 'Sign in through your enterprise authentication provider with an active organization to persist changes.'}
                 </p>
               </div>
             </div>
-            <Button
-              size="xs"
-              variant="default"
-              className="h-7 text-[11px]"
-              onClick={handleConnectSession}
-            >
-              Connect Session
-            </Button>
+            {import.meta.env.DEV ? (
+              <Button
+                size="xs"
+                variant="default"
+                className="h-7 text-[11px]"
+                onClick={handleConnectSession}
+                data-testid="dev-connect-session-btn"
+              >
+                Connect Dev Session
+              </Button>
+            ) : null}
           </div>
         )}
 

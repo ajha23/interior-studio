@@ -188,6 +188,24 @@ describe('useCloudProjectStore (Feature 034 State & Integration Tests)', () => {
     }
   });
 
+  it('rejects mutating operations when active organization is missing (currentOrgId is null)', async () => {
+    useCloudProjectStore.setState({
+      currentOrgId: null,
+      activeActorId: '00000000-0000-4000-8000-000000000002',
+    });
+    const store = useCloudProjectStore.getState();
+
+    await expect(store.createProject('No Org Project')).rejects.toThrow(
+      'Active organization membership is required for cloud operations',
+    );
+
+    const commitResult = await store.commitCurrentDesign();
+    expect(commitResult.success).toBe(false);
+    if (!commitResult.success && !commitResult.conflict) {
+      expect(commitResult.error).toContain('Active organization membership is required');
+    }
+  });
+
   it('resolves conflict by fetching authoritative remote revision from persistence adapter', async () => {
     const store = useCloudProjectStore.getState();
     const adapter = new InMemoryPersistenceAdapter();
@@ -206,7 +224,7 @@ describe('useCloudProjectStore (Feature 034 State & Integration Tests)', () => {
     // Another client commits revision 2 directly into the adapter (not in store memory)
     const rev2Doc = { ...createExampleProject(), name: 'Remote Updated Kitchen 2' };
     const rev2Outcome = await adapter.commitDesignRevision({
-      orgId: useCloudProjectStore.getState().currentOrgId,
+      orgId: useCloudProjectStore.getState().currentOrgId!,
       actorId: useCloudProjectStore.getState().activeActorId!,
       projectId: project.id,
       spaceId: space.id,

@@ -30,8 +30,8 @@ export function getPersistenceAdapter(): CloudPersistencePort {
 }
 
 export interface CloudProjectState {
-  // Current active tenant and verified actor context (Feature 034.2 FR-01)
-  currentOrgId: string;
+  // Current active tenant and verified actor context (Feature 034.2 FR-01, Feature 034.2.2 FR-03)
+  currentOrgId: string | null;
   activeActorId: string | null;
   currentProject: SaaSProject | null;
   projects: SaaSProject[];
@@ -45,7 +45,7 @@ export interface CloudProjectState {
   syncModalOpen: boolean;
 
   // Actions
-  setOrgId: (orgId: string) => void;
+  setOrgId: (orgId: string | null) => void;
   setActiveActor: (actorId: string | null) => void;
   setSyncModalOpen: (open: boolean) => void;
   createProject: (name: string, clientId?: string | null) => Promise<SaaSProject>;
@@ -61,10 +61,8 @@ export interface CloudProjectState {
   resolveConflictForkLocalDraft: (newSpaceName?: string) => Promise<Space>;
 }
 
-const DEFAULT_ORG_ID = '00000000-0000-4000-8000-000000000001';
-
 export const useCloudProjectStore = create<CloudProjectState>((set, get) => ({
-  currentOrgId: DEFAULT_ORG_ID,
+  currentOrgId: null,
   activeActorId: null,
   currentProject: null,
   projects: [],
@@ -81,12 +79,15 @@ export const useCloudProjectStore = create<CloudProjectState>((set, get) => ({
   isSyncing: false,
   syncModalOpen: false,
 
-  setOrgId: (orgId: string) => set({ currentOrgId: orgId }),
+  setOrgId: (orgId: string | null) => set({ currentOrgId: orgId }),
   setActiveActor: (actorId: string | null) => set({ activeActorId: actorId }),
   setSyncModalOpen: (open: boolean) => set({ syncModalOpen: open }),
 
   createProject: async (name: string, clientId?: string | null) => {
     const { currentOrgId, projects, activeActorId } = get();
+    if (!currentOrgId) {
+      throw CloudPersistenceError.orgMembershipRequired('Active organization membership is required for cloud operations.');
+    }
     if (!activeActorId) {
       throw CloudPersistenceError.unauthenticated('Active authenticated user required for cloud operations.');
     }
@@ -113,6 +114,9 @@ export const useCloudProjectStore = create<CloudProjectState>((set, get) => ({
 
   archiveProject: async (projectId: string) => {
     const { currentOrgId, activeActorId } = get();
+    if (!currentOrgId) {
+      throw CloudPersistenceError.orgMembershipRequired('Active organization membership is required for cloud operations.');
+    }
     if (!activeActorId) {
       throw CloudPersistenceError.unauthenticated('Active authenticated user required for cloud operations.');
     }
@@ -131,6 +135,9 @@ export const useCloudProjectStore = create<CloudProjectState>((set, get) => ({
 
   createSpace: async (name: string, spaceType: SpaceType = 'kitchen', level = 0) => {
     const { currentOrgId, currentProject, spaces, activeActorId } = get();
+    if (!currentOrgId) {
+      throw CloudPersistenceError.orgMembershipRequired('Active organization membership is required for cloud operations.');
+    }
     if (!activeActorId) {
       throw CloudPersistenceError.unauthenticated('Active authenticated user required for cloud operations.');
     }
@@ -192,6 +199,13 @@ export const useCloudProjectStore = create<CloudProjectState>((set, get) => ({
     const { currentOrgId, currentProject, spaces, activeSpaceId, syncState, activeActorId } = get();
     const editorProject = useEditorStore.getState().project;
 
+    if (!currentOrgId) {
+      return {
+        success: false,
+        conflict: false,
+        error: CloudPersistenceError.orgMembershipRequired('Active organization membership is required for cloud operations.').message,
+      };
+    }
     if (!activeActorId) {
       return { success: false, conflict: false, error: 'Authentication required. No active actor.' };
     }
@@ -289,6 +303,9 @@ export const useCloudProjectStore = create<CloudProjectState>((set, get) => ({
 
   importKitchen: async (fileContent: string, projectName?: string) => {
     const { currentOrgId, projects, spaces, revisions, activeActorId } = get();
+    if (!currentOrgId) {
+      throw CloudPersistenceError.orgMembershipRequired('Active organization membership is required for cloud operations.');
+    }
     if (!activeActorId) {
       throw CloudPersistenceError.unauthenticated('Active authenticated user required for cloud operations.');
     }
@@ -320,6 +337,9 @@ export const useCloudProjectStore = create<CloudProjectState>((set, get) => ({
 
   importHome: async (fileContent: string, projectName?: string) => {
     const { currentOrgId, projects, spaces, revisions, activeActorId } = get();
+    if (!currentOrgId) {
+      throw CloudPersistenceError.orgMembershipRequired('Active organization membership is required for cloud operations.');
+    }
     if (!activeActorId) {
       throw CloudPersistenceError.unauthenticated('Active authenticated user required for cloud operations.');
     }
@@ -366,7 +386,7 @@ export const useCloudProjectStore = create<CloudProjectState>((set, get) => ({
 
   resolveConflictReloadRemote: async () => {
     const { activeSpaceId, currentOrgId, revisions } = get();
-    if (!activeSpaceId) return;
+    if (!activeSpaceId || !currentOrgId) return;
 
     const space = await activePersistenceAdapter.getSpace({ orgId: currentOrgId, spaceId: activeSpaceId });
     if (!space || !space.currentRevisionId) return;

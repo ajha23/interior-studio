@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { signJwtHs256, verifyJwtSignature } from './jwtVerifier';
+import {
+  ConfigurationError,
+  signJwtHs256,
+  validateJwtAuthConfig,
+  verifyJwtSignature,
+} from './jwtVerifier';
 
-describe('Cryptographic JWT Verification (Feature 034.2 FR-02)', () => {
+describe('Cryptographic JWT Verification (Feature 034.2 FR-02, Feature 034.2.2 FR-04)', () => {
   const secret = 'super_secure_supabase_jwt_secret_key_12345';
   const wrongSecret = 'another_unrelated_secret_key_67890';
 
@@ -175,5 +180,89 @@ describe('Cryptographic JWT Verification (Feature 034.2 FR-02)', () => {
     if (!result.valid) {
       expect(result.error).toBe('INVALID_ISSUER');
     }
+  });
+
+  describe('validateJwtAuthConfig (FR-04, T301)', () => {
+    it('accepts valid configuration', () => {
+      expect(() =>
+        validateJwtAuthConfig({
+          secret: 'my-super-secret-key-12345',
+          expectedIssuer: 'https://interior-studio.supabase.co/auth/v1',
+          expectedAudience: 'authenticated',
+          supportedAlgorithms: ['HS256', 'RS256'],
+        })
+      ).not.toThrow();
+    });
+
+    it('throws ConfigurationError on missing or empty secret', () => {
+      expect(() =>
+        validateJwtAuthConfig({
+          secret: '',
+          expectedIssuer: 'https://issuer.com',
+          expectedAudience: 'authenticated',
+        })
+      ).toThrow(ConfigurationError);
+    });
+
+    it('throws ConfigurationError on missing expectedIssuer', () => {
+      expect(() =>
+        validateJwtAuthConfig({
+          secret: 'secret',
+          expectedIssuer: '',
+          expectedAudience: 'authenticated',
+        })
+      ).toThrow(ConfigurationError);
+    });
+
+    it('throws ConfigurationError on missing expectedAudience', () => {
+      expect(() =>
+        validateJwtAuthConfig({
+          secret: 'secret',
+          expectedIssuer: 'https://issuer.com',
+          expectedAudience: '  ',
+        })
+      ).toThrow(ConfigurationError);
+    });
+
+    it('throws ConfigurationError on unsupported algorithm', () => {
+      expect(() =>
+        validateJwtAuthConfig({
+          secret: 'secret',
+          expectedIssuer: 'https://issuer.com',
+          expectedAudience: 'authenticated',
+          supportedAlgorithms: ['HS256', 'none' as unknown as 'HS256'],
+        })
+      ).toThrow(ConfigurationError);
+    });
+  });
+
+  describe('Algorithm Enforcement (FR-04, T302)', () => {
+    it('rejects algorithm "none"', async () => {
+      const header = { alg: 'none', typ: 'JWT' };
+      const payload = { sub: 'usr-1', exp: Math.floor(Date.now() / 1000) + 3600 };
+      const token = `${btoa(JSON.stringify(header)).replace(/=+$/, '')}.${btoa(JSON.stringify(payload)).replace(/=+$/, '')}.`;
+
+      const result = await verifyJwtSignature(token, { secret });
+      expect(result.valid).toBe(false);
+      if (!result.valid) {
+        expect(result.error).toBe('UNSUPPORTED_ALGORITHM');
+      }
+    });
+
+    it('rejects RS256 without asymmetric certificate', async () => {
+      const header = { alg: 'RS256', typ: 'JWT' };
+      const payload = { sub: 'usr-1', exp: Math.floor(Date.now() / 1000) + 3600 };
+      const token = `${btoa(JSON.stringify(header)).replace(/=+$/, '')}.${btoa(JSON.stringify(payload)).replace(/=+$/, '')}.dGVzdA`;
+
+      const result = await verifyJwtSignature(token, {
+        secret,
+        supportedAlgorithms: ['HS256', 'RS256'],
+      });
+      expect(result.valid).toBe(false);
+      if (!result.valid) {
+        expect(result.error).toBe('UNSUPPORTED_ALGORITHM');
+        expect(result.message).toContain('RS256 asymmetric public key verification');
+      }
+    });
   });
 });
