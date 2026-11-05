@@ -14,6 +14,16 @@ No code in `src` calls `signInWith`, `getSession` or `onAuthStateChange`. A hand
 
 The pre-rewrite app (commit `eaf7d0f`) already had working Google sign-in (`apps/web/src/auth/AuthProvider.tsx`) and team management (`apps/web/src/data/team.ts`) against the live schema, which still has 3 profiles and the `org_invites` table. This spec restores identity using the official client and adds a studio-aware app shell.
 
+## Clarifications
+
+### Session 2026-11-06
+
+- Q: When someone is invited to a studio they already belong to, what should happen to their existing role? → A: The invite is refused when created ("already a member"), and accepting invites never changes an existing member's role (Option A). Found during clarify: the live `accept_pending_invites` overwrites the role on conflict, so an admin could demote the owner by inviting the owner's email as a viewer.
+- Q: Should 042 remove the whole Cloud Sync button and modal, or only strip the hard-coded test ids? → A: Remove the button, `CloudProjectModal.tsx` and its test in 042; `cloudProjectStore`, the persistence factory and the hand-built client stay until 043 (Option A).
+- Q: Should the editor's addresses move under the studio prefix in 042? → A: No. Shell pages are studio-scoped (`#/s/<slug>/projects`, `#/s/<slug>/settings/…`); editor routes stay `#/project/<id>` and `#/home/<id>` (and `#/home/<id>/room/<roomId>`) until 043/049. Every route still requires sign-in (Option A).
+- Q: Is Google sign-in still enabled in the live project's Auth settings with a working OAuth client? → A: Not yet confirmed; the founder checks Authentication → Sign In / Providers → Google. Captured as FR-016 (Option C).
+- Analysis (2026-11-06): `accept_pending_invites` trusted any `auth.users.email`, confirmed or not; with email sign-up open and confirmations off, anyone could claim an invited seat. Resolved by FR-015 (confirmed emails only) and FR-016 (email provider checked in production).
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 — Sign in with Google (Priority: P1)
@@ -27,7 +37,7 @@ As a designer, I want to sign in with my Google account and stay signed in, so t
 **Acceptance Scenarios**:
 
 1. **Given** I am signed out, **When** I open any route, **Then** I see the sign-in screen with a single "Continue with Google" action.
-2. **Given** I followed a deep link (e.g. `#/s/acme/projects`) while signed out, **When** sign-in completes, **Then** I land on that exact route.
+2. **Given** I followed a deep link (e.g. `#/s/alpha/settings/members`) while signed out, **When** sign-in completes, **Then** I land on that exact route.
 3. **Given** I am signed in, **When** I reload or reopen the browser, **Then** I am still signed in.
 4. **Given** I am signed in, **When** I choose Sign out in the account menu, **Then** the session is cleared, all cached studio data is removed from memory and storage, and I see the sign-in screen.
 5. **Given** `VITE_SUPABASE_URL` or the publishable/anon key is missing at build, **When** the app loads, **Then** it shows a configuration error screen naming the missing variable, never a blank page.
@@ -75,7 +85,7 @@ As the founder, I want every hardcoded user and studio id and every dev-only ses
 
 1. **Given** the repo after this spec, **When** I search `src` for `00000000-0000-4000-8000`, **Then** matches appear only under test fixtures.
 2. **Given** the repo, **When** I list `src/server/auth/`, **Then** `actorResolver.ts`, `jwtVerifier.ts` and their tests no longer exist.
-3. **Given** the editor UI, **When** I look for "connect session", **Then** it does not exist.
+3. **Given** the editor UI, **When** I look for "Cloud Sync" or "connect session", **Then** neither exists.
 
 ### Edge Cases
 
@@ -83,7 +93,7 @@ As the founder, I want every hardcoded user and studio id and every dev-only ses
 - The user cancels Google consent: return to sign-in with a neutral message, no error stack.
 - A user is removed from the current studio while signed in: the next data request fails under RLS; the shell redirects to the studio list with a message.
 - The owner tries to demote the last owner: blocked by the database (if no live constraint exists, add one in a migration with a pgTAP test).
-- Invite to an email that already belongs to a member: shown as "already a member", no duplicate row.
+- Invite to an email that already belongs to a member of that studio: refused when created with the message "already a member"; no invite row is written. Roles change only in Settings → Members.
 - Session token expires mid-session: `supabase-js` refreshes it; if refresh fails, show sign-in and keep the deep link.
 
 ## Requirements *(mandatory)*
@@ -96,14 +106,16 @@ As the founder, I want every hardcoded user and studio id and every dev-only ses
 - **FR-004**: Session state MUST live in one small React context fed by `onAuthStateChange`; no new state library.
 - **FR-005**: First sign-in MUST rely on `private.handle_new_user` and then call `accept_pending_invites`.
 - **FR-006**: Every route except sign-in MUST require a session; the requested route MUST survive the sign-in round trip.
-- **FR-007**: The current studio MUST be derived only from the user's `org_members` rows and carried in the URL (`/s/<slug>/…`). No default organisation or user id anywhere outside test fixtures.
+- **FR-007**: The current studio MUST be derived only from the user's `org_members` rows and carried in the URL of studio pages: `#/s/<slug>/projects` and `#/s/<slug>/settings/…`. Editor routes (`#/project/<id>`, `#/home/<id>`, `#/home/<id>/room/<roomId>`) keep their current form until projects belong to a studio (043) and routing moves to a library (049); they still require a session. `#/` redirects a signed-in user to their studio's projects (or the studio list if they have several and none was last used). No default organisation or user id anywhere outside test fixtures.
 - **FR-008**: The shell MUST show studio name and switcher, navigation to Projects and Settings, and an account menu (name, email, sign out).
 - **FR-009**: Settings → Members MUST list members and invites and, for owner and admin only, allow inviting by email and changing roles via `org_invites` and `org_members` under existing RLS.
 - **FR-010**: The UI MUST read `org_role` only to hide or disable controls, via a role-to-visible-actions map; it MUST NOT authorize.
-- **FR-011**: Sign-out MUST clear the session and all cached studio data.
-- **FR-012**: Delete: `src/server/auth/actorResolver.ts`, `src/server/auth/jwtVerifier.ts` and tests; dev "connect session"; hardcoded ids in `CloudProjectModal.tsx` and `cloudProjectStore.ts`; the client-side evaluator as a gate.
+- **FR-011**: Sign-out MUST clear the session and all cached studio data. Browser-local projects in IndexedDB are not studio data until specs 043/044 and stay on the device.
+- **FR-012**: Delete: `src/server/auth/actorResolver.ts`, `src/server/auth/jwtVerifier.ts`, `src/server/authorizationMiddleware.ts`, `src/server/policyMiddleware.ts` and their tests (no API handler imports them); the "Cloud Sync" button in `TopBar.tsx`, `src/features/projects/CloudProjectModal.tsx` and its test (which removes the dev "connect session" and its hard-coded ids); hard-coded ids in `cloudProjectStore.test.ts`; and the client-side evaluator as a gate (`authorizationStore`, `useAuthorize`, `useSubscriptionPolicy`, which no feature imports). `cloudProjectStore`, `persistenceFactory` and the hand-built Supabase client stay until spec 043, because start-up still uses them.
 - **FR-013**: Supabase Auth redirect URLs MUST include localhost, a wildcard for Vercel previews, and production; documented in `docs/`.
 - **FR-014**: Any new table, column or policy MUST arrive as a new migration with pgTAP tests in this PR.
+- **FR-015**: Inviting an email that already belongs to a member of the studio MUST be refused by the database (not only the UI). `accept_pending_invites` MUST NOT change an existing member's role: on conflict it leaves the membership as it is and still marks the invite accepted. Both changes arrive as a new migration with pgTAP tests, including "an admin cannot demote the owner through an invite". `accept_pending_invites` MUST also act only for a user whose email is confirmed (`auth.users.email_confirmed_at is not null`), so an unconfirmed sign-up with an invited address gains nothing.
+- **FR-016**: Before the gate, the founder MUST confirm in the live project that the Google provider is enabled with a working OAuth client (Authentication → Sign In / Providers → Google). If it is not, the founder creates a Google Cloud OAuth client (web application; authorised redirect URI `https://pkbctmaiawztzmwqkpgw.supabase.co/auth/v1/callback`), enters its client ID and secret in Supabase, and enables the provider. No agent handles the client secret; it never enters the repository or Vercel. The founder MUST also confirm that the **Email** provider is disabled in production (or, if kept, that email confirmation is required), so FR-003's "Google only in production" is true in the live settings, not only in the UI.
 
 ### Key Entities
 
@@ -115,7 +127,7 @@ As the founder, I want every hardcoded user and studio id and every dev-only ses
 
 ## Success Criteria *(mandatory)*
 
-- **SC-001**: A new invited designer goes from invite email to their studio's project list in under 1 minute.
+- **SC-001**: A new invited designer goes from being invited to their studio's project list in under 1 minute (observed at the founder gate, time recorded in the PR).
 - **SC-002**: Zero matches for the dev UUID prefix outside test fixtures.
 - **SC-003**: All Playwright scenarios in User Stories 1–3 pass against local Supabase.
 - **SC-004**: pgTAP invite and member policy tests pass.
@@ -171,7 +183,7 @@ Not applicable: foundation spec.
 - **Audit**: role changes and invites recorded if the live audit table supports it; otherwise deferred to 043's audit port.
 
 ### 8. Acceptance Criteria and Security Tests
-- **RBAC Permission Tests**: owner and admin can insert invites and update roles; designer and viewer cannot (pgTAP).
+- **RBAC Permission Tests**: owner and admin can insert invites and update roles; designer and viewer cannot (pgTAP). An invite for an existing member is rejected, and accepting a stale invite never changes an existing member's role, so an admin cannot demote the owner through an invite (pgTAP, FR-015).
 - **Tenant Isolation Tests**: a studio A owner cannot list, invite into or change roles in studio B (pgTAP); URL slug of a foreign studio shows no data (Playwright).
 - **Anonymous Tests**: signed-out requests read nothing (pgTAP `anon`).
 - **Flow Tests**: Playwright scenarios in User Stories 1–3.
