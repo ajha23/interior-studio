@@ -6,8 +6,8 @@ Each phase of the review's refactor plan has a detailed `spec.md` below. Run eac
 
 | Phase | Spec | Depends on | Estimate | Gate |
 | --- | --- | --- | --- | --- |
-| 0 — Freeze and decide | [040-freeze-and-decide](040-freeze-and-decide/spec.md) | — | 2 days | One branch, backup files, spend cap, constitution 2.3.0 merged |
-| 1 — Identity and one database | [041-supabase-baseline](041-supabase-baseline/spec.md) | 040 | 2–3 days | `db diff --linked` empty; pgTAP cross-tenant tests pass |
+| 0 — Freeze and decide | [040-freeze-and-decide](040-freeze-and-decide/spec.md) — **done 2026-11-05** (PR #11) | — | 2 days | One branch, backup files, spend cap, constitution 2.3.0 merged |
+| 1 — Identity and one database | [041-supabase-baseline](041-supabase-baseline/spec.md) — **done 2026-11-05** (PR #12) | 040 | 2–3 days | `db diff --linked` empty; pgTAP cross-tenant tests pass |
 | 1 | [042-auth-and-studio-shell](042-auth-and-studio-shell/spec.md) | 041 | 4–5 days | Google sign-in on preview; colleague joins studio |
 | 1 | [043-cloud-projects](043-cloud-projects/spec.md) | 042 | 5–6 days | Same project on two devices; conflict and offline behave |
 | 1 | [044-project-import](044-project-import/spec.md) | 043 | 2–3 days | Local projects moved; 8 earlier projects badged |
