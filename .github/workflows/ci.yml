@@ -25,6 +25,25 @@ jobs:
       - run: npm test
       - run: npm run build
 
+  # Applies every migration to a fresh local Supabase, loads the synthetic seed, and runs the
+  # pgTAP isolation suite (spec 041, FR-014). No secrets; never targets production.
+  # Spec 048 makes this a required check and adds caching and deploys.
+  db:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run db:start
+      - name: npm run db:reset (timed)
+        run: time npm run db:reset
+      - run: npm run db:test
+      - run: npm run db:types:check
+
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 20
