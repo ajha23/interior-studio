@@ -15,7 +15,8 @@ CREATE OR REPLACE FUNCTION public.commit_design_revision(
   p_format text,
   p_snapshot_jsonb jsonb,
   p_canonical_hash text,
-  p_idempotency_key text
+  p_idempotency_key text,
+  p_request_hash text DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -32,10 +33,12 @@ DECLARE
   v_existing_idemp record;
   v_response jsonb;
   v_authorized boolean;
+  v_effective_request_hash text;
 BEGIN
   -- Derive verified caller role and UID
   v_caller_role := coalesce(auth.role(), current_setting('request.jwt.claim.role', true));
   v_caller_uid := auth.uid();
+  v_effective_request_hash := coalesce(p_request_hash, p_canonical_hash);
 
   -- True service_role calls in Supabase have auth.role() = 'service_role' and auth.uid() IS NULL
   v_is_service := (v_caller_role = 'service_role' AND v_caller_uid IS NULL);
@@ -87,7 +90,7 @@ BEGIN
     AND idempotency_key = p_idempotency_key;
 
   IF FOUND THEN
-    IF v_existing_idemp.request_hash = p_canonical_hash THEN
+    IF v_existing_idemp.request_hash = v_effective_request_hash THEN
       RETURN v_existing_idemp.response_jsonb;
     ELSE
       RETURN jsonb_build_object(
@@ -232,7 +235,7 @@ BEGIN
     v_actor_id,
     'commit_design_revision',
     p_idempotency_key,
-    p_canonical_hash,
+    v_effective_request_hash,
     200,
     v_response
   );

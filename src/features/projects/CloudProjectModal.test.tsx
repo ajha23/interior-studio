@@ -8,6 +8,7 @@ import { CloudProjectModal } from './CloudProjectModal';
 describe('CloudProjectModal Component (Feature 034.2.2 FR-03)', () => {
   beforeEach(() => {
     useCloudProjectStore.setState({
+      readinessState: 'unauthenticated',
       currentOrgId: null,
       activeActorId: null,
       currentProject: null,
@@ -52,6 +53,7 @@ describe('CloudProjectModal Component (Feature 034.2.2 FR-03)', () => {
 
   it('does not show unauthenticated banner when user is authenticated with active org', () => {
     useCloudProjectStore.setState({
+      readinessState: 'ready',
       currentOrgId: '00000000-0000-4000-8000-000000000001',
       activeActorId: 'usr-auth-123',
     });

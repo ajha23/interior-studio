@@ -29,8 +29,31 @@ export function getPersistenceAdapter(): CloudPersistencePort {
   return activePersistenceAdapter;
 }
 
+export type CloudReadinessState =
+  | 'initializing'
+  | 'ready'
+  | 'unauthenticated'
+  | 'organization_required'
+  | 'membership_denied'
+  | 'misconfigured'
+  | 'unavailable';
+
+export function computeReadinessState(params: {
+  activeActorId: string | null;
+  currentOrgId: string | null;
+  isMisconfigured?: boolean;
+  isMembershipDenied?: boolean;
+}): CloudReadinessState {
+  if (params.isMisconfigured) return 'misconfigured';
+  if (params.isMembershipDenied) return 'membership_denied';
+  if (!params.activeActorId) return 'unauthenticated';
+  if (!params.currentOrgId) return 'organization_required';
+  return 'ready';
+}
+
 export interface CloudProjectState {
-  // Current active tenant and verified actor context (Feature 034.2 FR-01, Feature 034.2.2 FR-03)
+  // Current active tenant, verified actor, and runtime readiness (Feature 034.2.2 FR-01, FR-03, FR-04)
+  readinessState: CloudReadinessState;
   currentOrgId: string | null;
   activeActorId: string | null;
   currentProject: SaaSProject | null;
@@ -45,6 +68,7 @@ export interface CloudProjectState {
   syncModalOpen: boolean;
 
   // Actions
+  setReadinessState: (state: CloudReadinessState) => void;
   setOrgId: (orgId: string | null) => void;
   setActiveActor: (actorId: string | null) => void;
   setSyncModalOpen: (open: boolean) => void;
@@ -62,6 +86,7 @@ export interface CloudProjectState {
 }
 
 export const useCloudProjectStore = create<CloudProjectState>((set, get) => ({
+  readinessState: 'unauthenticated',
   currentOrgId: null,
   activeActorId: null,
   currentProject: null,
@@ -79,17 +104,77 @@ export const useCloudProjectStore = create<CloudProjectState>((set, get) => ({
   isSyncing: false,
   syncModalOpen: false,
 
-  setOrgId: (orgId: string | null) => set({ currentOrgId: orgId }),
-  setActiveActor: (actorId: string | null) => set({ activeActorId: actorId }),
+  setReadinessState: (state: CloudReadinessState) => set({ readinessState: state }),
+
+  setOrgId: (orgId: string | null) => {
+    const { currentOrgId, activeActorId } = get();
+    if (orgId === currentOrgId) return;
+
+    // Purge previous tenant remote cache on organization switch (Feature 034.2.2 FR-04, T206)
+    const nextReadiness = computeReadinessState({
+      activeActorId,
+      currentOrgId: orgId,
+    });
+
+    set({
+      currentOrgId: orgId,
+      readinessState: nextReadiness,
+      projects: [],
+      currentProject: null,
+      spaces: [],
+      activeSpaceId: null,
+      revisions: {},
+      legacyMappings: [],
+      idempotencyRecords: [],
+      syncState: {
+        localProjectId: 'init',
+        syncStatus: 'draft',
+        baseRevisionId: null,
+      },
+    });
+  },
+
+  setActiveActor: (actorId: string | null) => {
+    const { currentOrgId } = get();
+    if (!actorId) {
+      // User sign-out: clear actor, org, and remote caches while preserving local drafts (FR-04, T207)
+      set({
+        activeActorId: null,
+        currentOrgId: null,
+        readinessState: 'unauthenticated',
+        projects: [],
+        currentProject: null,
+        spaces: [],
+        activeSpaceId: null,
+        revisions: {},
+        legacyMappings: [],
+        idempotencyRecords: [],
+      });
+      return;
+    }
+
+    const nextReadiness = computeReadinessState({
+      activeActorId: actorId,
+      currentOrgId,
+    });
+    set({
+      activeActorId: actorId,
+      readinessState: nextReadiness,
+    });
+  },
+
   setSyncModalOpen: (open: boolean) => set({ syncModalOpen: open }),
 
   createProject: async (name: string, clientId?: string | null) => {
-    const { currentOrgId, projects, activeActorId } = get();
+    const { readinessState, currentOrgId, projects, activeActorId } = get();
+    if (!activeActorId) {
+      throw CloudPersistenceError.unauthenticated('Active authenticated user required for cloud operations.');
+    }
     if (!currentOrgId) {
       throw CloudPersistenceError.orgMembershipRequired('Active organization membership is required for cloud operations.');
     }
-    if (!activeActorId) {
-      throw CloudPersistenceError.unauthenticated('Active authenticated user required for cloud operations.');
+    if (readinessState !== 'ready') {
+      throw CloudPersistenceError.validationFailed(`Cloud runtime is not ready: state is ${readinessState}`);
     }
 
     const newProject = await activePersistenceAdapter.createProject({
@@ -113,12 +198,15 @@ export const useCloudProjectStore = create<CloudProjectState>((set, get) => ({
   },
 
   archiveProject: async (projectId: string) => {
-    const { currentOrgId, activeActorId } = get();
+    const { readinessState, currentOrgId, activeActorId } = get();
+    if (!activeActorId) {
+      throw CloudPersistenceError.unauthenticated('Active authenticated user required for cloud operations.');
+    }
     if (!currentOrgId) {
       throw CloudPersistenceError.orgMembershipRequired('Active organization membership is required for cloud operations.');
     }
-    if (!activeActorId) {
-      throw CloudPersistenceError.unauthenticated('Active authenticated user required for cloud operations.');
+    if (readinessState !== 'ready') {
+      throw CloudPersistenceError.validationFailed(`Cloud runtime is not ready: state is ${readinessState}`);
     }
 
     const updated = await activePersistenceAdapter.archiveProject({
@@ -134,9 +222,15 @@ export const useCloudProjectStore = create<CloudProjectState>((set, get) => ({
   },
 
   createSpace: async (name: string, spaceType: SpaceType = 'kitchen', level = 0) => {
-    const { currentOrgId, currentProject, spaces, activeActorId } = get();
+    const { readinessState, currentOrgId, currentProject, spaces, activeActorId } = get();
+    if (!activeActorId) {
+      throw CloudPersistenceError.unauthenticated('Active authenticated user required for cloud operations.');
+    }
     if (!currentOrgId) {
       throw CloudPersistenceError.orgMembershipRequired('Active organization membership is required for cloud operations.');
+    }
+    if (readinessState !== 'ready') {
+      throw CloudPersistenceError.validationFailed(`Cloud runtime is not ready: state is ${readinessState}`);
     }
     if (!activeActorId) {
       throw CloudPersistenceError.unauthenticated('Active authenticated user required for cloud operations.');
@@ -196,9 +290,12 @@ export const useCloudProjectStore = create<CloudProjectState>((set, get) => ({
   },
 
   commitCurrentDesign: async (idempotencyKey?: string) => {
-    const { currentOrgId, currentProject, spaces, activeSpaceId, syncState, activeActorId } = get();
+    const { readinessState, currentOrgId, currentProject, spaces, activeSpaceId, syncState, activeActorId } = get();
     const editorProject = useEditorStore.getState().project;
 
+    if (!activeActorId) {
+      return { success: false, conflict: false, error: 'Authentication required. No active actor.' };
+    }
     if (!currentOrgId) {
       return {
         success: false,
@@ -206,8 +303,8 @@ export const useCloudProjectStore = create<CloudProjectState>((set, get) => ({
         error: CloudPersistenceError.orgMembershipRequired('Active organization membership is required for cloud operations.').message,
       };
     }
-    if (!activeActorId) {
-      return { success: false, conflict: false, error: 'Authentication required. No active actor.' };
+    if (readinessState !== 'ready') {
+      return { success: false, conflict: false, error: `Cloud runtime is not ready: state is ${readinessState}` };
     }
     if (!currentProject || !activeSpaceId) {
       return { success: false, conflict: false, error: 'No active SaaS Project or Space selected.' };
@@ -302,12 +399,15 @@ export const useCloudProjectStore = create<CloudProjectState>((set, get) => ({
   },
 
   importKitchen: async (fileContent: string, projectName?: string) => {
-    const { currentOrgId, projects, spaces, revisions, activeActorId } = get();
+    const { readinessState, currentOrgId, projects, spaces, revisions, activeActorId } = get();
+    if (!activeActorId) {
+      throw CloudPersistenceError.unauthenticated('Active authenticated user required for cloud operations.');
+    }
     if (!currentOrgId) {
       throw CloudPersistenceError.orgMembershipRequired('Active organization membership is required for cloud operations.');
     }
-    if (!activeActorId) {
-      throw CloudPersistenceError.unauthenticated('Active authenticated user required for cloud operations.');
+    if (readinessState !== 'ready') {
+      throw CloudPersistenceError.validationFailed(`Cloud runtime is not ready: state is ${readinessState}`);
     }
 
     const imported = await activePersistenceAdapter.importKitchen({
@@ -336,12 +436,15 @@ export const useCloudProjectStore = create<CloudProjectState>((set, get) => ({
   },
 
   importHome: async (fileContent: string, projectName?: string) => {
-    const { currentOrgId, projects, spaces, revisions, activeActorId } = get();
+    const { readinessState, currentOrgId, projects, spaces, revisions, activeActorId } = get();
+    if (!activeActorId) {
+      throw CloudPersistenceError.unauthenticated('Active authenticated user required for cloud operations.');
+    }
     if (!currentOrgId) {
       throw CloudPersistenceError.orgMembershipRequired('Active organization membership is required for cloud operations.');
     }
-    if (!activeActorId) {
-      throw CloudPersistenceError.unauthenticated('Active authenticated user required for cloud operations.');
+    if (readinessState !== 'ready') {
+      throw CloudPersistenceError.validationFailed(`Cloud runtime is not ready: state is ${readinessState}`);
     }
 
     const imported = await activePersistenceAdapter.importHome({

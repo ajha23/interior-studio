@@ -281,7 +281,16 @@ export class SupabasePersistenceAdapter implements CloudPersistencePort {
   }
 
   async commitDesignRevision(params: CommitDesignRevisionParams): Promise<CommitRevisionOutcome> {
-    const canonicalHash = computeCanonicalSha256(params.snapshot);
+    const snapshotHash = computeCanonicalSha256(params.snapshot);
+    // Full-request normalized hash covering complete semantic operation envelope (Feature 034.2.2 FR-06, T401, T402)
+    const requestHash = computeCanonicalSha256({
+      operation: 'commit_design_revision',
+      orgId: params.orgId,
+      projectId: params.projectId,
+      spaceId: params.spaceId,
+      expectedRevisionId: params.expectedRevisionId,
+      snapshotHash,
+    });
 
     const { data, error } = await this.client.rpc('commit_design_revision', {
       p_org_id: params.orgId,
@@ -292,8 +301,9 @@ export class SupabasePersistenceAdapter implements CloudPersistencePort {
       p_schema_version: params.snapshot.schemaVersion,
       p_format: params.snapshot.format,
       p_snapshot_jsonb: params.snapshot,
-      p_canonical_hash: canonicalHash,
+      p_canonical_hash: snapshotHash,
       p_idempotency_key: params.idempotencyKey,
+      p_request_hash: requestHash,
     });
 
     if (error) {
@@ -346,7 +356,7 @@ export class SupabasePersistenceAdapter implements CloudPersistencePort {
       schemaVersion: params.snapshot.schemaVersion,
       format: params.snapshot.format,
       snapshot: params.snapshot,
-      canonicalHash,
+      canonicalHash: snapshotHash,
       createdBy: params.actorId,
       createdAt: res.committedAt || new Date().toISOString(),
     };
@@ -357,7 +367,7 @@ export class SupabasePersistenceAdapter implements CloudPersistencePort {
       actorId: params.actorId,
       operation: 'commit_design_revision',
       idempotencyKey: params.idempotencyKey,
-      requestHash: canonicalHash,
+      requestHash,
       responseStatus: 200,
       response: res as unknown as Record<string, unknown>,
       createdAt: res.committedAt || new Date().toISOString(),

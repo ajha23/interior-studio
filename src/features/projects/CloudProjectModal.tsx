@@ -43,7 +43,6 @@ export function CloudProjectModal({ isOpen, onClose }: { isOpen: boolean; onClos
   const currentSpace = store.spaces.find((s) => s.id === store.activeSpaceId);
   const activeRevisions = store.activeSpaceId ? store.revisions[store.activeSpaceId] ?? [] : [];
   const syncStatus = store.syncState.syncStatus;
-  const activeActorId = store.activeActorId;
 
   const handleConnectSession = () => {
     // Only available in development mode for developer workflow convenience
@@ -259,8 +258,8 @@ export function CloudProjectModal({ isOpen, onClose }: { isOpen: boolean; onClos
           </div>
         )}
 
-        {/* Unauthenticated Session Alert (Feature 034.2 FR-01, Feature 034.2.2 FR-03) */}
-        {(!activeActorId || !store.currentOrgId) && (
+        {/* Unauthenticated Session / Readiness Alert (Feature 034.2 FR-01, Feature 034.2.2 FR-01, FR-03) */}
+        {store.readinessState !== 'ready' && (
           <div
             className="mx-6 mt-3 flex items-center justify-between rounded-lg border border-sky-500/30 bg-sky-500/10 p-3 text-xs text-sky-800 dark:text-sky-300"
             role="status"
@@ -269,10 +268,18 @@ export function CloudProjectModal({ isOpen, onClose }: { isOpen: boolean; onClos
             <div className="flex items-center gap-2">
               <UserCheck className="size-4 shrink-0 text-sky-600 dark:text-sky-400" />
               <div>
-                <p className="font-medium">Active Session & Organization Required</p>
+                <p className="font-medium">
+                  {store.readinessState === 'organization_required'
+                    ? 'Active Organization Required'
+                    : store.readinessState === 'misconfigured'
+                    ? 'Cloud Persistence Misconfigured'
+                    : 'Active Session & Organization Required'}
+                </p>
                 <p className="text-[11px] opacity-90">
                   {import.meta.env.DEV
                     ? 'Connect verified session identity or dev session to persist changes to the cloud.'
+                    : store.readinessState === 'organization_required'
+                    ? 'Select or switch to an active organization to persist changes to the cloud.'
                     : 'Sign in through your enterprise authentication provider with an active organization to persist changes.'}
                 </p>
               </div>

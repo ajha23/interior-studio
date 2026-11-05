@@ -128,6 +128,75 @@ describe('Database Integration & Security Remediation (Feature 034.2.2 T501)', (
         expect(resB.reason).toBe('REVISION_CONFLICT');
       }
     });
+
+    it('rejects idempotency key reuse on revision commit with different target space or envelope', async () => {
+      const existingRecords: Record<string, { request_hash: string; response: unknown }> = {};
+
+      const mockRpc = vi.fn().mockImplementation(async (fn: string, params: Record<string, unknown>) => {
+        if (fn === 'commit_design_revision') {
+          const key = params.p_idempotency_key as string;
+          const hash = (params.p_request_hash || params.p_canonical_hash) as string;
+
+          if (existingRecords[key]) {
+            if (existingRecords[key]!.request_hash !== hash) {
+              return {
+                data: {
+                  success: false,
+                  conflict: false,
+                  reason: 'IDEMPOTENCY_KEY_REUSED',
+                  error: 'Idempotency key has already been used with a different request payload.',
+                },
+                error: null,
+              };
+            }
+            return { data: existingRecords[key]!.response, error: null };
+          }
+
+          const response = {
+            success: true,
+            revisionId: 'rev-first-123',
+            committedAt: new Date().toISOString(),
+          };
+          existingRecords[key] = { request_hash: hash, response };
+          return { data: response, error: null };
+        }
+        return { data: null, error: new Error(`Unknown RPC ${fn}`) };
+      });
+
+      const adapter = new SupabasePersistenceAdapter(createMockClient(mockRpc));
+      const snapshot = {
+        format: 'interior-studio/kitchen' as const,
+        schemaVersion: 2,
+        document: createExampleProject(),
+      };
+
+      // First commit for spaceId A succeeds
+      const first = await adapter.commitDesignRevision({
+        orgId,
+        actorId,
+        projectId,
+        spaceId: 'space-A',
+        expectedRevisionId: null,
+        snapshot,
+        idempotencyKey: 'shared-revision-idemp-key',
+      });
+      expect(first.success).toBe(true);
+
+      // Second commit reuses same key but for spaceId B (different semantic envelope)
+      const second = await adapter.commitDesignRevision({
+        orgId,
+        actorId,
+        projectId,
+        spaceId: 'space-B',
+        expectedRevisionId: null,
+        snapshot,
+        idempotencyKey: 'shared-revision-idemp-key',
+      });
+      expect(second.success).toBe(false);
+      if (!second.success) {
+        expect(second.reason).toBe('IDEMPOTENCY_KEY_REUSED');
+      }
+    });
   });
 
   describe('Full-Request Normalized Import Idempotency', () => {
