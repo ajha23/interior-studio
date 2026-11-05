@@ -13,3 +13,6 @@ backups/
 *.dump
 *-schema.sql
 *-data.sql
+
+# Supabase CLI local link state
+supabase/.temp/
