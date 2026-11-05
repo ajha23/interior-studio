@@ -1,5 +1,8 @@
 # Roadmap
 
+> **Feature freeze until spec 048 (CI database gate) merges. Specs 035 and later wait.**
+> Only the foundation specs 040–052 proceed; see [specs/FOUNDATION-PLAN.md](../specs/FOUNDATION-PLAN.md). Freeze started 2026-11-05.
+
 Each milestone leaves the repo runnable and passing `npm run check` and `npm run e2e`.
 
 | Milestone | Work | Definition of done | Status | Spec |

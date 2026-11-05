@@ -1,15 +1,32 @@
 <!--
 Sync Impact Report:
-- Version change: 2.1.0 → 2.2.0 (MINOR: Added Core Principle X for Multi-Tenant SaaS Architecture, Subscription Entitlements, and Plan-Based Feature Access; established SaaS Access-Control Hierarchy & Unified Policy Evaluation standard; upgraded mandatory feature spec sections to include 8-part SaaS subscription, entitlement, and authorization specification)
-- Modified principles: None (Principles I through IX maintained with full fidelity)
+- Version change: 2.2.0 → 2.3.0 (MINOR: two Core Principles added; Definition of Done, branching
+  rule and SaaS-section exemption added to Governance. No principle removed or redefined.)
+- Rationale: Features 034.1 to 034.2.2 hardened a cloud path that production never ran (no
+  sign-in, unapplied migrations, completion reports accepted as evidence). These rules make that
+  impossible to repeat. Source: specs/040-freeze-and-decide/spec.md (FR-010 to FR-014).
+- Modified principles:
+  - IX. Test-First Quality, Golden Fixtures & Five-Stage Quality Gates: the five-stage gate is now
+    stated as necessary but not sufficient; completion is decided by the Definition of Done.
 - Added principles:
-  - Principle X: Multi-Tenant SaaS Architecture, Subscription Entitlements, and Plan-Based Feature Access (NEW: Mandates architectural independence of subscription entitlements from RBAC and tenant isolation, central entitlement registry, capability-based feature keys, usage quotas, explicit subscription lifecycle management, non-destructive downgrade policies, and unified backend-only policy enforcement)
+  - XI. The Database Is the Security Boundary
+  - XII. Official Clients, No Hand-Written Security Code
 - Added sections & governance requirements:
-  - Engineering Standards: SaaS Access-Control Hierarchy & Unified Policy Evaluation Engine
-  - Governance Standards: Upgraded mandatory feature specification section: "SaaS Subscription, Entitlement and Authorization Requirements"
-  - Constitution Compliance: Extended planning gate checks to cover Core Principles I through X
+  - Governance: Definition of Done (Evidence, Not Reports)
+  - Governance: Branching & Trunk Rule
+  - Mandatory Feature Spec Section: "Not applicable: foundation spec" exemption for items 1-4, 6
+    and 7; item 8 never optional
+  - Constitution Compliance: planning checks extended to Core Principles I through XII
 - Removed sections: None
-- Follow-up TODOs: Implement foundational platform feature `031-saas-subscription-entitlements` via Spec Kit SDD lifecycle
+- Dependent files updated: AGENTS.md, CLAUDE.md (rules mirrored)
+- Templates: .specify/templates/* read the constitution at runtime; no change required. The plan
+  template's Constitution Check should list principles XI and XII when next regenerated.
+- Follow-up TODOs:
+  - "Bounded Package Boundaries" describes eight packages that are 8-18 line stubs today; the
+    foundation plan (spec 053, review "Repository" decision) collapses them into one package.
+    Revisit that section in a later amendment once the repository restructure lands.
+  - The database CI job that makes the Definition of Done checkable arrives in spec 048; until
+    then, migrations are applied with `npm run db:reset` and `npm run db:test` (spec 041).
 -->
 
 # Interior Studio Constitution
@@ -67,6 +84,7 @@ No feature or bugfix is complete without automated test coverage across appropri
 - End-to-end workflows: Playwright integration tests in `e2e/`, synchronizing on `canvas[data-rendered]`.
 Acceptance criteria MUST be documented in `docs/ACCEPTANCE_TESTS.md` with corresponding automated test suites. The Non-Negotiable Five-Stage Quality Gate MUST run and pass cleanly in exact order before merging:
 `npm run lint && npm run typecheck && npm test && npm run build && npm run e2e`
+Passing this gate is necessary but not sufficient: a feature is complete only when it meets the Definition of Done (Evidence, Not Reports) in Governance.
 *Rationale: Eliminates regressions, verifies strict typing and lint boundaries, and proves real-world correctness across the entire 3D WebGL and manufacturing stack before deployment.*
 
 ### X. Multi-Tenant SaaS Architecture, Subscription Entitlements, and Plan-Based Feature Access
@@ -92,6 +110,21 @@ New and modified modules MUST explicitly declare their subscription entitlement 
 
 Subscription downgrades, cancellations, or entitlement removals MUST NOT silently destroy customer data. Data retention, restricted-access, export, and deletion behavior MUST follow documented product policies, contractual obligations, and applicable legal requirements.
 *Rationale: Establishes a commercial SaaS foundation that scales to arbitrary plans, usage models, and enterprise contracts without compromising tenant data isolation or embedding commercial pricing logic into business modules.*
+
+### XI. The Database Is the Security Boundary
+Postgres decides every read and write; no other layer authorizes.
+- Every table in the `public` schema MUST have row-level security enabled and policies covering `select`, `insert`, `update` and `delete`. A table without RLS MUST fail CI.
+- Tenant isolation MUST be decided by Postgres policies and RPCs using `auth.uid()`. Browser permission checks only decide what to show; they MUST NEVER authorize.
+- Every `SECURITY DEFINER` function MUST set `search_path = ''` and use schema-qualified names, and `EXECUTE` MUST be revoked from `public`, `anon` and `authenticated` before it is granted to the one role that needs it.
+- User-facing RPCs MUST NEVER accept an actor id or trust a service role. Privileged server work MUST use its own narrow function, granted only to the role that runs it.
+- Every schema change MUST ship in the same pull request as pgTAP tests proving: own studio allowed, other studio denied, anonymous denied.
+*Rationale: One enforcement point that every client (web, mobile capture, worker, AI functions) passes through, and that can be proven by tests. Features 034.1 to 034.2.2 placed authorization in browser and server code that production never executed; policies in the database cannot be bypassed that way.*
+
+### XII. Official Clients, No Hand-Written Security Code
+- Browser and server code MUST talk to Supabase only through `@supabase/supabase-js`. Hand-rolled HTTP clients for Supabase are prohibited.
+- Tokens MUST be verified with Supabase's JWKS (`auth.getClaims` or the `jose` library). Hand-written JWT, HMAC or other cryptographic code is prohibited.
+- Default user, studio or organisation ids MUST NOT exist outside test fixtures. Every actor and studio comes from a verified session and a database membership.
+*Rationale: The hand-built client sent the anon key as the bearer token, so `auth.uid()` was always null, and the custom JWT verifier guarded no handler. Official clients get identity right by default; security code written by hand is where those gaps came from.*
 
 ## Engineering & Architectural Standards
 
@@ -183,8 +216,20 @@ Every future feature specification (`specs/NNN-<name>/spec.md`) created via `/sp
 8. **Acceptance Criteria and Security Tests:** Included-plan access tests, excluded-plan denial tests, RBAC permission tests, tenant isolation tests, quota boundary tests, concurrent usage tests, subscription transition tests.
 Specifications lacking this section MUST NOT pass the `/speckit-plan` Constitution Check.
 
+Foundation and infrastructure specifications MAY answer items 1 to 4, 6 and 7 with "Not applicable: foundation spec" followed by one sentence of reason. Item 5 MUST state the tenant boundary whenever the spec touches tenant data. Item 8 (tenant isolation and security tests) is never optional and MUST NOT be answered "Not applicable".
+
 ### Constitution Compliance & Planning Checks
-Every technical plan (`design.md` or `plan.md`) MUST include a Constitution Check section evaluating the proposed architecture against Core Principles I through X. Any planned deviation requires an explicit, justified exception approved prior to implementation.
+Every technical plan (`design.md` or `plan.md`) MUST include a Constitution Check section evaluating the proposed architecture against Core Principles I through XII. A plan that adds a custom API server, a hand-written Supabase client, or hand-written authentication or cryptographic code MUST be rejected. Any planned deviation requires an explicit, justified exception approved prior to implementation.
+
+### Definition of Done (Evidence, Not Reports)
+A feature is done when all of the following hold:
+1. Its pull request is merged to `main` with green CI.
+2. CI applied its migrations to a fresh local Supabase and ran its pgTAP policy tests.
+3. A person signed into the Vercel preview and used the feature.
+Reported command output, pasted test summaries and completion reports are not evidence. The evidence is the link to the CI run and the preview URL, both recorded in the pull request. A task MUST NOT be marked complete without the exact commands run and their output.
+
+### Branching & Trunk Rule
+`main` is the only long-lived branch and is always deployable. Feature branches MUST live at most 3 days and merge only to `main`. Spec, code and tests land together in one pull request; spec-only branches and secondary integration branches are prohibited. Work not finished within 3 days is split into smaller slices.
 
 ### Exception Management
 Architectural exceptions must be documented in an Architecture Decision Record (ADR) under `docs/` or within the feature's `design.md`. The exception record MUST identify:
@@ -201,4 +246,4 @@ Amendments to this constitution must be proposed with a clear engineering ration
 - **MINOR (x.Y.0)**: Addition of a new Core Principle, introduction of new architectural standards, or materially expanded governance.
 - **PATCH (x.y.Z)**: Non-semantic clarifications, wording precision, typographic corrections, or cross-reference updates.
 
-**Version**: 2.2.0 | **Ratified**: 2026-11-01 | **Last Amended**: 2026-11-02
+**Version**: 2.3.0 | **Ratified**: 2026-11-01 | **Last Amended**: 2026-11-05

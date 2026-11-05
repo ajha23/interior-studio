@@ -7,3 +7,9 @@ dist
 coverage
 test-results
 playwright-report
+
+# Database dumps contain user data: never commit them (spec 040)
+backups/
+*.dump
+*-schema.sql
+*-data.sql
