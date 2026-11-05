@@ -25,12 +25,12 @@ description: "Task list for 041 — Supabase Baseline and Local Stack"
 
 **Purpose**: Pin the CLI and create the local Supabase project files.
 
-- [ ] T001 Confirm prerequisites and record output: `docker info` succeeds (start with `colima start` if not), `npx supabase --version` prints `3.0.0`, and `git status` is clean on branch `041-supabase-baseline`
-- [ ] T002 Add the CLI as an exact devDependency: `npm install --save-dev --save-exact supabase@3.0.0`; verify `package.json` lists `"supabase": "3.0.0"` and `package-lock.json` is updated
-- [ ] T003 Run `npx supabase init` in the repo root (keep existing `supabase/migrations/`); answer no to editor settings so only `supabase/config.toml` and `supabase/.gitignore` are created
-- [ ] T004 Edit `supabase/config.toml` per research R3: `project_id = "interior-studio"`; `[db] major_version = 17`; default ports 54321–54327; `[db.seed] enabled = true` with `sql_paths = ["./seed.sql"]`; `[auth.email] enable_signup = true`; `[auth.external.google] enabled = false`
-- [ ] T005 Add npm scripts to `package.json` exactly as in [contracts/npm-scripts.md](contracts/npm-scripts.md): `db:start` (`npx supabase start`), `db:reset` (`npx supabase db reset`), `db:test` (`npx supabase test db`), `db:types` (`npx supabase gen types typescript --local --schema public > src/infrastructure/supabase/database.types.ts`), `db:types:check` (script in T006)
-- [ ] T006 Create `scripts/db-types-check.mjs`: regenerate types to a temp file with the same command as `db:types`, compare with `src/infrastructure/supabase/database.types.ts`, exit 0 when identical, otherwise exit 1 and print `Stale generated types: src/infrastructure/supabase/database.types.ts — run npm run db:types`; wire it as `"db:types:check": "node scripts/db-types-check.mjs"` in `package.json`
+- [X] T001 Confirm prerequisites and record output: `docker info` succeeds (start with `colima start` if not), `npx supabase --version` prints `3.0.0`, and `git status` is clean on branch `041-supabase-baseline`
+- [X] T002 Add the CLI as an exact devDependency: `npm install --save-dev --save-exact supabase@3.0.0`; verify `package.json` lists `"supabase": "3.0.0"` and `package-lock.json` is updated
+- [X] T003 Run `npx supabase init` in the repo root (keep existing `supabase/migrations/`); answer no to editor settings so only `supabase/config.toml` and `supabase/.gitignore` are created
+- [X] T004 Edit `supabase/config.toml` per research R3: `project_id = "interior-studio"`; `[db] major_version = 17`; default ports 54321–54327; `[db.seed] enabled = true` with `sql_paths = ["./seed.sql"]`; `[auth.email] enable_signup = true`; `[auth.external.google] enabled = false`
+- [X] T005 Add npm scripts to `package.json` exactly as in [contracts/npm-scripts.md](contracts/npm-scripts.md): `db:start` (`npx supabase start`), `db:reset` (`npx supabase db reset`), `db:test` (`npx supabase test db`), `db:types` (`npx supabase gen types typescript --local --schema public > src/infrastructure/supabase/database.types.ts`), `db:types:check` (script in T006)
+- [X] T006 Create `scripts/db-types-check.mjs`: regenerate types to a temp file with the same command as `db:types`, compare with `src/infrastructure/supabase/database.types.ts`, exit 0 when identical, otherwise exit 1 and print `Stale generated types: src/infrastructure/supabase/database.types.ts — run npm run db:types`; wire it as `"db:types:check": "node scripts/db-types-check.mjs"` in `package.json`
 
 **Checkpoint**: `npx supabase --version` resolves to the local `3.0.0`; `npm run db:start` brings the stack up.
 
@@ -42,10 +42,10 @@ description: "Task list for 041 — Supabase Baseline and Local Stack"
 
 **⚠️ CRITICAL**: The archive move (T007) must happen before the fetch (T008), or `db reset` would apply 034.x SQL that production never ran.
 
-- [ ] T007 Move the 12 unapplied migrations with history kept: `mkdir -p docs/archive/migrations-034 && git mv supabase/migrations/000*.sql docs/archive/migrations-034/`; verify `ls supabase/migrations` is empty
-- [ ] T008 Fetch the live history: `npx supabase migration fetch --remote`; verify `supabase/migrations/` holds exactly 17 files whose versions run from `20261024082809` to `20261024193725` (research R1). If `fetch` fails, stop and use the spec's fallback (`db pull` + `migration repair`), recording which path was used
-- [ ] T009 Run `npx supabase migration list --remote` and paste the output: all 17 versions appear in both the local and remote columns, and no `000NN` row remains
-- [ ] T010 Run `npm run db:start` then `npm run db:reset` with no `supabase/seed.sql` yet; paste output showing every migration applied with zero errors
+- [X] T007 Move the 12 unapplied migrations with history kept: `mkdir -p docs/archive/migrations-034 && git mv supabase/migrations/000*.sql docs/archive/migrations-034/`; verify `ls supabase/migrations` is empty
+- [X] T008 Fetch the live history: `npx supabase migration fetch --remote`; verify `supabase/migrations/` holds exactly 17 files whose versions run from `20261024082809` to `20261024193725` (research R1). If `fetch` fails, stop and use the spec's fallback (`db pull` + `migration repair`), recording which path was used
+- [X] T009 Run `npx supabase migration list --remote` and paste the output: all 17 versions appear in both the local and remote columns, and no `000NN` row remains
+- [X] T010 Run `npm run db:start` then `npm run db:reset` with no `supabase/seed.sql` yet; paste output showing every migration applied with zero errors
 
 **Checkpoint**: The local database is built from production's exact history.
 
@@ -63,7 +63,7 @@ description: "Task list for 041 — Supabase Baseline and Local Stack"
 - [ ] T012 [US1] Only if T011 found drift: `npx supabase migration new capture_dashboard_objects`, put the exact SQL from the diff in `supabase/migrations/<timestamp>_capture_dashboard_objects.sql`, rerun `npm run db:reset`, then mark it applied on production without running it: `npx supabase migration repair --status applied <timestamp> --remote` (the founder runs this command, since it writes to production's history table); rerun `db diff --remote` until empty
 - [ ] T013 [US1] Write `supabase/seed.sql` per [data-model.md](data-model.md): studios `Alpha Studio` (slug `alpha`) and `Beta Studio` (slug `beta`) with fixed UUIDs; per studio four users `owner.<x>@example.test`, `admin.<x>@example.test`, `designer.<x>@example.test`, `viewer.<x>@example.test` inserted into `auth.users` and `auth.identities` (provider `email`), plus `stranger@example.test` in no studio; `org_members` rows with role values from the live `org_role` enum ('owner', 'admin', 'designer', 'viewer'); "every email ends in `@example.test`"
 - [ ] T014 [US1] Extend `supabase/seed.sql` with tenant data for both studios: 2 `projects` per studio, 2 `project_versions` per project (one 'autosave', one 'manual', using live `version_kind` values), and at least one row in each of `org_invites`, `ai_credit_ledger`, `ai_jobs`, `ai_settings`, `catalog_models`, `comments`, `price_lists`, `quotes`, `renders`, `room_templates`, `share_links` per studio, satisfying each table's NOT NULL and check constraints in the fetched migrations; `profiles` rows come from the `handle_new_user` trigger, not direct inserts. Check what the live triggers `private.comments_guard`, `private.share_links_freeze_token` and `private.renders_engine_default` do to inserted rows before writing those three tables' seed rows
-- [ ] T015 [US1] Run `npm run db:reset` and paste output; then as `postgres` run a row count per table (`select 'projects', count(*) from public.projects union all …`) and confirm every studio-owned table has rows for both studios, `profiles` has 9 rows, and `organizations` has 2
+- [ ] T015 [US1] Run `npm run db:reset` and paste output; then as `postgres` run a row count per table (`select 'projects', count(*) from public.projects union all …`) and confirm every studio-owned table has rows for both studios, `profiles` has 9 rows, and `organizations` has 3 (Alpha, Beta, plus `Interior Studio` created by the live migration `20261024082852_phase0_invites_fix_and_seed`)
 - [ ] T016 [US1] Time a full rebuild (`time npm run db:reset`) and record that it is under 2 minutes (SC-001), noting that Docker images were already cached; the clean-machine number comes from the CI `db` job in T036
 
 **Checkpoint**: US1 independent test passes; `db diff --remote` is empty.

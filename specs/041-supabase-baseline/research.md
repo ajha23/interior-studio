@@ -33,8 +33,10 @@ No live data was modified.
 
 - **Decision**: `npx supabase init` creates `supabase/config.toml`. Set `project_id =
   "interior-studio"`, `[db] major_version = 17` (live is Postgres 17), keep default ports
-  (54321–54327). Enable email sign-in locally for tests (`[auth.email] enable_signup = true`),
-  keep `[auth.external.google]` disabled locally. Seed file path `./seed.sql`.
+  (54321–54327). Email sign-in is enabled locally by CLI 3.0's defaults (`[auth] enable_signup = true`,
+  `[auth.email] enabled = true`; there is no `enable_signup` under `[auth.email]` in this version), and no
+  `[auth.external.google]` section exists, so Google is off locally. `site_url` and
+  `additional_redirect_urls` point at the Vite dev server (`localhost:5173`) and preview (`4173`). Seed file path `./seed.sql`.
 - **Rationale**: Matching the major version avoids dump/restore and planner differences. Email
   sign-in is local-only per spec 042's clarify answers.
 - **Runtime**: Docker via Colima (started during Phase 0). `db:start` documents that Docker must be
@@ -119,3 +121,15 @@ From the backup schema:
   (constitution 2.3.0). This spec only verifies it is present.
 - Archive references: no file in `src`, `e2e`, `scripts`, `apps` or `packages` reads
   `supabase/migrations` or the `000NN_` files, so moving them breaks nothing.
+
+## R10 — Found during implementation (2026-11-05)
+
+- Two fetched migrations carry data, not just schema: `20261024082852_phase0_invites_fix_and_seed`
+  creates the `Interior Studio` organisation and an owner invite, and `20261024083811_phase0_set_owner_email`
+  updates that invite. Every local reset therefore has a third studio besides the seeded Alpha and Beta.
+- Both files contain real email addresses. The repository is public, and the same addresses are
+  already in `origin/main` history from the legacy app's commits.
+- `supabase start` applies `supabase/migrations` on first boot, so the archive move (T007) must
+  precede the first `db:start`, not only the fetch.
+- Decision (founder, 2026-11-05): redact the two addresses in the committed files to
+  `founder@example.test` and `studio-owner@example.test`; recorded as an exception in plan.md.

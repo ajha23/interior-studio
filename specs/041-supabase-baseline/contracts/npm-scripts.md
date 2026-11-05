@@ -8,7 +8,7 @@ exit behaviour are a contract: 048 calls them unchanged.
 | `db:start` | `npx supabase start` | Local stack is up (API 54321, DB 54322) | Docker is not running |
 | `db:reset` | `npx supabase db reset` | Every migration applies and `seed.sql` loads with zero errors | Any migration or seed statement errors |
 | `db:test` | `npx supabase test db` | Every pgTAP file in `supabase/tests/` passes | Any assertion fails, or a test file errors |
-| `db:types` | `npx supabase gen types typescript --local --schema public > src/infrastructure/supabase/database.types.ts` | File written | Local stack not running |
+| `db:types` | `mkdir -p src/infrastructure/supabase && npx supabase gen types typescript --local --schema public > src/infrastructure/supabase/database.types.ts` | File written | Local stack not running |
 | `db:types:check` | regenerate to a temp file, `diff` against the committed file | Files identical (exit 0) | Files differ: exit 1, prints the stale file name |
 
 Rules:
