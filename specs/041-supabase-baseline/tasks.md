@@ -103,10 +103,10 @@ description: "Task list for 041 — Supabase Baseline and Local Stack"
 
 **Independent Test**: `npm run db:types:check` passes on a clean tree and fails after a migration is added without regenerating.
 
-- [ ] T028 [US3] Run `npm run db:types`; verify `src/infrastructure/supabase/database.types.ts` exists and defines the 16 `public` tables and the `org_role`, `project_status` and `version_kind` enums
-- [ ] T029 [US3] Add `'src/infrastructure/supabase/database.types.ts'` to the `ignores` array in `eslint.config.js` (generated code; research R7)
-- [ ] T030 [US3] Run `npm run db:types:check` (exit 0) and `npm run typecheck` (passes); paste both outputs
-- [ ] T031 [US3] Prove the check fails: add a throwaway migration adding a column (`alter table public.price_lists add column tmp_check int;`), `npm run db:reset`, run `npm run db:types:check` and paste the non-zero exit and message; delete the migration and `npm run db:reset` again
+- [X] T028 [US3] Run `npm run db:types`; verify `src/infrastructure/supabase/database.types.ts` exists and defines the 16 `public` tables and the `org_role`, `project_status` and `version_kind` enums
+- [X] T029 [US3] Add `'src/infrastructure/supabase/database.types.ts'` to the `ignores` array in `eslint.config.js` (generated code; research R7)
+- [X] T030 [US3] Run `npm run db:types:check` (exit 0) and `npm run typecheck` (passes); paste both outputs
+- [X] T031 [US3] Prove the check fails: add a throwaway migration adding a column (`alter table public.price_lists add column tmp_check int;`), `npm run db:reset`, run `npm run db:types:check` and paste the non-zero exit and message; delete the migration and `npm run db:reset` again
 
 **Checkpoint**: Types are current, linted out, type-checked, and the stale check is proven.
 
@@ -118,9 +118,9 @@ description: "Task list for 041 — Supabase Baseline and Local Stack"
 
 **Independent Test**: `supabase/migrations` contains only timestamped live (and fix) migrations; `docs/archive/migrations-034/README.md` explains the archive.
 
-- [ ] T032 [P] [US4] Write `docs/archive/migrations-034/README.md`: these 12 files (list them) were written for Features 034 to 034.2.2 and never applied to any database (verified 2026-11-05 with `supabase migration list --remote`); do not apply them; ideas to port as new migrations: revision compare-and-swap (spec 043), idempotency keys (spec 043), one append-only audit table (spec 043); link `docs/DECISIONS.md` D-034 and `specs/041-supabase-baseline/spec.md`
-- [ ] T033 [US4] Verify `ls supabase/migrations` lists only `2026…`-prefixed files, and `git log --follow docs/archive/migrations-034/00012_runtime_integration_and_security_verification.sql` shows the history kept through the move
-- [ ] T034 [P] [US4] Verify `AGENTS.md` contains the rule "every change is a new file from `supabase migration new`. Never edit a migration that is on `main`" (added in PR #11); if missing, add it under "Security and database rules" (FR-009)
+- [X] T032 [P] [US4] Write `docs/archive/migrations-034/README.md`: these 12 files (list them) were written for Features 034 to 034.2.2 and never applied to any database (verified 2026-11-05 with `supabase migration list --remote`); do not apply them; ideas to port as new migrations: revision compare-and-swap (spec 043), idempotency keys (spec 043), one append-only audit table (spec 043); link `docs/DECISIONS.md` D-034 and `specs/041-supabase-baseline/spec.md`
+- [X] T033 [US4] Verify `ls supabase/migrations` lists only `2026…`-prefixed files, and `git log --follow docs/archive/migrations-034/00012_runtime_integration_and_security_verification.sql` shows the history kept through the move
+- [X] T034 [P] [US4] Verify `AGENTS.md` contains the rule "every change is a new file from `supabase migration new`. Never edit a migration that is on `main`" (added in PR #11); if missing, add it under "Security and database rules" (FR-009)
 
 **Checkpoint**: Archive documented; migration rule present in AGENTS.md.
 
