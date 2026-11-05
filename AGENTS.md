@@ -50,6 +50,36 @@ Spec Kit skills are installed and configured for supported coding agents:
   `src/domain/project/serialization.ts` (`MIGRATIONS`). Never edit an existing migration.
 - Keep stable ids: edits change an element in place; they never delete and recreate it.
 
+## Security and database rules (constitution XI and XII)
+
+These rules are not negotiable. If a task seems to need an exception, stop and ask; do not write one.
+
+- **The database is the security boundary.** Postgres RLS policies and RPCs using `auth.uid()`
+  decide every read and write. Browser permission checks only decide what to show.
+- **Every table in `public` has RLS enabled** with `select`, `insert`, `update` and `delete`
+  policies. Every schema change ships in the same PR as pgTAP tests in `supabase/tests/`: own
+  studio allowed, other studio denied, anonymous denied.
+- **No `SECURITY DEFINER` without a revoke and a test.** Set `search_path = ''`, use
+  schema-qualified names, revoke `EXECUTE` from `public`, `anon` and `authenticated`, then grant to
+  the one role that needs it.
+- **User-facing RPCs never take an actor id** and never trust a service role. Privileged work gets
+  its own narrow function.
+- **Use `@supabase/supabase-js`, never a hand-rolled Supabase client.** Verify tokens with
+  Supabase's JWKS (`auth.getClaims` or `jose`). No hand-written JWT, HMAC or crypto code.
+- **No default user, studio or organisation ids** outside test fixtures.
+- **Migrations:** every change is a new file from `supabase migration new`. Never edit a migration
+  that is on `main`.
+
+## Branching
+
+- `main` is the only long-lived branch and is always deployable. Branch from `main`, merge back to
+  `main`, and keep branches to at most 3 days.
+- Spec, code and tests land together in one PR. No spec-only branches and no second integration
+  branch.
+- One PR is one user-visible change, roughly under 400 changed lines. Split larger work.
+- Until spec 048 (CI database gate) merges, only foundation specs 040–052 are worked on
+  (see `docs/ROADMAP.md` and `specs/FOUNDATION-PLAN.md`).
+
 ## Code rules
 
 - Strict TypeScript. No `any` (ESLint errors on it); use `unknown` and narrow, or justify in a comment.
@@ -68,11 +98,24 @@ Spec Kit skills are installed and configured for supported coding agents:
 
 ## Definition of done
 
-Run and pass, in order:
+Evidence, not reports (constitution 2.3.0). A feature is done only when:
+
+1. Its PR is merged to `main` with green CI.
+2. CI applied its migrations to a fresh local Supabase and ran its pgTAP policy tests.
+3. A person signed into the Vercel preview and used the feature.
+
+The evidence is the CI run link and the preview URL, recorded in the PR. Pasted output and
+completion reports do not count.
+
+Before opening the PR, run and pass, in order:
 
 ```bash
 npm run lint && npm run typecheck && npm test && npm run build && npm run e2e
 ```
 
-Then report: files changed, commands run with their results, and any requirement from the spec
-that is not finished. Never claim success for something that was not run.
+and, for any change touching `supabase/`, `npm run db:reset && npm run db:test` (scripts arrive
+in spec 041).
+
+Then report: files changed, the exact commands run with their output, and any requirement from the
+spec that is not finished. Never mark a task done without that output, and never claim success for
+something that was not run.

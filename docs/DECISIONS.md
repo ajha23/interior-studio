@@ -259,3 +259,15 @@ unchanged, and existing projects are untouched. The generator is deterministic (
 typical room sizes, furnishing rules) and builds every room through the domain's commands, so a
 generated home is valid by construction; an AI model only fills in the brief.
 
+
+## D-034 — The live Supabase schema is the baseline; 034.x migrations are archived, not applied
+
+Decided 2026-11-05 (spec 040). The live Supabase project `interior-studio` (Mumbai, 17 migrations
+from Oct 24, the team's 8 projects and 129 versions) is the single source of truth for the database.
+The repo migrations `00001` to `00012` from Features 034 to 034.2.2 were never applied to any
+database; spec 041 moves them to `docs/archive/migrations-034/`. Three of their patterns are worth
+keeping and are ported forward as new migrations on the live baseline: compare-and-swap revision
+commits, idempotency keys, and one append-only audit table. `main` is the only trunk branch; the
+`integration` branch was merged (PR #10) and deleted. New feature specs (035 onward) are frozen until
+spec 048, the CI database gate, merges. Source: *Interior Studio — Architecture Review & Foundation
+Plan* and `specs/FOUNDATION-PLAN.md`.
