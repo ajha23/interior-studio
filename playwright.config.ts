@@ -13,6 +13,10 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         viewport: { width: 1440, height: 900 },
+        // Chromium's new headless mode, not the default headless shell: on Linux CI runners the headless
+        // shell throttles software WebGL to 1–4 frames a second, which starves 3D picking, camera moves
+        // and input. New headless renders the same scene at about 14 fps (measured 2026-11-05).
+        channel: 'chromium',
         // Software WebGL so the 3D viewport renders on CI machines without a GPU.
         launchOptions: { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] },
       },
