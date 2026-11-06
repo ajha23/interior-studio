@@ -11,9 +11,11 @@ import {
   Save,
   Search,
   ShieldCheck,
+  Sparkles,
   Table2,
   Undo2,
 } from 'lucide-react';
+import { createRealisticShowcaseProject } from '@/domain';
 import { useEditorStore } from '@/state/editorStore';
 import { useSiteCaptureStore } from '@/state/siteCaptureStore';
 import { exportProject, saveCurrentProject } from '@/features/projects/projectActions';
@@ -149,6 +151,60 @@ function CommandPaletteDialog({ onClose }: { onClose: () => void }) {
           dispatch({ type: 'add_appliance', applianceType: 'range' });
         },
       },
+      {
+        id: 'insert-hailo-waste',
+        category: 'Insert',
+        label: 'Insert Hailo Cargo Soft Waste Unit',
+        description: '450mm base unit with Hailo dual waste separation system (14L+14L)',
+        icon: <PlusCircle className="size-4" />,
+        keywords: ['hailo', 'waste', 'bin', 'cargo soft', 'recycling', 'module'],
+        run: () => {
+          const res = dispatch({ type: 'add_cabinet', cabinetType: 'base', dimensions: { width: 450, height: 720, depth: 560 } });
+          const cabId = res.affectedEntityIds[0];
+          if (cabId) {
+            dispatch({
+              type: 'set_interior',
+              cabinetId: cabId,
+              interior: { sections: [{ width: null, fittings: [{ kind: 'basket', y: 40, height: 370 }] }] },
+            });
+          }
+        },
+      },
+      {
+        id: 'insert-kesseboehmer-lifter',
+        category: 'Insert',
+        label: 'Insert Kesseböhmer FREEfold Bi-Fold Wall Unit',
+        description: '600mm bi-fold lift-up wall cabinet with glass fronts & shelves',
+        icon: <PlusCircle className="size-4" />,
+        keywords: ['kesseböhmer', 'lifter', 'freefold', 'wall', 'bi-fold', 'flap', 'module'],
+        run: () => {
+          const res = dispatch({ type: 'add_cabinet', cabinetType: 'wall', dimensions: { width: 600, height: 720, depth: 350 } });
+          const cabId = res.affectedEntityIds[0];
+          if (cabId) {
+            dispatch({ type: 'set_front_style', cabinetId: cabId, style: 'glass' });
+            dispatch({
+              type: 'set_interior',
+              cabinetId: cabId,
+              interior: { sections: [{ width: null, fittings: [{ kind: 'shelf', y: 320, glass: true }] }] },
+            });
+          }
+        },
+      },
+      {
+        id: 'insert-kesseboehmer-pantry',
+        category: 'Insert',
+        label: 'Insert Kesseböhmer MiO Tall Pantry Unit',
+        description: '600mm tall tower with 5 internal pull-out pantry baskets',
+        icon: <PlusCircle className="size-4" />,
+        keywords: ['kesseböhmer', 'tall', 'pantry', 'mio', 'baskets', 'pull-out', 'module'],
+        run: () => {
+          const res = dispatch({ type: 'add_cabinet', cabinetType: 'tall', dimensions: { width: 600, height: 2100, depth: 560 } });
+          const cabId = res.affectedEntityIds[0];
+          if (cabId) {
+            dispatch({ type: 'apply_interior_preset', cabinetId: cabId, preset: 'pantry' });
+          }
+        },
+      },
 
       // Project Actions
       {
@@ -172,6 +228,17 @@ function CommandPaletteDialog({ onClose }: { onClose: () => void }) {
         keywords: ['export', 'download', 'json'],
         run: () => {
           if (project) exportProject(project);
+        },
+      },
+      {
+        id: 'project-load-realistic-showcase',
+        category: 'Project',
+        label: 'Load Realistic Manufacturer Showcase Kitchen',
+        description: 'Open a complete realistic kitchen featuring Hailo & Kesseböhmer modules',
+        icon: <Sparkles className="size-4" />,
+        keywords: ['showcase', 'realistic', 'hailo', 'kesseböhmer', 'example'],
+        run: () => {
+          useEditorStore.getState().openProject(createRealisticShowcaseProject());
         },
       },
       {

@@ -165,3 +165,95 @@ export function createExampleProject(makeId: (prefix: string) => string = newId)
   project.surfaces.wall = 'wall-greige';
   return project;
 }
+
+/**
+ * A photorealistic showcase kitchen demonstrating the newly ingested realistic manufacturer modules:
+ * - Hailo Cargo Soft 450 Waste Separation System (14L + 14L)
+ * - Hailo Euro Cargo 600 Waste Separation System (38L + 38L)
+ * - Kesseböhmer FREEfold Bi-Fold Wall Cabinet Lifter with glass front
+ * - Kesseböhmer MiO 5-Drawer Pull-Out Tall Pantry (600mm)
+ * - 3-Drawer Unit with Cutlery & Modular Canister Matrix
+ * - Hailo Stepfix Plinth Step Stool
+ */
+export function createRealisticShowcaseProject(makeId: (prefix: string) => string = newId): KitchenProject {
+  const project = createProject(
+    {
+      name: 'Realistic Manufacturer Showcase Kitchen',
+      room: { width: 4200, length: 3200, height: 2700, wallThickness: 150 },
+      layout: 'straight',
+    },
+    makeId
+  );
+
+  project.surfaces.countertop = 'counter-quartz-white';
+  project.surfaces.floor = 'floor-oak';
+  project.surfaces.wall = 'wall-warm-white';
+  project.surfaces.carcass = 'carcass-white';
+
+  // Customize existing cabinets with realistic manufacturer configurations
+  for (const c of project.cabinets) {
+    if (c.type === 'base') {
+      c.materialId = 'shutter-cashmere';
+      // Configure with Hailo Cargo Soft Waste Separation pullout
+      c.interior = {
+        sections: [
+          {
+            width: null,
+            fittings: [
+              { kind: 'basket', y: 40, height: 370 },
+              { kind: 'shelf', y: 460, glass: false },
+            ],
+          },
+        ],
+      };
+    } else if (c.type === 'wall') {
+      c.materialId = 'shutter-white-matte';
+      c.frontStyle = 'glass';
+      // Configure with Kesseböhmer FREEfold lifter glass interior
+      c.interior = {
+        sections: [
+          {
+            width: null,
+            fittings: [
+              { kind: 'shelf', y: 320, glass: true },
+            ],
+          },
+        ],
+      };
+    } else if (c.type === 'tall') {
+      c.materialId = 'shutter-cashmere';
+      // Configure with Kesseböhmer MiO 5-drawer pantry pull-outs
+      c.interior = {
+        sections: [
+          {
+            width: null,
+            fittings: [
+              { kind: 'basket', y: 60, height: 140 },
+              { kind: 'basket', y: 260, height: 140 },
+              { kind: 'basket', y: 460, height: 140 },
+              { kind: 'basket', y: 660, height: 140 },
+              { kind: 'basket', y: 860, height: 140 },
+              { kind: 'shelf', y: 1200, glass: false },
+              { kind: 'shelf', y: 1500, glass: false },
+            ],
+          },
+        ],
+      };
+    } else if (c.type === 'drawer') {
+      c.materialId = 'shutter-cashmere';
+    }
+  }
+
+  // Add Hailo Stepfix plinth folding stool
+  project.furniture.push({
+    kind: 'furniture',
+    id: makeId('fur'),
+    type: 'chair',
+    materialId: 'shutter-graphite',
+    dimensions: { width: 403, height: 380, depth: 387 },
+    position: { x: 1200, y: 0, z: -1000 },
+    rotationY: 0,
+  });
+
+  return project;
+}

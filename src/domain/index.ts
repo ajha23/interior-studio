@@ -8,6 +8,7 @@ export * from './room/walls';
 export * from './room/openings';
 export * from './constraints/validate';
 export * from './materials/library';
+export * from './catalog';
 export * from './commands/schema';
 export * from './commands/execute';
 export * from './project/presets';

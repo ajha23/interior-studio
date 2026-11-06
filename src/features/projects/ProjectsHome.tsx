@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Download, FolderOpen, Plus, Sparkles, Trash2, Upload } from 'lucide-react';
-import { createExampleProject, createProject, DEFAULT_ROOM, layoutFitErrors, ROOM_PRESETS, RoomSchema, zodMessages, type Layout, type Room } from '@/domain';
+import { createExampleProject, createRealisticShowcaseProject, createProject, DEFAULT_ROOM, layoutFitErrors, ROOM_PRESETS, RoomSchema, zodMessages, type Layout, type Room } from '@/domain';
 import { Select } from '@/components/ui/select';
 import { LENGTH_UNITS, UNIT_LABEL, type LengthUnit } from '@/engine/measurement/units';
 import { deleteHome, deleteProject, listHomes, listProjects, loadProject, type HomeSummary, type ProjectSummary } from '@/persistence/projectDb';
@@ -146,6 +146,9 @@ export function ProjectsHome({ notice }: { notice?: string | null }) {
               </Button>
             </form>
             <div className="mt-4 flex flex-wrap gap-2 border-t pt-4">
+              <Button variant="outline" size="sm" onClick={() => void createAndOpen(createRealisticShowcaseProject())}>
+                <Sparkles className="text-highlight" /> Open realistic showcase
+              </Button>
               <Button variant="outline" size="sm" onClick={() => void createAndOpen(createExampleProject())}>
                 <Sparkles /> Open example kitchen
               </Button>
