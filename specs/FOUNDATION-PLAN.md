@@ -26,7 +26,14 @@ Each phase of the review's refactor plan has a detailed `spec.md` below. Run eac
 
 Phase 1 is done only when the 041–044 gates pass on the **production** URL. The feature freeze lifts when 048 merges.
 
-**Freeze exception (2026-11-06, founder):** specs 054–056 are product features but run right after 042 and before 043. With open sign-up (every login gets a Free studio), Free/Pro limits and studio retention protect cost and security, so they cannot wait for the 048 freeze to lift.
+**Freeze exception (2026-11-06, founder):** specs 054–056 are product features that run inside the foundation queue rather than after 048. With open sign-up (every login gets a Free studio), Free/Pro limits and studio retention protect cost and security, so they cannot wait for the 048 freeze to lift.
+
+**Execution order (review of 043–053, 2026-11-06, founder approved):** 042 ✅ → 054 (merged; gate pending) → **045** → 043 → 055 → 044 → 056 → 048 → 046 → 047 → 049 → 050 → 051 → 052 → 053. The review found:
+- the five AI endpoints accept anonymous calls, so 045 comes first, and 055's server-side Pro gating for AI depends on 045's signed-in, studio-scoped AI path;
+- projects are still saved only in the browser, so 056's retention has nothing in the database to delete until 043 ships;
+- Vercel previews use the production database until 048 adds staging, so preview tests create real users there.
+
+The table above keeps its phase grouping; this line is the order of work.
 
 ## Known issues (tracked, not yet specified)
 
