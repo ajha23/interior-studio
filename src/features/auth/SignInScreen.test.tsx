@@ -3,20 +3,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SignInScreen } from './SignInScreen';
 import { ConfigErrorScreen } from './ConfigErrorScreen';
 import { SessionContext, type SessionState } from './sessionContext';
+import { fakeSessionState } from './testSessionState';
 
-function session(overrides: Partial<SessionState> = {}): SessionState {
-  return {
-    status: 'signed-out',
-    user: null,
-    memberships: [],
-    error: null,
-    signInWithGoogle: vi.fn(async () => {}),
-    signInWithPassword: null,
-    signOut: vi.fn(async () => {}),
-    refreshMemberships: vi.fn(async () => {}),
-    ...overrides,
-  };
-}
+const session = fakeSessionState;
 
 function renderWith(value: SessionState) {
   return render(
@@ -26,9 +15,57 @@ function renderWith(value: SessionState) {
   );
 }
 
-afterEach(() => window.history.replaceState(null, '', '/'));
+afterEach(() => {
+  window.history.replaceState(null, '', '/');
+  sessionStorage.clear();
+});
 
 describe('SignInScreen', () => {
+  it('offers Google and an email sign-in code, with no password field in this build', () => {
+    const value = session();
+    renderWith(value);
+    expect(screen.getByText('Continue with Google, or get a sign-in code by email.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Continue with Google' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Work email')).toHaveAttribute('type', 'email');
+    expect(screen.getByLabelText('Work email')).toHaveAttribute('autocomplete', 'email');
+    expect(screen.getByRole('button', { name: 'Email me a sign-in code' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Password')).not.toBeInTheDocument();
+  });
+
+  it('refuses an invalid address before sending anything', async () => {
+    const value = session();
+    renderWith(value);
+    fireEvent.change(screen.getByLabelText('Work email'), { target: { value: 'not-an-address' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Email me a sign-in code' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Enter a valid email address.');
+    expect(value.sendEmailCode).not.toHaveBeenCalled();
+  });
+
+  it('after sending, shows the code step for that address', async () => {
+    const value = session();
+    renderWith(value);
+    fireEvent.change(screen.getByLabelText('Work email'), { target: { value: 'new.person@studio.example' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Email me a sign-in code' }));
+    await waitFor(() => expect(value.sendEmailCode).toHaveBeenCalledWith('new.person@studio.example'));
+    expect(await screen.findByRole('status')).toHaveTextContent('We sent a code to new.person@studio.example. It works for 15 minutes.');
+    expect(screen.getByLabelText('6-digit code')).toBeInTheDocument();
+  });
+
+  it('a send error stays on the email step as an alert', async () => {
+    const sendEmailCode = vi.fn(async () => ({ ok: false as const, message: 'Too many sign-in emails right now. Try again in a few minutes or continue with Google.' }));
+    renderWith(session({ sendEmailCode }));
+    fireEvent.change(screen.getByLabelText('Work email'), { target: { value: 'a@b.example' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Email me a sign-in code' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Too many sign-in emails right now.');
+    expect(screen.getByLabelText('Work email')).toBeInTheDocument();
+  });
+
+  it('reopens on the code step after a reload while an address is pending in this tab', () => {
+    sessionStorage.setItem('interior-studio:email-pending', 'pending@studio.example');
+    renderWith(session());
+    expect(screen.getByRole('status')).toHaveTextContent('We sent a code to pending@studio.example.');
+  });
+
   it('offers one primary action: Continue with Google', () => {
     const value = session();
     renderWith(value);
@@ -37,10 +74,11 @@ describe('SignInScreen', () => {
     expect(value.signInWithGoogle).toHaveBeenCalledTimes(1);
   });
 
-  it('hides the email form unless password sign-in is enabled for this build', () => {
+  it('hides the password form unless password sign-in is enabled for this build', () => {
     renderWith(session());
     expect(screen.queryByLabelText('Email')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Sign in with email' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Local test accounts only.')).not.toBeInTheDocument();
   });
 
   it('signs in with email and password when enabled', async () => {

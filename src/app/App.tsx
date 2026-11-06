@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { roomProjectId } from '@/domain';
 import { ConfigErrorScreen } from '@/features/auth/ConfigErrorScreen';
+import { EmailLinkGate } from '@/features/auth/EmailLinkConfirm';
 import { SessionProvider } from '@/features/auth/SessionProvider';
 import { SignInScreen } from '@/features/auth/SignInScreen';
 import { useSession } from '@/features/auth/useSession';
@@ -27,7 +28,10 @@ export function App() {
   if (supabaseConfigError) return <ConfigErrorScreen message={supabaseConfigError} />;
   return (
     <SessionProvider>
-      <SessionGate />
+      {/* An emailed sign-in link (`?token_hash=…`, spec 054) opens its own page before anything else. */}
+      <EmailLinkGate>
+        <SessionGate />
+      </EmailLinkGate>
     </SessionProvider>
   );
 }

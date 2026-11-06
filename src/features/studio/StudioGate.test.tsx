@@ -1,21 +1,13 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { SessionContext, type Membership, type SessionState } from '@/features/auth/sessionContext';
+import { fakeSessionState } from '@/features/auth/testSessionState';
 import { StudioGate } from './StudioGate';
 
 const alpha: Membership = { orgId: 'org-a', orgName: 'Alpha Studio', orgSlug: 'alpha', role: 'admin', plan: 'inhouse' };
 
 function session(memberships: Membership[]): SessionState {
-  return {
-    status: 'signed-in',
-    user: { id: 'u1', email: 'admin.a@example.test', name: 'Alpha Admin', avatarUrl: null },
-    memberships,
-    error: null,
-    signInWithGoogle: vi.fn(async () => {}),
-    signInWithPassword: null,
-    signOut: vi.fn(async () => {}),
-    refreshMemberships: vi.fn(async () => {}),
-  };
+  return fakeSessionState({ status: 'signed-in', user: { id: 'u1', email: 'admin.a@example.test', name: 'Alpha Admin', avatarUrl: null }, memberships });
 }
 
 describe('StudioGate', () => {

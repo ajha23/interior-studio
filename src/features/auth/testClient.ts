@@ -20,7 +20,23 @@ export function fakeSession(id = 'u-1', email = 'designer.a@example.test', name 
   return { access_token: 'token', user: { id, email, user_metadata: { full_name: name } } };
 }
 
-export function createFakeClient(options: { session?: FakeSession | null; memberships?: FakeMembershipRow[]; membershipError?: string } = {}) {
+export interface FakeAuthError {
+  code?: string;
+  message: string;
+  status?: number;
+}
+
+export function createFakeClient(
+  options: {
+    session?: FakeSession | null;
+    memberships?: FakeMembershipRow[];
+    membershipError?: string;
+    /** Error returned by signInWithOtp (spec 054). */
+    otpError?: FakeAuthError;
+    /** Error returned by verifyOtp (spec 054). */
+    verifyError?: FakeAuthError;
+  } = {},
+) {
   let session = options.session ?? null;
   const listeners = new Set<Listener>();
   const calls: string[] = [];
@@ -49,6 +65,17 @@ export function createFakeClient(options: { session?: FakeSession | null; member
         const next = fakeSession('u-pw', email, email);
         emit('SIGNED_IN', next);
         return { data: { session: next }, error: null };
+      },
+      signInWithOtp: async (args: unknown) => {
+        calls.push(`signInWithOtp:${JSON.stringify(args)}`);
+        return { data: { user: null, session: null }, error: options.otpError ?? null };
+      },
+      verifyOtp: async (args: { email?: string; token?: string; token_hash?: string; type: string }) => {
+        calls.push(`verifyOtp:${JSON.stringify(args)}`);
+        if (options.verifyError) return { data: { user: null, session: null }, error: options.verifyError };
+        const next = fakeSession('u-email', args.email ?? 'linked@example.test', args.email ?? 'linked@example.test');
+        emit('SIGNED_IN', next);
+        return { data: { user: next.user, session: next }, error: null };
       },
       signOut: async () => {
         calls.push('signOut');
