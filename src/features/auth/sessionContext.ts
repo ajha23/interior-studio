@@ -20,6 +20,9 @@ export interface SessionUser {
   avatarUrl: string | null;
 }
 
+/** Result of an email sign-in step (spec 054). On success, the session arrives via onAuthStateChange. */
+export type EmailResult = { ok: true } | { ok: false; message: string; retryAfterSeconds?: number };
+
 export interface SessionState {
   status: 'loading' | 'signed-out' | 'signed-in';
   user: SessionUser | null;
@@ -28,6 +31,12 @@ export interface SessionState {
   signInWithGoogle: () => Promise<void>;
   /** Present only in local and test builds (`VITE_AUTH_PASSWORD_SIGN_IN === 'true'`). */
   signInWithPassword: ((email: string, password: string) => Promise<void>) | null;
+  /** Sends the sign-in email (link + 6-digit code) to the address (spec 054, FR-002). */
+  sendEmailCode: (email: string) => Promise<EmailResult>;
+  /** Signs in with the 6-digit code from the email. */
+  verifyEmailCode: (email: string, code: string) => Promise<EmailResult>;
+  /** Signs in with the emailed link's token, on any device (spec 054, FR-004). */
+  confirmEmailLink: (tokenHash: string) => Promise<EmailResult>;
   signOut: () => Promise<void>;
   refreshMemberships: () => Promise<void>;
 }

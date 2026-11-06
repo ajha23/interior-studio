@@ -6,8 +6,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { passwordSignInEnabled, supabase, type AppSupabaseClient } from '@/infrastructure/supabase/client';
-import { cleanAuthParams, rememberReturnTo, takeReturnTo } from './returnTo';
-import { LAST_STUDIO_KEY, SessionContext, type Membership, type OrgRole, type SessionState, type SessionUser } from './sessionContext';
+import { emailAuthError, type EmailAuthContext } from './emailAuthErrors';
+import {
+  cleanAuthParams,
+  clearEmailReturnTo,
+  clearPendingEmail,
+  rememberReturnTo,
+  saveEmailReturnTo,
+  savePendingEmail,
+  takeEmailReturnTo,
+  takeReturnTo,
+} from './returnTo';
+import { LAST_STUDIO_KEY, SessionContext, type EmailResult, type Membership, type OrgRole, type SessionState, type SessionUser } from './sessionContext';
 
 function toUser(session: Session | null): SessionUser | null {
   if (!session) return null;
@@ -40,6 +50,12 @@ async function loadMemberships(client: AppSupabaseClient, userId: string): Promi
     return org ? [{ orgId: org.id, orgName: org.name, orgSlug: org.slug, role: row.role as OrgRole, plan: org.plan }] : [];
   });
 }
+
+function failed(error: unknown, context: EmailAuthContext): EmailResult {
+  return { ok: false, ...emailAuthError(error, context) };
+}
+
+const normaliseEmail = (email: string) => email.trim().toLowerCase();
 
 function forgetLastStudio() {
   try {
@@ -125,8 +141,58 @@ export function SessionProvider({ children, client = supabase }: { children: Rea
     };
   }, [client]);
 
+  // Email sign-in (spec 054). Supabase Auth issues, expires and rate-limits the link and code; on
+  // success it fires SIGNED_IN and `enter()` runs start_session exactly as for Google.
+  const sendEmailCode = useCallback(
+    async (raw: string): Promise<EmailResult> => {
+      if (!client) return failed(null, 'send');
+      const email = normaliseEmail(raw);
+      rememberReturnTo(window.location.hash); // the code is typed in this tab
+      saveEmailReturnTo(window.location.hash); // the link may open in a new tab
+      const { error: e } = await client.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: `${window.location.origin}/auth/confirm`, shouldCreateUser: true },
+      });
+      if (e) return failed(e, 'send');
+      savePendingEmail(email);
+      return { ok: true };
+    },
+    [client],
+  );
+
+  const verifyEmailCode = useCallback(
+    async (raw: string, code: string): Promise<EmailResult> => {
+      if (!client) return failed(null, 'code');
+      const { error: e } = await client.auth.verifyOtp({ email: normaliseEmail(raw), token: code.replace(/\s+/g, ''), type: 'email' });
+      if (e) return failed(e, 'code');
+      clearPendingEmail();
+      clearEmailReturnTo();
+      return { ok: true };
+    },
+    [client],
+  );
+
+  const confirmEmailLink = useCallback(
+    async (tokenHash: string): Promise<EmailResult> => {
+      if (!client) return failed(null, 'link');
+      // In the browser that asked for the email, go back to the page asked for; elsewhere there is none.
+      const back = takeEmailReturnTo();
+      if (back) rememberReturnTo(back);
+      const { error: e } = await client.auth.verifyOtp({ token_hash: tokenHash, type: 'email' });
+      if (e) {
+        takeReturnTo();
+        return failed(e, 'link');
+      }
+      clearPendingEmail();
+      return { ok: true };
+    },
+    [client],
+  );
+
   const signOut = useCallback(async () => {
     forgetLastStudio();
+    clearPendingEmail();
+    clearEmailReturnTo();
     if (client) {
       const { error: e } = await client.auth.signOut();
       if (e) setError(message(e));
@@ -146,8 +212,20 @@ export function SessionProvider({ children, client = supabase }: { children: Rea
   }, [client, session]);
 
   const value = useMemo<SessionState>(
-    () => ({ status, user: toUser(session), memberships, error, signInWithGoogle, signInWithPassword, signOut, refreshMemberships }),
-    [status, session, memberships, error, signInWithGoogle, signInWithPassword, signOut, refreshMemberships],
+    () => ({
+      status,
+      user: toUser(session),
+      memberships,
+      error,
+      signInWithGoogle,
+      signInWithPassword,
+      sendEmailCode,
+      verifyEmailCode,
+      confirmEmailLink,
+      signOut,
+      refreshMemberships,
+    }),
+    [status, session, memberships, error, signInWithGoogle, signInWithPassword, sendEmailCode, verifyEmailCode, confirmEmailLink, signOut, refreshMemberships],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

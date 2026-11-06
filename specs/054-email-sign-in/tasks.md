@@ -23,21 +23,21 @@ description: "Task list for 054 — Email Sign-in (Magic Link and 6-Digit Code)"
 
 ## Phase 1: Setup
 
-- [ ] T001 Verify the starting point from `/Users/akhil/WorkSpace/interior-studio-054`: `npm run db:start && npm run db:reset && npm run db:test` and `npm test` pass on branch `054-email-sign-in`; record the counts (expected pgTAP 452, unit 864)
-- [ ] T002 [P] Create `supabase/templates/magic_link.html` and `supabase/templates/confirmation.html` with the same body per `contracts/email-sign-in.md`:
+- [X] T001 Verify the starting point from `/Users/akhil/WorkSpace/interior-studio-054`: `npm run db:start && npm run db:reset && npm run db:test` and `npm test` pass on branch `054-email-sign-in`; record the counts (expected pgTAP 452, unit 864) — **Done 2026-11-06**: `db:reset` ok; `db:test` → `Files=7, Tests=452 … Result: PASS`; `npm test` → 155 files, **874** passed (864 at 042 merge + 10 from the catalog commit on `main`).
+- [X] T002 [P] Create `supabase/templates/magic_link.html` and `supabase/templates/confirmation.html` with the same body per `contracts/email-sign-in.md`: — **Done 2026-11-06**: both files created; `diff` of the bodies (after the 2-line header comment) is empty.
   - button "Sign in to Interior Studio" linking to `{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=email`;
   - the code `{{ .Token }}` in large type;
   - "The link and code work once, for 15 minutes.";
   - "If you didn't ask for this, ignore this email.";
   - inline styles only, no images, no tracking.
-- [ ] T003 Update `supabase/config.toml`:
+- [X] T003 Update `supabase/config.toml`: — **Done 2026-11-06**: settings applied; `npx supabase stop` then `db:start`, `db:reset` ok. (The package has no `db:stop` script; used `npx supabase stop`.)
   - `[auth.email]`: `enable_confirmations = true`, `max_frequency = "60s"`, `otp_expiry = 900`, `otp_length = 6`;
   - add `[auth.email.template.magic_link]` and `[auth.email.template.confirmation]`, each with subject `"Your Interior Studio sign-in code: {{ .Token }}"` and `content_path` pointing at the T002 files;
   - `[auth.rate_limit]` `email_sent = 1000`, with a comment: local only so repeated e2e runs never hit it; production is 10 an hour (T027, `docs/auth.md`);
   - `[auth]` `additional_redirect_urls` gains `"http://localhost:5173/**"` and `"http://localhost:5174/**"`.
 
   Then `npm run db:stop && npm run db:start && npm run db:reset`, and confirm the stack starts.
-- [ ] T004 Re-run the spike checks (research R1, R2) against the restarted stack with a throwaway script in the scratchpad (not committed):
+- [X] T004 Re-run the spike checks (research R1, R2) against the restarted stack with a throwaway script in the scratchpad (not committed): — **Done 2026-11-06**: a new address was unconfirmed before verification (so it got the confirmation template); subject `Your Interior Studio sign-in code: ######`, code also in the body; link `http://localhost:5174/auth/confirm?token_hash=…&type=email` with a `pkce_` prefix; fresh-client `verifyOtp(token_hash)` → signed in, `email_confirmed_at` set; the code after the link was used → `otp_expired`; a second send within 60 s → `over_email_send_rate_limit` "after 59 seconds" for new and confirmed users alike. `spike-*` users deleted.
   - a new address gets the **confirmation** template with a 6-digit code and a `pkce_` token hash;
   - `verifyOtp({ token_hash, type: 'email' })` signs in from a fresh client.
 
@@ -47,30 +47,30 @@ description: "Task list for 054 — Email Sign-in (Magic Link and 6-Digit Code)"
 
 ## Phase 2: Foundational (blocking prerequisites)
 
-- [ ] T005 [P] Write `src/features/auth/emailAuthErrors.test.ts` first. It covers every row of research R5:
+- [X] T005 [P] Write `src/features/auth/emailAuthErrors.test.ts` first. It covers every row of research R5: — **Done**: 10 cases.
   - `over_email_send_rate_limit` with "after 42 seconds" → wait message with `retryAfterSeconds: 42`;
   - the same code with "email rate limit exceeded" → hourly-cap message that mentions Google;
   - `otp_expired` → "That code is not right or has expired." (code context) and "This sign-in link has expired." (link context);
   - `over_request_rate_limit` → too-many-attempts message;
   - `email_address_invalid` and `validation_failed` → "Enter a valid email address.";
   - a 500 or unknown error → "We couldn't send the email. Try again or continue with Google." (send context).
-- [ ] T006 Implement `src/features/auth/emailAuthErrors.ts`: `emailAuthError(error, context: 'send' | 'code' | 'link'): { message: string; retryAfterSeconds?: number }`. Pure, no Supabase import beyond types. T005 passes.
-- [ ] T007 [P] Write tests in `src/features/auth/returnTo.test.ts` for the email return-to hint (data-model "Browser storage"):
+- [X] T006 Implement `src/features/auth/emailAuthErrors.ts`: `emailAuthError(error, context: 'send' | 'code' | 'link'): { message: string; retryAfterSeconds?: number }`. Pure, no Supabase import beyond types. T005 passes. — **Done**: `npx vitest run src/features/auth/emailAuthErrors.test.ts` → 10 passed.
+- [X] T007 [P] Write tests in `src/features/auth/returnTo.test.ts` for the email return-to hint (data-model "Browser storage"): — **Done**: 6 new cases, seen failing (`saveEmailReturnTo is not a function`).
   - `saveEmailReturnTo(hash)` stores `{ hash, at }` under `interior-studio:email-return-to` in localStorage;
   - `takeEmailReturnTo(now)` returns the hash once and removes it;
   - it ignores and removes values older than 15 minutes;
   - `clearEmailReturnTo()` runs on sign-out;
   - the hash passes the same validation as 042's return-to.
-- [ ] T008 Implement the hint in `src/features/auth/returnTo.ts` (`saveEmailReturnTo`, `takeEmailReturnTo`, `clearEmailReturnTo`), wrapping every storage access in try/catch. T007 passes.
-- [ ] T009 Extend `src/features/auth/sessionContext.ts` with `sendEmailCode(email)`, `verifyEmailCode(email, code)` and `confirmEmailLink(tokenHash)`, all returning `EmailResult = { ok: true } | { ok: false; message: string; retryAfterSeconds?: number }` (contract). Add them to `src/features/auth/testClient.ts` fakes.
-- [ ] T010 Write tests in `src/features/auth/SessionProvider.test.tsx` using the fake client:
+- [X] T008 Implement the hint in `src/features/auth/returnTo.ts` (`saveEmailReturnTo`, `takeEmailReturnTo`, `clearEmailReturnTo`), wrapping every storage access in try/catch. T007 passes. — **Done**: `returnTo.test.ts` → 10 passed. Also added the `savePendingEmail`/`readPendingEmail`/`clearPendingEmail` helpers (data-model key `interior-studio:email-pending`).
+- [X] T009 Extend `src/features/auth/sessionContext.ts` with `sendEmailCode(email)`, `verifyEmailCode(email, code)` and `confirmEmailLink(tokenHash)`, all returning `EmailResult = { ok: true } | { ok: false; message: string; retryAfterSeconds?: number }` (contract). Add them to `src/features/auth/testClient.ts` fakes. — **Done**.
+- [X] T010 Write tests in `src/features/auth/SessionProvider.test.tsx` using the fake client: — **Done**: 7 new cases, seen failing (7 failed | 5 passed).
   - `sendEmailCode` trims and lower-cases the address, then calls `signInWithOtp({ email, options: { emailRedirectTo: origin + '/auth/confirm', shouldCreateUser: true } })`, saves the email return-to hint, and maps errors through `emailAuthError(…, 'send')`;
   - `verifyEmailCode` calls `verifyOtp({ email, token, type: 'email' })` with spaces stripped from the code;
   - `confirmEmailLink` calls `verifyOtp({ token_hash, type: 'email' })`;
   - on `SIGNED_IN` the existing `enter()` runs `start_session` (unchanged 042 behaviour);
   - `signOut` also clears the email hint and `interior-studio:email-pending`.
-- [ ] T011 Implement T009–T010 in `src/features/auth/SessionProvider.tsx` and add the three functions to the context value. T010 passes and the existing 042 SessionProvider tests still pass.
-- [ ] T012 [P] Create `e2e/support/mailpit.ts`:
+- [X] T011 Implement T009–T010 in `src/features/auth/SessionProvider.tsx` and add the three functions to the context value. T010 passes and the existing 042 SessionProvider tests still pass. — **Done**: `npx vitest run src/features/auth` → 38 passed; `npm run typecheck` clean; `npm test` green (see T012).
+- [X] T012 [P] Create `e2e/support/mailpit.ts`: — **Done**: lint clean.
   - `latestEmail(address, { after?: Date, timeoutMs = 10000 })` polls `GET {MAILPIT_URL}/api/v1/search?query=to:<address>` and then reads `GET /api/v1/message/<ID>`;
   - returns `{ subject, text, html, code, link }`. The code comes from `/\b\d{6}\b/` in the subject or body; the link is the first `href` containing `token_hash=`;
   - refuses any URL that is not `127.0.0.1` or `localhost` (same guard as `e2e/support/localAdmin.ts`);
