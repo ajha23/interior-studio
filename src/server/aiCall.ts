@@ -78,10 +78,12 @@ export const aiError = (status: number, code: ErrorCode, message: string) =>
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const noSession = { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } } as const;
 
-function target(env: AiCallEnv): SupabaseTarget | null {
-  const url = (env.SUPABASE_URL ?? env.VITE_SUPABASE_URL)?.trim();
-  const key = (env.SUPABASE_ANON_KEY ?? env.VITE_SUPABASE_ANON_KEY)?.trim();
-  return url && key ? { url, key } : null;
+/** The Supabase URL and publishable key; an empty value counts as missing. */
+function target(env: AiCallEnv): SupabaseTarget | { missing: string[] } {
+  const url = env.SUPABASE_URL?.trim() || env.VITE_SUPABASE_URL?.trim();
+  const key = env.SUPABASE_ANON_KEY?.trim() || env.VITE_SUPABASE_ANON_KEY?.trim();
+  if (url && key) return { url, key };
+  return { missing: [...(url ? [] : ['SUPABASE_URL']), ...(key ? [] : ['SUPABASE_ANON_KEY'])] };
 }
 
 /** Verifies the token with the official client. Only a signed-in user's token passes. */
@@ -124,8 +126,13 @@ export function withAiCall(handler: (req: Request, call: AiCall) => Promise<Resp
   const log = deps.log ?? ((entry) => console.info(JSON.stringify(entry)));
 
   return async (req) => {
-    const t = target(deps.env);
-    if (!t) return aiError(503, 'unavailable', AI_MESSAGES.notConfigured);
+    const configured = target(deps.env);
+    if ('missing' in configured) {
+      // Names only (never values), so a misconfigured deployment says what to set.
+      log({ event: 'ai_not_configured', missing: configured.missing });
+      return aiError(503, 'unavailable', `${AI_MESSAGES.notConfigured} Missing: ${configured.missing.join(', ')}.`);
+    }
+    const t = configured;
 
     const token = /^Bearer\s+(.+)$/i.exec(req.headers.get('authorization') ?? '')?.[1]?.trim();
     if (!token) return aiError(401, 'unauthorized', AI_MESSAGES.unauthorized);

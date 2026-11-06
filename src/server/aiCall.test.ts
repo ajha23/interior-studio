@@ -94,6 +94,18 @@ describe('withAiCall — authentication (US1, FR-001, FR-002)', () => {
     expect(verify).not.toHaveBeenCalled();
   });
 
+  it('an empty value counts as missing, and the 503 names what is missing (never a value)', async () => {
+    const { handle } = setup({ env: { SUPABASE_URL: '', VITE_SUPABASE_URL: '  ', SUPABASE_ANON_KEY: 'k' } });
+    const res = await handle(authed());
+    expect(res.status).toBe(503);
+    expect((await bodyOf(res)).error?.message).toBe('AI is not configured on this server. Missing: SUPABASE_URL.');
+  });
+
+  it('an empty plain name falls back to the VITE_ name', async () => {
+    const { handle } = setup({ env: { SUPABASE_URL: '', VITE_SUPABASE_URL: env.SUPABASE_URL, SUPABASE_ANON_KEY: '', VITE_SUPABASE_ANON_KEY: 'k' } });
+    expect((await handle(authed())).status).toBe(200);
+  });
+
   it('reads the VITE_ names when the plain ones are absent', async () => {
     const { handle } = setup({ env: { VITE_SUPABASE_URL: env.SUPABASE_URL, VITE_SUPABASE_ANON_KEY: 'anon' } });
     expect((await handle(authed())).status).toBe(200);

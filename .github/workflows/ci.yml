@@ -61,6 +61,10 @@ jobs:
       # synthetic seed; playwright.config.ts reads its anon key and signs in as a seeded user.
       - run: npm run db:start
       - run: npm run db:reset
+      # Spec 045: the AI gate first, so a misconfigured dev server fails in minutes, not after the suite.
+      - run: npx playwright test e2e/ai-access.spec.ts --reporter=list
+        env:
+          CI: 'true'
       - run: npm run e2e
         env:
           CI: 'true'

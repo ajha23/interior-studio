@@ -13,7 +13,7 @@ test.describe('API: only signed-in studio members can call AI (User Story 1)', (
   test('every endpoint refuses an anonymous call with 401', async ({ request }) => {
     for (const path of ENDPOINTS) {
       const res = await request.post(path, { data: {} });
-      expect(res.status(), path).toBe(401);
+      expect(res.status(), `${path}: ${await res.text()}`).toBe(401);
       expect(await res.json(), path).toMatchObject({ ok: false, error: { code: 'unauthorized', message: 'Sign in to use AI.' } });
     }
     expect((await request.get('/api/assistant')).status()).toBe(401);
