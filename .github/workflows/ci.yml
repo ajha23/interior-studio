@@ -42,6 +42,8 @@ jobs:
       - name: npm run db:reset (timed)
         run: time npm run db:reset
       - run: npm run db:test
+      # Spec 045: ten simultaneous AI charges with credit for five never overspend.
+      - run: npm run db:test:concurrency
       - run: npm run db:types:check
 
   e2e:

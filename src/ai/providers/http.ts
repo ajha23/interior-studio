@@ -5,6 +5,7 @@
 import { AssistantReplySchema, type AssistantRequest, type AssistantResponse } from '../schema';
 import { ProviderStatusSchema, type AiSelection, type ProviderStatus } from './catalog';
 import { ProviderError, withTimeout, type AssistantProvider, type ServedBy } from './types';
+import { AiNotReadyError, aiFetch } from '@/infrastructure/ai/aiFetch';
 
 export class HttpAssistantProvider implements AssistantProvider {
   readonly id = 'server';
@@ -14,7 +15,8 @@ export class HttpAssistantProvider implements AssistantProvider {
   constructor(
     private readonly endpoint = '/api/assistant',
     private readonly timeoutMs = 60_000,
-    private readonly fetchImpl: typeof fetch = (...args) => fetch(...args),
+    /** Adds the user's token and the paying studio (spec 045); tests inject their own. */
+    private readonly fetchImpl: typeof fetch = (input, init) => aiFetch(input, init),
     /** The provider and model the designer chose (sent with every request). */
     private readonly selection: () => AiSelection | undefined = () => undefined,
   ) {}
@@ -41,6 +43,7 @@ export class HttpAssistantProvider implements AssistantProvider {
         res = await this.fetchImpl(this.endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...request, ...(this.selection() ? { ai: this.selection() } : {}) }), signal: s });
       } catch (e) {
         if (s.aborted) throw s.reason instanceof ProviderError ? s.reason : new ProviderError('timeout', 'Cancelled.', true);
+        if (e instanceof AiNotReadyError) throw new ProviderError('unauthorized', e.message, false);
         throw new ProviderError('unavailable', `Could not reach the assistant service (${e instanceof Error ? e.message : 'network error'}).`, true);
       }
       if (res.status === 404) throw new ProviderError('unavailable', 'The assistant service is not available on this server. Switch to the offline assistant in the panel settings.', false);

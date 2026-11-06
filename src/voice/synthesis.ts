@@ -6,6 +6,7 @@
  * browser's voices when that fails.
  */
 import { SPEECH_MAX_CHARS, type ReplyVoice } from './voices';
+import { aiFetch } from '@/infrastructure/ai/aiFetch';
 
 export interface SpeakOptions {
   language?: string;
@@ -150,7 +151,7 @@ export class RemoteTextToSpeech implements TextToSpeech {
     const hit = this.cache.get(key);
     if (hit) return hit;
     this.abort = new AbortController();
-    const res = await (this.deps.fetchImpl ?? fetch)(this.deps.endpoint ?? '/api/speech', {
+    const res = await (this.deps.fetchImpl ?? aiFetch)(this.deps.endpoint ?? '/api/speech', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ text, engine: choice.engine, voice: choice.voice, ...(language ? { language } : {}) }),

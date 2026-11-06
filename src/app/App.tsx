@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { roomProjectId } from '@/domain';
 import { ConfigErrorScreen } from '@/features/auth/ConfigErrorScreen';
 import { EmailLinkGate } from '@/features/auth/EmailLinkConfirm';
+import { PayingStudioSync } from '@/features/ai/PayingStudioSync';
 import { SessionProvider } from '@/features/auth/SessionProvider';
 import { SignInScreen } from '@/features/auth/SignInScreen';
 import { useSession } from '@/features/auth/useSession';
@@ -29,6 +30,8 @@ export function App() {
   return (
     <SessionProvider>
       {/* An emailed sign-in link (`?token_hash=…`, spec 054) opens its own page before anything else. */}
+      {/* Which studio pays for AI, and its balance (spec 045). */}
+      <PayingStudioSync />
       <EmailLinkGate>
         <SessionGate />
       </EmailLinkGate>

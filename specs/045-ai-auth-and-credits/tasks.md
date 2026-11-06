@@ -163,33 +163,33 @@ description: "Task list for 045 — Signed-in, Credit-Metered AI Endpoints"
 
 ### Tests first
 
-- [ ] T017 [P] [US3] Write `src/infrastructure/ai/aiFetch.test.ts`:
+- [X] T017 [P] [US3] Write `src/infrastructure/ai/aiFetch.test.ts`: — **Done**: `src/infrastructure/ai/aiFetch.test.ts`, 6 cases (token + studio + caller headers kept; balance from `x-ai-credits`; nothing sent without a session, without a studio, or for a viewer; GET needs only the sign-in). Seen failing (import missing). `createAiFetch` is the testable factory; `aiFetch` wires supabase-js `getSession`.
   - it sets `Authorization` from a fake `getSession` and `x-studio-id` from the paying studio;
   - it throws `AiNotReadyError` with no session or no studio, without calling `fetch`;
   - it reads `x-ai-credits` into the paying-studio balance.
-- [ ] T018 [P] [US3] Write `src/features/ai/payingStudio.test.ts` and `PayingStudioSync.test.tsx`:
+- [X] T018 [P] [US3] Write `src/features/ai/payingStudio.test.ts` and `PayingStudioSync.test.tsx`: — **Done**: `src/features/ai/payingStudio.test.ts` (8) and the `PayingStudioSync` cases in `AiCreditsBar.test.tsx` (3). Seen failing.
   - the paying studio is the `interior-studio:last-studio` slug's membership, else the only membership, else `null`;
   - switching the last studio switches the payer;
   - the balance comes from `rpc('ai_credit_balance', { p_org })`;
   - it is cleared on sign-out.
-- [ ] T019 [P] [US3] Add `AssistantPanel` tests in `src/features/assistant/AssistantPanel.test.tsx`:
+- [X] T019 [P] [US3] Add `AssistantPanel` tests in `src/features/assistant/AssistantPanel.test.tsx`: — **Done, moved**: the panel's credits line is its own component, `src/features/ai/AiCreditsBar.tsx`, tested in `AiCreditsBar.test.tsx` (6 cases: name + balance, "…" while loading, update after a paid call to 499, "1 credit", no credits, viewer, no studio). `AssistantPanel` has no unit-test file of its own; it renders the bar, and its e2e is in T020.
   - the header shows "Alpha Studio · 500 credits" ("…" while loading);
   - a viewer sees "Viewers can't use AI." with the input disabled;
   - no studio → "Open or join a studio to use AI.";
   - a `no_credits` reply shows "Your studio has no AI credits left. Contact Interior Studio to add credits.";
   - after a paid reply whose response carries `x-ai-credits: 499`, the header reads "Alpha Studio · 499 credits" (US3 scenario 3; locally only the 0-credit rules provider answers, so this is covered here rather than in e2e).
-- [ ] T020 [P] [US3] Add the browser part of `e2e/ai-access.spec.ts`: signed in as `designer.a`, open a project and the assistant → the header reads "Alpha Studio · 500 credits", and sending a message (rules, 0 credits) keeps 500. See it fail.
+- [X] T020 [P] [US3] Add the browser part of `e2e/ai-access.spec.ts`: signed in as `designer.a`, open a project and the assistant → the header reads "Alpha Studio · 500 credits", and sending a message (rules, 0 credits) keeps 500. See it fail. — **Done**: seen failing (`ai-credits` not found).
 
 ### Implementation
 
-- [ ] T021 [US3] Implement `src/features/ai/payingStudio.ts` (a small external store with `useSyncExternalStore`; no new library) and `src/features/ai/PayingStudioSync.tsx`. Mount `PayingStudioSync` inside `SessionProvider` in `src/app/App.tsx`. T018 passes.
-- [ ] T022 [US3] Implement `src/infrastructure/ai/aiFetch.ts`, then switch the five call sites to it:
+- [X] T021 [US3] Implement `src/features/ai/payingStudio.ts` (a small external store with `useSyncExternalStore`; no new library) and `src/features/ai/PayingStudioSync.tsx`. Mount `PayingStudioSync` inside `SessionProvider` in `src/app/App.tsx`. T018 passes. — **Done**: `payingStudio.ts` (external store, `useSyncExternalStore`), `PayingStudioSync.tsx` (re-evaluated on every route change, so opening another studio switches the payer), mounted in `App.tsx` inside `SessionProvider`. Also `aiAccess.ts` (the three "why not" messages).
+- [X] T022 [US3] Implement `src/infrastructure/ai/aiFetch.ts`, then switch the five call sites to it: — **Done**: `aiFetch.ts`; `HttpAssistantProvider`'s default fetch, `visionStore` (render, reference), `voice/synthesis.ts` and `voice/live/session.ts` default to `aiFetch` (tests that inject `fetchImpl` are unchanged). `AiNotReadyError` becomes `ProviderError('unauthorized')` in the assistant. `VoiceControls.test.tsx` now sets a paying studio, as the app does. `npm test` → 163 files, **1006** passed; `npm run typecheck` exit 0; `npm run lint` exit 0.
   - `src/ai/providers/http.ts`;
   - `src/state/visionStore.ts` (render and reference);
   - `src/voice/synthesis.ts` and `src/voice/live/session.ts` via their `fetchImpl`.
 
   Update those modules' tests to inject a fake `aiFetch`. T017 passes; `npm test` green.
-- [ ] T023 [US3] Update `src/features/assistant/AssistantPanel.tsx` per the contract's "Assistant panel" section (header, viewer, no studio, 402). T019 passes. Run `npx playwright test e2e/ai-access.spec.ts e2e/assistant.spec.ts e2e/panels.spec.ts` and record: T020 passes and the existing assistant e2e tests still pass.
+- [X] T023 [US3] Update `src/features/assistant/AssistantPanel.tsx` per the contract's "Assistant panel" section (header, viewer, no studio, 402). T019 passes. Run `npx playwright test e2e/ai-access.spec.ts e2e/assistant.spec.ts e2e/panels.spec.ts` and record: T020 passes and the existing assistant e2e tests still pass. — **Done**: `AssistantPanel` renders `AiCreditsBar` under its header and disables the message box for viewers and people without a studio. `npx playwright test e2e/ai-access.spec.ts e2e/assistant.spec.ts e2e/panels.spec.ts` → exit 0, **11 passed**. The request carries `Authorization: Bearer …` and `x-studio-id` = Alpha, the reply is 200, and the 0-credit rules answer leaves "Alpha Studio · N credits" unchanged.
 
 ---
 

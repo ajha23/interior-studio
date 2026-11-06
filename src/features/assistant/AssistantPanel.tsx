@@ -18,6 +18,9 @@ import { LayoutOptions } from './LayoutOptions';
 import { ConversationButton, MicButton, VoiceSettings, VoiceStatusBar } from './VoiceControls';
 import { AttachButton, AttachmentStrip } from '@/features/vision/Attachments';
 import { useVisionStore } from '@/state/visionStore';
+import { AiCreditsBar } from '@/features/ai/AiCreditsBar';
+import { aiUnavailableReason } from '@/features/ai/aiAccess';
+import { usePayingStudio } from '@/features/ai/payingStudio';
 
 const modelLabel = (provider: AiProviderId, model: string) => PROVIDER_CATALOG[provider].models.find((m) => m.id === model)?.label ?? model;
 
@@ -81,10 +84,13 @@ export function AssistantPanel({ onClose }: { onClose?: () => void }) {
   }, [messages.length, busy]);
 
   const attachments = useVisionStore((s) => s.attachments);
+  // Viewers and people without a studio cannot use AI (spec 045); the server refuses them too.
+  const unavailable = aiUnavailableReason(usePayingStudio());
+  const blocked = unavailable === 'viewer' || unavailable === 'noStudio';
   const submit = (e?: FormEvent) => {
     e?.preventDefault();
     const text = draft.trim();
-    if (busy) return;
+    if (busy || blocked) return;
     // With a photo or video attached, the reference is read first; the text says what to take from it.
     if (attachments) {
       setDraft('');
@@ -122,6 +128,7 @@ export function AssistantPanel({ onClose }: { onClose?: () => void }) {
           )}
         </div>
       </header>
+      <AiCreditsBar />
 
       {showSettings && (
         <div className="flex flex-col gap-2 border-b bg-muted/40 px-3 py-2.5 text-xs" aria-label="Assistant settings panel">
@@ -188,6 +195,7 @@ export function AssistantPanel({ onClose }: { onClose?: () => void }) {
             maxLength={LIMITS.messageChars}
             placeholder="Type or speak a change, e.g. “Add a 600 mm dishwasher next to the sink”"
             aria-label="Message the design assistant"
+            disabled={blocked}
             className="min-h-[2.5rem] flex-1 resize-none rounded-md border border-input bg-background px-2.5 py-1.5 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
           />
           <AttachButton />
@@ -198,7 +206,7 @@ export function AssistantPanel({ onClose }: { onClose?: () => void }) {
               <Square />
             </Button>
           ) : (
-            <Button size="icon-sm" type="submit" aria-label="Send" disabled={!draft.trim() && !attachments}>
+            <Button size="icon-sm" type="submit" aria-label="Send" disabled={blocked || (!draft.trim() && !attachments)}>
               <Send />
             </Button>
           )}

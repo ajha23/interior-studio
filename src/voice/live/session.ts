@@ -10,6 +10,7 @@
  */
 import { liveConfig, LiveTokenSchema } from '@/ai/live';
 import { openMicrophone, PcmPlayer, type MicCapture } from './audio';
+import { aiFetch } from '@/infrastructure/ai/aiFetch';
 
 export type LivePhase = 'connecting' | 'listening' | 'thinking' | 'speaking';
 
@@ -151,7 +152,7 @@ export async function startLiveSession(voice: string, cb: LiveCallbacks, deps: L
 
   try {
     cb.onPhase('connecting');
-    const res = await (deps.fetchImpl ?? fetch)('/api/live-token', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ voice }) });
+    const res = await (deps.fetchImpl ?? aiFetch)('/api/live-token', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ voice }) });
     const body = (await res.json().catch(() => null)) as { ok?: boolean; error?: { code?: string; message?: string } } | null;
     const token = LiveTokenSchema.safeParse(body);
     if (!res.ok || !token.success) throw new LiveUnavailable(body?.error?.message ?? `Realtime voice is not available (HTTP ${res.status}).`, body?.error?.code ?? 'unavailable');

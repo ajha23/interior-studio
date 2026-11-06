@@ -14,7 +14,7 @@ Each phase of the review's refactor plan has a detailed `spec.md` below. Run eac
 | 1b | 056-studio-retention *(to specify)* | 042, 054 | 2–3 days | Studios with no member sign-in for 90 days are deleted after a day-76 warning email; accounts are kept; Pro and in-house exempt |
 | 1 | [043-cloud-projects](043-cloud-projects/spec.md) | 042 | 5–6 days | Same project on two devices; conflict and offline behave |
 | 1 | [044-project-import](044-project-import/spec.md) | 043 | 2–3 days | Local projects moved; 8 earlier projects badged |
-| 2 — Lock down | [045-ai-auth-and-credits](045-ai-auth-and-credits/spec.md) | 042 | 3 days | Anonymous `curl` → 401; credits drop per call |
+| 2 — Lock down | [045-ai-auth-and-credits](045-ai-auth-and-credits/spec.md) — **in review 2026-11-06**; production migration and firewall rule pending | 042 | 3 days | Anonymous `curl` → 401; credits drop per call |
 | 2 | [046-db-privilege-hardening](046-db-privilege-hardening/spec.md) | 043, 045, staging (048) | 2 days | Advisor zero findings on production |
 | 2 | [047-headers-and-storage](047-headers-and-storage/spec.md) | 043 | 2 days | No CSP violations in a full session |
 | 3 — CI/CD gate | [048-ci-db-gate](048-ci-db-gate/spec.md) | 041 | 4–5 days | Five throwaway PRs fail as designed; freeze lifted |

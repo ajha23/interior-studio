@@ -10,6 +10,7 @@ import { ReferenceAnalysisSchema, referenceToResponse, VISION_MODEL } from '@/ai
 import { captureViewport, MAX_IMAGES, preparePhoto, prepareVideo, type Prepared } from '@/features/vision/media';
 import { assistantConversation } from './assistantStore';
 import { useEditorStore } from './editorStore';
+import { aiFetch } from '@/infrastructure/ai/aiFetch';
 
 export interface Attachments {
   kind: 'photo' | 'video';
@@ -77,7 +78,7 @@ export const useVisionStore = create<VisionStore>()((set, get) => ({
     const thumbs = a.items.map((i) => i.thumb);
     let value;
     try {
-      const res = await fetch('/api/reference', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ images: a.items.map((i) => i.data), kind: a.kind, note: note.trim() || undefined }) });
+      const res = await aiFetch('/api/reference', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ images: a.items.map((i) => i.data), kind: a.kind, note: note.trim() || undefined }) });
       if (!res.ok) throw new Error(await errorOf(res, 'The reference could not be read'));
       const body = (await res.json()) as { analysis?: unknown };
       const analysis = ReferenceAnalysisSchema.parse(body.analysis);
@@ -106,7 +107,7 @@ export const useVisionStore = create<VisionStore>()((set, get) => ({
     set((s) => ({ render: { ...s.render, status: 'rendering', error: null, revision: useEditorStore.getState().revision } }));
     try {
       const { lighting, style } = get().render;
-      const res = await fetch('/api/render', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ image: data, mimeType: 'image/jpeg', aspectRatio, lighting, ...(style.trim() ? { style: style.trim() } : {}) }) });
+      const res = await aiFetch('/api/render', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ image: data, mimeType: 'image/jpeg', aspectRatio, lighting, ...(style.trim() ? { style: style.trim() } : {}) }) });
       if (!res.ok || !res.headers.get('content-type')?.startsWith('image/')) throw new Error(await errorOf(res, 'The render failed'));
       const url = URL.createObjectURL(await res.blob());
       if (old) URL.revokeObjectURL(old);

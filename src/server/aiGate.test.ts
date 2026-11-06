@@ -32,7 +32,8 @@ const paid = (counter: { n: number }, fail = false): AssistantProvider => ({
   respond: async (req, signal) => {
     counter.n++;
     if (fail) throw new ProviderError('timeout', 'too slow', true);
-    return rules.respond(req, signal);
+    void signal;
+    return rules.respond(req);
   },
 });
 

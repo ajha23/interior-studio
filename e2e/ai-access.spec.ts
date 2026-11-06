@@ -68,3 +68,31 @@ test.describe('API: every call is paid for from studio credits (User Story 2)', 
     expect(await localRpc<number>(token, 'ai_credit_balance', { p_org: ALPHA })).toBe(before);
   });
 });
+
+test.describe('Browser: designers see their studio and credits (User Story 3)', () => {
+  test.use({ storageState: 'playwright/.auth/designer.json' });
+
+  test('the assistant names the paying studio and its credits; a 0-credit answer keeps the balance', async ({ page }) => {
+    await page.goto('/');
+    await page.getByLabel('Project name').fill('Credits kitchen');
+    await page.getByText('Empty room', { exact: true }).click();
+    await page.getByRole('button', { name: 'Create project' }).click();
+    await expect(page.locator('canvas[data-rendered]')).toBeVisible({ timeout: 30_000 });
+    await page.getByRole('button', { name: 'Assistant', exact: true }).click();
+    const credits = page.getByTestId('ai-credits');
+    await expect(credits).toHaveText(/^Alpha Studio · \d+ credits$/);
+    const before = await credits.textContent();
+
+    // Locally the server answers with the built-in rules (no provider key): charged as 0 credits.
+    const reply = page.waitForResponse((r) => r.url().endsWith('/api/assistant') && r.request().method() === 'POST');
+    const box = page.getByLabel('Message the design assistant');
+    await box.fill('Create a 900 mm base cabinet');
+    await box.press('Enter');
+    const res = await reply;
+    expect(res.status()).toBe(200);
+    expect(res.request().headers()['authorization']).toMatch(/^Bearer .+/);
+    expect(res.request().headers()['x-studio-id']).toBe(ALPHA);
+    await expect(page.getByTestId('change-preview').last()).toBeVisible();
+    await expect(credits).toHaveText(before!);
+  });
+});
