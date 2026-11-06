@@ -8,7 +8,7 @@ Each phase of the review's refactor plan has a detailed `spec.md` below. Run eac
 | --- | --- | --- | --- | --- |
 | 0 — Freeze and decide | [040-freeze-and-decide](040-freeze-and-decide/spec.md) — **done 2026-11-05** (PR #11) | — | 2 days | One branch, backup files, spend cap, constitution 2.3.0 merged |
 | 1 — Identity and one database | [041-supabase-baseline](041-supabase-baseline/spec.md) — **done 2026-11-05** (PR #12) | 040 | 2–3 days | `db diff --linked` empty; pgTAP cross-tenant tests pass |
-| 1 | [042-auth-and-studio-shell](042-auth-and-studio-shell/spec.md) | 041 | 4–5 days | Google sign-in on preview; colleague joins studio |
+| 1 | [042-auth-and-studio-shell](042-auth-and-studio-shell/spec.md) — **in review 2026-11-06** (PR #14; production migrations applied) | 041 | 4–5 days | Google sign-in on preview; colleague joins studio |
 | 1b — Self-serve and plans | 054-email-sign-in *(to specify)* | 042 | 2–3 days | Email magic link or 6-digit code signs a new user in; an email-sending account is connected in Supabase |
 | 1b | 055-free-pro-plans *(to specify)* | 042 | 3–4 days | Free = design only; Pro modules (AI assistant and voice, AI renders, client packages, manufacturing exports, MEP/DXF) show as locked and the server refuses them on Free studios |
 | 1b | 056-studio-retention *(to specify)* | 042, 054 | 2–3 days | Studios with no member sign-in for 90 days are deleted after a day-76 warning email; accounts are kept; Pro and in-house exempt |
