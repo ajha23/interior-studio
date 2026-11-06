@@ -18,6 +18,14 @@ What 042 already guarantees and this spec relies on:
 - The live project has the Email provider enabled with confirmation required. It uses Supabase's built-in mailer, which only delivers to the project team's own addresses and is limited to a few emails an hour. So real users cannot receive sign-in emails until an email-sending account is connected.
 - Password sign-in exists only in local and CI builds (`VITE_AUTH_PASSWORD_SIGN_IN`) and never in production.
 
+## Clarifications
+
+### Session 2026-11-06
+
+- Q: Which domain will the sign-in emails be sent from? → A: The founder already owns a domain. Emails come from `noreply@<founder's domain>` through Resend, and the founder adds Resend's DNS records (SPF, DKIM, DMARC) (Option A).
+- Q: Should the sign-in link work on any device, with one extra click on a "Sign in" button, or only in the browser where the email was requested? → A: Any device. The link opens an Interior Studio page with a "Sign in" button, and only that click signs in, so mail scanners that open links cannot use it up (Option A).
+- Q: How many sign-in emails should the whole app be allowed to send per hour? → A: 10 an hour, on Resend's free plan (100 emails a day). The founder raises it in the Auth settings, or moves to Resend Pro, when real use approaches it (Option A).
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 — Sign in with a code from my email (Priority: P1)
@@ -40,17 +48,18 @@ A designer whose studio uses Outlook opens Interior Studio, types their work ema
 
 ### User Story 2 — Sign in by clicking the link (Priority: P1)
 
-The same email contains a "Sign in to Interior Studio" button. Clicking it in the same browser signs the person in without typing anything.
+The same email contains a "Sign in to Interior Studio" button. It opens an Interior Studio page with one "Sign in" button. Clicking it signs the person in, on any device or browser, without typing a code.
 
 **Why this priority**: Most people click links in emails; the code is the fallback.
 
-**Independent Test**: On the local stack, request an email, open the link from the mail catcher in the same browser, and land in the studio.
+**Independent Test**: On the local stack, request an email, open the link from the mail catcher in a fresh browser context, click "Sign in", and land in the studio.
 
 **Acceptance Scenarios**:
 
-1. **Given** I requested an email in this browser, **When** I click the link, **Then** I am signed in and land where I asked to go.
-2. **Given** I open the link in a different browser or on another device, **When** the page loads, **Then** I see a clear message: the link only works in the browser where it was requested, so enter the 6-digit code from the same email there instead. I am not signed in on that device.
-3. **Given** the link has expired or was already used, **When** I open it, **Then** I see "This sign-in link has expired" with a way back to the sign-in screen.
+1. **Given** I requested an email in this browser, **When** I open the link and click "Sign in", **Then** I am signed in and land where I asked to go.
+2. **Given** I open the link on my phone or in another browser, **When** I click "Sign in", **Then** I am signed in on that device and land in my studio.
+3. **Given** a mail scanner opened the link before me, **When** I open it, **Then** it still works, because only the "Sign in" click uses it.
+4. **Given** the link has expired or was already used, **When** I open it, **Then** I see "This sign-in link has expired" with a way back to the sign-in screen.
 
 ---
 
@@ -89,8 +98,8 @@ Anyone can type any address, so someone could try to send many emails to a stran
 - Email typed with capitals or spaces: it is trimmed and lower-cased before sending.
 - A second email requested: only the newest email's link and code work.
 - An invalid address format: the screen refuses it before sending.
-- The user closes the tab after requesting: on returning, the sign-in screen asks for the email again; the code from the earlier email still works if it is still valid.
-- An email client that pre-opens links (security scanners): the link must not be used up by a scan. If it is, the code in the same email still works.
+- The user closes the tab after requesting: the link still works, and on returning the sign-in screen asks for the email again before a code can be typed; the earlier code still works if it is still valid.
+- An email client that pre-opens links (security scanners): opening the page does nothing, so the link survives the scan (FR-004).
 - Signed in already and opening an old link: they stay signed in and land in their studio.
 - The sending account fails (bad credentials, provider outage): the user sees "We couldn't send the email. Try again or continue with Google." The founder sees the failure in the Supabase Auth logs.
 
@@ -101,23 +110,23 @@ Anyone can type any address, so someone could try to send many emails to a stran
 - **FR-001**: The sign-in screen MUST offer "Continue with Google" and an email field with "Email me a sign-in code" in every environment, including production. Copy changes from "Use the Google account your studio invited" to wording that covers both.
 - **FR-002**: Email sign-in MUST be passwordless. One email MUST contain both a sign-in link and a 6-digit code, for new and returning users alike. Both the "magic link" and "confirm sign-up" email templates carry both.
 - **FR-003**: After sending, the screen MUST show the address, a 6-digit field (numeric keypad on phones, paste accepted, browser one-time-code autofill), "Use a different email" and "Resend". Resend is disabled for 60 seconds with a visible countdown.
-- **FR-004**: The link MUST sign the user in when opened in the browser that requested it, and MUST restore the page they first asked for (same return-to behaviour as Google, 042). Opened elsewhere, it MUST explain that the code works on any device and MUST NOT sign in.
+- **FR-004**: The link MUST open an Interior Studio confirmation page. Opening that page MUST NOT use the link up or sign anyone in; only clicking its "Sign in" button does. The link MUST work on any device or browser. In the browser that requested it, the page they first asked for MUST be restored (same return-to behaviour as Google, 042); elsewhere the user lands in their studio.
 - **FR-005**: Links and codes MUST expire 15 minutes after sending and work once. A newer email for the same address MUST make earlier ones stop working.
 - **FR-006**: The response to "send me an email" MUST NOT reveal whether an account exists for the address.
 - **FR-007**: A completed email sign-in MUST run the same `start_session()` step as Google, with the same results: invites accepted, a Free studio if none, activity recorded. Completing the sign-in confirms the email address; an address that never completes it gains nothing.
 - **FR-008**: One address MUST map to one account whichever way the person signs in (Google or email).
-- **FR-009**: Limits MUST be enforced by the sign-in service, not the browser: one email per address per 60 seconds; a project-wide hourly cap on sign-in emails (starting at 30 an hour, adjustable by the founder); a limit on code attempts. Each limit MUST show its own friendly message, and the hourly-cap message MUST offer Google.
-- **FR-010**: An email-sending account (SMTP) MUST be connected to the live project before this PR merges: sender name "Interior Studio", from an address on a domain the founder controls, with SPF, DKIM and DMARC verified. Only the founder handles its credentials; they never enter the repo, Vercel, or an agent's session. Spec 056 reuses this account.
+- **FR-009**: Limits MUST be enforced by the sign-in service, not the browser: one email per address per 60 seconds; a project-wide cap of 10 sign-in emails an hour (adjustable by the founder in the Auth settings); a limit on code attempts. Each limit MUST show its own friendly message, and the hourly-cap message MUST offer Google.
+- **FR-010**: An email-sending account (Resend, over SMTP) MUST be connected to the live project before this PR merges: sender name "Interior Studio", from `noreply@<founder's domain>` (a domain the founder already owns), with SPF, DKIM and DMARC verified. Only the founder handles its credentials; they never enter the repo, Vercel, or an agent's session. Spec 056 reuses this account.
 - **FR-011**: The email templates MUST live in the repo as the single source. The local stack uses them; the founder copies them into the live project; `docs/auth.md` records the settings (no secrets).
 - **FR-012**: Password sign-in MUST remain local and CI only; production builds never show a password field.
-- **FR-013**: Errors MUST be specific and recoverable: wrong or expired code, expired or used link, link opened in another browser, rate limited, and could not send. Each offers the next step, and all are announced to screen readers.
+- **FR-013**: Errors MUST be specific and recoverable: wrong or expired code, expired or used link, rate limited, and could not send. Each offers the next step, and all are announced to screen readers.
 - **FR-014**: Automated tests MUST cover the code path and the link path end to end against the local stack, reading the email from the local mail catcher. The password-based test sign-in may remain for other suites.
 
 ### Key Entities
 
-- **Sign-in email**: sent to an address; contains a link and a 6-digit code; valid for 15 minutes; single use; superseded by a newer one.
+- **Sign-in email**: sent to an address; contains a link to the confirmation page and a 6-digit code; valid for 15 minutes; using either one uses up both; superseded by a newer one.
 - **Account** (existing, 042): one per email address; can have a Google identity, an email identity, or both.
-- **Email-sending account** (new, configuration only): the founder's SMTP provider, sender name and address, and the hourly cap.
+- **Email-sending account** (new, configuration only): Resend over SMTP, the sender name and address, and the hourly cap (10 an hour).
 
 ## Success Criteria *(mandatory)*
 
@@ -130,8 +139,8 @@ Anyone can type any address, so someone could try to send many emails to a stran
 ## Assumptions
 
 - **Any email address is accepted**, including personal ones like Gmail, because Google sign-in already admits personal Google accounts. "Business email" describes the intended users, not a filter.
-- The email-sending provider is the founder's choice. Resend is the suggested default (free tier of 3,000 emails a month, simple domain setup); Postmark, Amazon SES and others work the same way.
-- The founder controls a domain for the sender address. The production app domain `*.vercel.app` cannot be used to send email.
+- The email-sending provider is Resend (free tier: 3,000 emails a month, 100 a day). Another SMTP provider could replace it with no code change.
+- The founder already owns the sending domain. The production app domain `*.vercel.app` cannot be used to send email.
 - Supabase Auth's built-in limits and email templates provide the cooldown, expiry, single use and attempt limits; no server is added.
 - No CAPTCHA in this spec. If abuse appears in the Auth logs, a later spec adds one. The hourly cap bounds the damage until then.
 - The local stack's mail catcher stands in for the sending account in development and CI.
@@ -142,7 +151,7 @@ Passwords, SMS codes, passkeys, SAML/SSO, restricting sign-up to certain domains
 
 ## Gate
 
-On the Vercel preview, using the live project with the founder's sending account connected, a brand-new email address receives the email in its inbox. It signs in with the 6-digit code and also, in a fresh browser session, with the link. It lands in its own Free studio. The PR records the preview URL, the time taken and the sender shown.
+On the Vercel preview, using the live project with the founder's sending account connected, a brand-new email address receives the email in its inbox. It signs in with the 6-digit code and also, on a second device or a fresh browser session, with the link and its "Sign in" button. It lands in its own Free studio. The PR records the preview URL, the time taken and the sender shown.
 
 ---
 
@@ -158,10 +167,10 @@ On the Vercel preview, using the live project with the founder's sending account
 Not applicable: foundation spec. Sign-in is available to everyone; what a studio can use is spec 055.
 
 ### 3. Usage and Commercial Limits
-- **Applicable Quotas**: sign-in emails: per address one per 60 seconds; project-wide 30 an hour to start (FR-009). This is a cost and reputation limit, not a plan limit.
+- **Applicable Quotas**: sign-in emails: per address one per 60 seconds; project-wide 10 an hour to start (FR-009), within Resend's free 100 a day. This is a cost and reputation limit, not a plan limit.
 - **Usage Measurement**: Supabase Auth rate limits and Auth logs.
 - **Behavior When Limits Are Reached**: no email is sent; a message offers waiting or Google.
-- **Overage or Upgrade Behavior**: the founder raises the hourly cap in the Auth settings.
+- **Overage or Upgrade Behavior**: the founder raises the hourly cap in the Auth settings and, beyond 100 emails a day, moves to Resend Pro.
 
 ### 4. RBAC Requirements
 Not applicable: foundation spec. Signing in grants no role by itself; roles come from invites or owning one's own Free studio (042).

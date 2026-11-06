@@ -32,4 +32,4 @@
 ## Notes
 
 - The spec names `start_session()`, Supabase Auth and the local mail catcher on purpose. They are fixed constraints from spec 042 and constitution 2.3.0 (XI, XII), not design choices, which matches how the 040–053 specs are written. The success criteria stay technology-agnostic.
-- Defaults chosen instead of clarification markers: any email address is accepted (no domain filter); 15-minute expiry; 60-second cooldown; 30 emails an hour to start; no CAPTCHA. `/speckit-clarify` should confirm the founder's sending domain and provider, since FR-010 and the gate depend on them.
+- Defaults chosen instead of clarification markers: any email address is accepted (no domain filter); 15-minute expiry; 60-second cooldown; no CAPTCHA. Clarified 2026-11-06: founder's own domain via Resend; the link works on any device behind a "Sign in" click; 10 emails an hour.
