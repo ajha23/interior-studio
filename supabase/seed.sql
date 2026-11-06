@@ -2,7 +2,8 @@
 -- Test fixture only: never applied to production. Every email ends in @example.test.
 -- Fixed ids follow a readable pattern so tests can name rows:
 --   studios  aaaaaaaa-… (Alpha) and bbbbbbbb-… (Beta)
---   users    a1…a4 (Alpha owner, admin, designer, viewer), b1…b4 (Beta), c0… (stranger)
+--   users    a1…a4 (Alpha owner, admin, designer, viewer), b1…b4 (Beta), c0… (stranger),
+--            d0… (both@: designer in Alpha, viewer in Beta)
 --   projects/versions and other rows use the studio letter in the first group.
 -- The live migration 20261024082852 also creates the "Interior Studio" studio; it is left as is.
 
@@ -20,7 +21,9 @@ with u(id, email, full_name) as (
     ('b2000000-0000-4000-8000-000000000002'::uuid, 'admin.b@example.test',    'Beta Admin'),
     ('b3000000-0000-4000-8000-000000000003'::uuid, 'designer.b@example.test', 'Beta Designer'),
     ('b4000000-0000-4000-8000-000000000004'::uuid, 'viewer.b@example.test',   'Beta Viewer'),
-    ('c0000000-0000-4000-8000-000000000000'::uuid, 'stranger@example.test',   'No Studio')
+    ('c0000000-0000-4000-8000-000000000000'::uuid, 'stranger@example.test',   'No Studio'),
+    -- Member of both studios (spec 042: studio switcher). Not used by the cross-tenant tests.
+    ('d0000000-0000-4000-8000-000000000000'::uuid, 'both@example.test',       'Two Studios')
 )
 insert into auth.users (
   instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -56,7 +59,9 @@ insert into public.org_members (org_id, user_id, role) values
   ('bbbbbbbb-0000-4000-8000-000000000000', 'b1000000-0000-4000-8000-000000000001', 'owner'),
   ('bbbbbbbb-0000-4000-8000-000000000000', 'b2000000-0000-4000-8000-000000000002', 'admin'),
   ('bbbbbbbb-0000-4000-8000-000000000000', 'b3000000-0000-4000-8000-000000000003', 'designer'),
-  ('bbbbbbbb-0000-4000-8000-000000000000', 'b4000000-0000-4000-8000-000000000004', 'viewer');
+  ('bbbbbbbb-0000-4000-8000-000000000000', 'b4000000-0000-4000-8000-000000000004', 'viewer'),
+  ('aaaaaaaa-0000-4000-8000-000000000000', 'd0000000-0000-4000-8000-000000000000', 'designer'),
+  ('bbbbbbbb-0000-4000-8000-000000000000', 'd0000000-0000-4000-8000-000000000000', 'viewer');
 
 -- ---------------------------------------------------------------------------
 -- Projects: 2 per studio; versions: 2 per project (autosave + manual)

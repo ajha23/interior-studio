@@ -16,3 +16,6 @@ backups/
 
 # Supabase CLI local link state
 supabase/.temp/
+
+# Playwright sign-in state (spec 042)
+playwright/.auth/

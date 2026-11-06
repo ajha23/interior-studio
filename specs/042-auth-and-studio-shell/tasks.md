@@ -25,11 +25,11 @@ description: "Task list for 042 — Google Sign-in and Studio Shell"
 
 **Purpose**: Dependencies, configuration and the local test environment.
 
-- [ ] T001 Confirm the e2e CI fix (Chromium new headless, screenshot paths) is merged to `main`, then rebase `042-auth-and-studio-shell` on `main`; record `git log --oneline -1 main`
-- [ ] T002 Add the client as an exact dependency: `npm install --save-exact @supabase/supabase-js@2.118.0`; verify `package.json` lists `"@supabase/supabase-js": "2.118.0"`
-- [ ] T003 [P] Add `playwright/.auth/` and `.env.local` to `.gitignore` (verify `.env.local` is already ignored; add only what is missing)
-- [ ] T004 [P] Document the three browser variables in `.env.example` exactly as in [contracts/routes-and-session.md](contracts/routes-and-session.md): `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (with the note "renamed to the publishable key in spec 046"), and `VITE_AUTH_PASSWORD_SIGN_IN` ("'true' only for local development and Playwright; never in production")
-- [ ] T005 [P] Add `both@example.test` to `supabase/seed.sql`: a user in `auth.users` + `auth.identities` (same pattern and local password as the other seed users, id `d0000000-0000-4000-8000-000000000000`), with `org_members` rows as `designer` in Alpha and `viewer` in Beta. Run `npm run db:reset && npm run db:test` and confirm the 041 suite still passes (this user is not used by the cross-tenant tests)
+- [X] T001 Confirm the e2e CI fix (Chromium new headless, screenshot paths) is merged to `main`, then rebase `042-auth-and-studio-shell` on `main`; record `git log --oneline -1 main`
+- [X] T002 Add the client as an exact dependency: `npm install --save-exact @supabase/supabase-js@2.118.0`; verify `package.json` lists `"@supabase/supabase-js": "2.118.0"`
+- [X] T003 [P] Add `playwright/.auth/` and `.env.local` to `.gitignore` (verify `.env.local` is already ignored; add only what is missing)
+- [X] T004 [P] Document the three browser variables in `.env.example` exactly as in [contracts/routes-and-session.md](contracts/routes-and-session.md): `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (with the note "renamed to the publishable key in spec 046"), and `VITE_AUTH_PASSWORD_SIGN_IN` ("'true' only for local development and Playwright; never in production")
+- [X] T005 [P] Add `both@example.test` to `supabase/seed.sql`: a user in `auth.users` + `auth.identities` (same pattern and local password as the other seed users, id `d0000000-0000-4000-8000-000000000000`), with `org_members` rows as `designer` in Alpha and `viewer` in Beta. Run `npm run db:reset && npm run db:test` and confirm the 041 suite still passes (this user is not used by the cross-tenant tests)
 
 ---
 
