@@ -164,7 +164,7 @@ description: "Task list for 054 — Email Sign-in (Magic Link and 6-Digit Code)"
 
 **Independent Test**: from the preview, Gmail and Outlook addresses get the email in the inbox within 1 minute, and the headers show `spf=pass`, `dkim=pass`, `dmarc=pass`.
 
-- [ ] T025 [P] [US3] Write `docs/auth.md`, extending 042's file:
+- [X] T025 [P] [US3] Write `docs/auth.md`, extending 042's file: — **Done**: `docs/auth.md` has an "Email sign-in (spec 054)" section: Resend SMTP fields (password = API key, pasted only in Supabase), limits (10 an hour, 900 s, 6 digits, 60 s), the template mapping and subject, and how to check SPF/DKIM/DMARC. No secrets.
   - add an "Email sign-in" section listing the Resend SMTP fields (host `smtp.resend.com`, port `465`, username `resend`, password "your Resend API key: paste it only in Supabase"), the sender `noreply@<domain>` and the name "Interior Studio";
   - the limits: emails 10 an hour, OTP expiry 900 s, OTP length 6, minimum interval 60 s;
   - the template mapping: "Confirm signup" ← `supabase/templates/confirmation.html`, "Magic Link" ← `supabase/templates/magic_link.html`, plus the subject;
@@ -188,24 +188,24 @@ description: "Task list for 054 — Email Sign-in (Magic Link and 6-Digit Code)"
 
 **Independent Test**: two sends within 60 s show the wait message; unknown and known addresses produce the same screen and response shape.
 
-- [ ] T030 [P] [US4] Add these tests to `e2e/email-sign-in.spec.ts`:
+- [X] T030 [P] [US4] Add these tests to `e2e/email-sign-in.spec.ts`: — **Done**: 2 tests (`e2e/email-sign-in.spec.ts`, "User Story 4"). They passed on the first run, since US1 already built the behaviour; to show they test something, `emailAuthError`'s wait text was broken on purpose → the cooldown test failed ("1 failed"), and the file was restored (no diff).
   - **"asking again within 60 seconds shows the wait message and no second email"**: send, go back with "Use a different email", re-enter the same address and send → wait message; Mailpit still has exactly one email for the address;
   - **"an unknown address and a known one look the same"**: send for a new address and for seeded `viewer.b@example.test`; both show the same status text, and the `signInWithOtp` responses captured with `page.waitForResponse('**/auth/v1/otp')` have the same status and body shape (SC-004).
 
   Confirm they fail if the messages are missing.
-- [ ] T031 [US4] Make T030 pass. The wait message and countdown use `retryAfterSeconds` from `emailAuthError`, and `EmailCodeForm` starts its countdown from it. Run `npx playwright test e2e/email-sign-in.spec.ts` and record the output.
+- [X] T031 [US4] Make T030 pass. The wait message and countdown use `retryAfterSeconds` from `emailAuthError`, and `EmailCodeForm` starts its countdown from it. Run `npx playwright test e2e/email-sign-in.spec.ts` and record the output. — **Done**: `npx playwright test e2e/email-sign-in.spec.ts -g "User Story 4"` → 3 passed (setup + 2). The "known" address is a fresh confirmed user (`ensureLocalUser`), so re-runs never meet the 60 s interval.
 
 ---
 
 ## Phase 7: Polish & Gate
 
-- [ ] T032 [P] Accessibility pass on the new screens, run in `src/features/auth/*.test.tsx`:
+- [X] T032 [P] Accessibility pass on the new screens, run in `src/features/auth/*.test.tsx`: — **Done**: labels, `role=alert`/`role=status` and focus (code field, link-page button) were already asserted; added keyboard-only submit tests in `EmailCodeForm.test.tsx` and `SignInScreen.test.tsx`. `npx vitest run src/features/auth` → 62 passed.
   - every input has a label;
   - errors use `role=alert` and statuses use `role=status`;
   - focus moves to the code field and to the "Sign in" button on the link page;
   - keyboard only: Tab, Enter.
-- [ ] T033 Update `specs/FOUNDATION-PLAN.md` with 054 **in review** (PR number), as part of T035's push. "Done" is set by the next spec's branch after the merge, as in 042.
-- [ ] T034 Run the five-stage gate plus pgTAP and record the output: `npm run lint && npm run typecheck && npm test && npm run build && npm run e2e`, and `npm run db:reset && npm run db:test` (expect 452/452, unchanged).
+- [X] T033 Update `specs/FOUNDATION-PLAN.md` with 054 **in review** (PR number), as part of T035's push. "Done" is set by the next spec's branch after the merge, as in 042. — **Done**: PR #15 was merged by the founder on 2026-11-06 at 15:40 UTC, before T025 and T030–T034 were committed; that work ships in a follow-up PR. The plan row says "merged (PR #15); gate pending" until T037–T038.
+- [X] T034 Run the five-stage gate plus pgTAP and record the output: `npm run lint && npm run typecheck && npm test && npm run build && npm run e2e`, and `npm run db:reset && npm run db:test` (expect 452/452, unchanged). — **Done, with 2 failures not from 054**: lint, typecheck, test (158 files, **921** passed), build → exit 0; `db:reset` → exit 0; `db:test` → `Files=7, Tests=452`, PASS; `npm run e2e` → exit 1, **87 passed, 2 failed**, both in `e2e/package.spec.ts` (client-package 3D capture timing out under load). All 9 email sign-in tests passed. `npx playwright test e2e/package.spec.ts` alone → **3 passed**. The same 3D-views test has failed on `main` CI since d1249cf (the 042 merge, which also brought in the catalog commit 83f4e4e); PR #14's CI on 45932b1 was green. Tracked separately.
 - [ ] T035 Push the branch and open a draft PR. Record the links for green `check`, `db` and `e2e` jobs.
 - [ ] T036 Check the preview with a browser probe: the sign-in screen shows Google, the "Work email" field and "Email me a sign-in code"; **no password field** (SC-005, FR-012); no config error, no page errors.
 - [ ] T037 **Founder gate** (spec Gate, after T026–T028) on the PR's Vercel preview with a brand-new address:

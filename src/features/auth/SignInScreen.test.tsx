@@ -32,6 +32,15 @@ describe('SignInScreen', () => {
     expect(screen.queryByLabelText('Password')).not.toBeInTheDocument();
   });
 
+  it('keyboard only: Enter in the email field sends the code (spec 054, T032)', async () => {
+    const value = session();
+    renderWith(value);
+    const field = screen.getByLabelText('Work email');
+    fireEvent.change(field, { target: { value: 'kb@studio.example' } });
+    fireEvent.submit(field.closest('form')!);
+    await waitFor(() => expect(value.sendEmailCode).toHaveBeenCalledWith('kb@studio.example'));
+  });
+
   it('refuses an invalid address before sending anything', async () => {
     const value = session();
     renderWith(value);

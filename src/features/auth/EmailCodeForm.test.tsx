@@ -94,4 +94,12 @@ describe('EmailCodeForm', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Please wait 20 seconds');
     expect(screen.getByRole('button', { name: 'Resend in 20 s' })).toBeDisabled();
   });
+
+  it('keyboard only: Enter in the code field submits (spec 054, T032)', async () => {
+    const props = setup();
+    const field = screen.getByLabelText('6-digit code');
+    fireEvent.change(field, { target: { value: '654321' } });
+    fireEvent.submit(field.closest('form')!);
+    await waitFor(() => expect(props.onVerify).toHaveBeenCalledWith('654321'));
+  });
 });
