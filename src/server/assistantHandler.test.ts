@@ -7,6 +7,7 @@ import type { AssistantRequest } from '@/ai/schema';
 import { createProject, DEFAULT_ROOM } from '@/domain';
 import { sequentialIds } from '@/test/ids';
 import { createAssistantHandler, defaultSelectionFromEnv, providerFor, RateLimiter } from './assistantHandler';
+import { AUTH_HEADERS, TEST_AI_ENV, allowAiCall } from './testAiCall';
 
 const project = createProject({ name: 'Server', room: DEFAULT_ROOM, layout: 'straight' }, sequentialIds());
 const body = (message = 'Create a 900 mm base cabinet', over: Partial<AssistantRequest> = {}): AssistantRequest => ({
@@ -17,13 +18,13 @@ const body = (message = 'Create a 900 mm base cabinet', over: Partial<AssistantR
   ...over,
 });
 const post = (b: unknown, headers: Record<string, string> = {}) =>
-  new Request('http://localhost:5173/api/assistant', { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: typeof b === 'string' ? b : JSON.stringify(b) });
+  new Request('http://localhost:5173/api/assistant', { method: 'POST', headers: { 'content-type': 'application/json', ...AUTH_HEADERS, ...headers }, body: typeof b === 'string' ? b : JSON.stringify(b) });
 const quiet = () => undefined;
 
 describe('/api/assistant', () => {
   it('answers with the deterministic provider by default and logs no message text', async () => {
     const logs: Record<string, unknown>[] = [];
-    const handler = createAssistantHandler({ env: {}, log: (e) => logs.push(e) });
+    const handler = createAssistantHandler({ aiCall: allowAiCall().deps, env: { ...TEST_AI_ENV }, log: (e) => logs.push(e) });
     const res = await handler(post(body()));
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ ok: true, provider: 'rules', response: { kind: 'plan', operations: [{ op: 'create_cabinet', cabinetType: 'base' }] } });
@@ -32,17 +33,17 @@ describe('/api/assistant', () => {
   });
 
   it('rejects bad input, oversize messages, other origins and non-POST requests', async () => {
-    const handler = createAssistantHandler({ env: {}, log: quiet });
+    const handler = createAssistantHandler({ aiCall: allowAiCall().deps, env: { ...TEST_AI_ENV }, log: quiet });
     expect((await handler(post('{nope'))).status).toBe(400);
     expect((await handler(post(body('x'.repeat(1001))))).status).toBe(400);
     expect((await handler(post({ ...body(), project: { ...project, room: { ...project.room, width: -1 } } }))).status).toBe(400);
     expect((await handler(post(body(), { origin: 'https://evil.example' }))).status).toBe(403);
-    expect((await handler(new Request('http://localhost/api/assistant', { method: 'PUT' }))).status).toBe(405);
+    expect((await handler(new Request('http://localhost/api/assistant', { method: 'PUT', headers: AUTH_HEADERS }))).status).toBe(405);
     expect((await handler(post({ ...body(), ai: { provider: 'openai', model: 'gpt-1-free' } }))).status).toBe(400);
   });
 
   it('rate-limits per client', async () => {
-    const handler = createAssistantHandler({ env: {}, limiter: new RateLimiter(2, 60_000), log: quiet });
+    const handler = createAssistantHandler({ aiCall: allowAiCall().deps, env: { ...TEST_AI_ENV }, limiter: new RateLimiter(2, 60_000), log: quiet });
     expect((await handler(post(body()))).status).toBe(200);
     expect((await handler(post(body()))).status).toBe(200);
     const limited = await handler(post(body()));
@@ -60,7 +61,7 @@ describe('/api/assistant', () => {
       [provider(() => Promise.resolve({ kind: 'plan', explanation: 'x', operations: [{ op: 'format_disk' }] } as never)), 502, 'malformed_output'],
     ];
     for (const [p, status, code] of cases) {
-      const res = await createAssistantHandler({ env: {}, provider: p, log: quiet })(post(body()));
+      const res = await createAssistantHandler({ aiCall: allowAiCall().deps, env: { ...TEST_AI_ENV }, provider: p, log: quiet })(post(body()));
       expect(res.status).toBe(status);
       expect(await res.json()).toMatchObject({ ok: false, error: { code } });
     }
@@ -84,16 +85,16 @@ describe('/api/assistant', () => {
   });
 
   it('falls back to the built-in rules with a notice when the chosen provider has no key', async () => {
-    const res = await createAssistantHandler({ env: {}, log: quiet })(post({ ...body(), ai: { provider: 'anthropic', model: 'claude-opus-5-5' } }));
+    const res = await createAssistantHandler({ aiCall: allowAiCall().deps, env: { ...TEST_AI_ENV }, log: quiet })(post({ ...body(), ai: { provider: 'anthropic', model: 'claude-opus-5-5' } }));
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ ok: true, provider: 'rules', notice: expect.stringMatching(/Anthropic Claude is not configured.*ANTHROPIC_API_KEY/) });
-    const strict = await createAssistantHandler({ env: { ASSISTANT_FALLBACK_TO_RULES: 'off' }, log: quiet })(post({ ...body(), ai: { provider: 'gemini', model: 'gemini-3.8-flash' } }));
+    const strict = await createAssistantHandler({ aiCall: allowAiCall().deps, env: { ...TEST_AI_ENV, ASSISTANT_FALLBACK_TO_RULES: 'off' }, log: quiet })(post({ ...body(), ai: { provider: 'gemini', model: 'gemini-3.8-flash' } }));
     expect(strict.status).toBe(503);
     expect(await strict.json()).toMatchObject({ ok: false, error: { code: 'unavailable', message: expect.stringContaining('GEMINI_API_KEY') } });
   });
 
   it('reports which providers are configured without exposing keys', async () => {
-    const res = await createAssistantHandler({ env: { OPENAI_API_KEY: 'sk-secret', ASSISTANT_PROVIDER: 'openai' }, log: quiet })(new Request('http://localhost/api/assistant'));
+    const res = await createAssistantHandler({ aiCall: allowAiCall().deps, env: { ...TEST_AI_ENV, OPENAI_API_KEY: 'sk-secret', ASSISTANT_PROVIDER: 'openai' }, log: quiet })(new Request('http://localhost/api/assistant', { headers: AUTH_HEADERS }));
     const text = await res.text();
     expect(text).not.toContain('sk-secret');
     expect(JSON.parse(text)).toEqual({

@@ -5,8 +5,9 @@ import { referenceToResponse, type ReferenceAnalysis } from '@/ai/vision';
 import { createProject, DEFAULT_ROOM } from '@/domain';
 import { sequentialIds } from '@/test/ids';
 import { createReferenceHandler, createRenderHandler, referenceAnalyser } from './vision';
+import { AUTH_HEADERS, TEST_AI_ENV, allowAiCall } from './testAiCall';
 
-const post = (path: string, b: unknown, headers: Record<string, string> = {}) => new Request(`http://localhost:5173${path}`, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(b) });
+const post = (path: string, b: unknown, headers: Record<string, string> = {}) => new Request(`http://localhost:5173${path}`, { method: 'POST', headers: { 'content-type': 'application/json', ...AUTH_HEADERS, ...headers }, body: JSON.stringify(b) });
 const quiet = () => undefined;
 const img = 'A'.repeat(400);
 const analysis: ReferenceAnalysis = {
@@ -20,7 +21,7 @@ const analysis: ReferenceAnalysis = {
 
 describe('/api/render', () => {
   it('returns the rendered image and validates the request', async () => {
-    const handler = createRenderHandler({ env: {}, log: quiet, run: async () => ({ data: new Uint8Array([255, 216, 255]), mimeType: 'image/jpeg' }) });
+    const handler = createRenderHandler({ aiCall: allowAiCall().deps, env: { ...TEST_AI_ENV }, log: quiet, run: async () => ({ data: new Uint8Array([255, 216, 255]), mimeType: 'image/jpeg' }) });
     const res = await handler(post('/api/render', { image: img, mimeType: 'image/jpeg', aspectRatio: '16:9' }));
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('image/jpeg');
@@ -30,17 +31,17 @@ describe('/api/render', () => {
   });
 
   it('says when the key is missing and maps quota errors', async () => {
-    const missing = await createRenderHandler({ env: {}, log: quiet })(post('/api/render', { image: img, mimeType: 'image/jpeg' }));
+    const missing = await createRenderHandler({ aiCall: allowAiCall().deps, env: { ...TEST_AI_ENV }, log: quiet })(post('/api/render', { image: img, mimeType: 'image/jpeg' }));
     expect(missing.status).toBe(503);
     expect(await missing.json()).toMatchObject({ error: { message: expect.stringContaining('GEMINI_API_KEY') } });
-    const limited = await createRenderHandler({ env: {}, log: quiet, run: () => Promise.reject(new ProviderError('rate_limited', 'slow', true, 9)) })(post('/api/render', { image: img, mimeType: 'image/jpeg' }));
+    const limited = await createRenderHandler({ aiCall: allowAiCall().deps, env: { ...TEST_AI_ENV }, log: quiet, run: () => Promise.reject(new ProviderError('rate_limited', 'slow', true, 9)) })(post('/api/render', { image: img, mimeType: 'image/jpeg' }));
     expect(limited.status).toBe(429);
   });
 });
 
 describe('/api/reference', () => {
   it('returns the structured reading of photos or video frames', async () => {
-    const handler = createReferenceHandler({ env: {}, log: quiet, run: async () => analysis });
+    const handler = createReferenceHandler({ aiCall: allowAiCall().deps, env: { ...TEST_AI_ENV }, log: quiet, run: async () => analysis });
     const res = await handler(post('/api/reference', { images: [img, img], kind: 'video', note: 'like this' }));
     expect(await res.json()).toMatchObject({ ok: true, analysis: { style: 'Japandi' } });
     expect((await handler(post('/api/reference', { images: Array(9).fill(img), kind: 'photo' }))).status).toBe(400);

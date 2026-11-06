@@ -33,6 +33,9 @@ async function renderPanel() {
   const { AssistantPanel } = await import('./AssistantPanel');
   useEditorStore.getState().openProject(createProject({ name: 'Panel', room: DEFAULT_ROOM, layout: 'straight' }));
   useAssistantStore.getState().setPrefs({ provider: 'rules' });
+  // A designer's studio pays for AI (spec 045); without one the assistant is disabled.
+  const { setPayingStudio } = await import('@/features/ai/payingStudio');
+  setPayingStudio({ orgId: 'org-a', orgName: 'Alpha Studio', orgSlug: 'alpha', role: 'designer', plan: 'inhouse' });
   render(<AssistantPanel />);
 }
 

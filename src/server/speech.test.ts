@@ -2,9 +2,10 @@
 import { describe, expect, it } from 'vitest';
 import { ProviderError } from '@/ai/providers/types';
 import { createSpeechHandler, pcmToWav, synthesizer } from './speech';
+import { AUTH_HEADERS, TEST_AI_ENV, allowAiCall } from './testAiCall';
 
 const post = (b: unknown, headers: Record<string, string> = {}) =>
-  new Request('http://localhost:5173/api/speech', { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(b) });
+  new Request('http://localhost:5173/api/speech', { method: 'POST', headers: { 'content-type': 'application/json', ...AUTH_HEADERS, ...headers }, body: JSON.stringify(b) });
 const quiet = () => undefined;
 const line = { text: 'Applied.', engine: 'gemini', voice: 'Kore', language: 'en-GB' };
 const b64 = (bytes: number[]) => btoa(String.fromCharCode(...bytes));
@@ -25,7 +26,7 @@ function fakeApi(responses: { status?: number; body: unknown }[]) {
 describe('/api/speech', () => {
   it('returns audio for a listed voice and logs no text', async () => {
     const logs: Record<string, unknown>[] = [];
-    const handler = createSpeechHandler({ env: {}, log: (e) => logs.push(e), synthesize: async () => ({ data: new Uint8Array([1, 2, 3]), mimeType: 'audio/wav' }) });
+    const handler = createSpeechHandler({ aiCall: allowAiCall().deps, env: { ...TEST_AI_ENV }, log: (e) => logs.push(e), synthesize: async () => ({ data: new Uint8Array([1, 2, 3]), mimeType: 'audio/wav' }) });
     const res = await handler(post(line));
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('audio/wav');
@@ -35,19 +36,19 @@ describe('/api/speech', () => {
   });
 
   it('rejects unlisted voices, long text, other origins and non-POST requests', async () => {
-    const handler = createSpeechHandler({ env: {}, log: quiet, synthesize: async () => ({ data: new Uint8Array(), mimeType: 'audio/wav' }) });
+    const handler = createSpeechHandler({ aiCall: allowAiCall().deps, env: { ...TEST_AI_ENV }, log: quiet, synthesize: async () => ({ data: new Uint8Array(), mimeType: 'audio/wav' }) });
     expect((await handler(post({ ...line, voice: 'Darth' }))).status).toBe(400);
     expect((await handler(post({ ...line, engine: 'openai' }))).status).toBe(400);
     expect((await handler(post({ ...line, text: 'x'.repeat(301) }))).status).toBe(400);
     expect((await handler(post(line, { origin: 'https://evil.example' }))).status).toBe(403);
-    expect((await handler(new Request('http://localhost/api/speech'))).status).toBe(405);
+    expect((await handler(new Request('http://localhost/api/speech', { headers: AUTH_HEADERS }))).status).toBe(405);
   });
 
   it('says which key is missing and maps provider failures', async () => {
-    const missing = await createSpeechHandler({ env: {}, log: quiet })(post({ ...line, engine: 'openai', voice: 'marin' }));
+    const missing = await createSpeechHandler({ aiCall: allowAiCall().deps, env: { ...TEST_AI_ENV }, log: quiet })(post({ ...line, engine: 'openai', voice: 'marin' }));
     expect(missing.status).toBe(503);
     expect(await missing.json()).toMatchObject({ ok: false, error: { code: 'unavailable', message: expect.stringContaining('OPENAI_API_KEY') } });
-    const limited = await createSpeechHandler({ env: {}, log: quiet, synthesize: () => Promise.reject(new ProviderError('rate_limited', 'slow', true, 7)) })(post(line));
+    const limited = await createSpeechHandler({ aiCall: allowAiCall().deps, env: { ...TEST_AI_ENV }, log: quiet, synthesize: () => Promise.reject(new ProviderError('rate_limited', 'slow', true, 7)) })(post(line));
     expect(limited.status).toBe(429);
     expect(limited.headers.get('retry-after')).toBe('7');
   });

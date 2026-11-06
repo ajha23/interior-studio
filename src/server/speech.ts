@@ -7,6 +7,7 @@ import { GoogleGenAI } from '@google/genai';
 import OpenAI from 'openai';
 import { toProviderError as geminiError } from '@/ai/providers/gemini';
 import { toProviderError as openaiError } from '@/ai/providers/openai';
+import { withAiCall, type AiCall, type AiCallDeps } from './aiCall';
 import { ProviderError } from '@/ai/providers/types';
 import { REMOTE_VOICES, SpeechRequestSchema, type SpeechRequest } from '@/voice/voices';
 import { RateLimiter, type ServerEnv } from './assistantHandler';
@@ -104,6 +105,8 @@ export interface SpeechHandlerOptions {
   synthesize?: Synthesize;
   log?: (entry: Record<string, unknown>) => void;
   clientKey?: (req: Request) => string;
+  /** Overrides sign-in verification and the database client (tests). */
+  aiCall?: Pick<AiCallDeps, 'verify' | 'clientFor'>;
 }
 
 const fail = (status: number, code: string, message: string, retryAfterSeconds?: number) =>
@@ -116,15 +119,14 @@ export function createSpeechHandler(options: SpeechHandlerOptions): (req: Reques
   // Spoken replies are short and frequent: allow more than the assistant's own limit.
   const limiter = options.limiter ?? new RateLimiter(Number(options.env.ASSISTANT_RATE_LIMIT) * 3 || 90, 60_000);
   const log = options.log ?? ((entry) => console.info(JSON.stringify({ event: 'speech', ...entry })));
-  const clientKey = options.clientKey ?? ((req) => req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || 'local');
   const synthesize = options.synthesize ?? synthesizer(options.env);
 
-  return async (req) => {
+  const handle = async (req: Request, call: AiCall): Promise<Response> => {
     const started = Date.now();
     if (req.method !== 'POST') return fail(405, 'bad_request', 'Use POST.');
     const origin = req.headers.get('origin');
     if (origin && new URL(req.url).host !== new URL(origin).host) return fail(403, 'bad_request', 'Cross-origin requests are not allowed.');
-    const wait = limiter.check(clientKey(req));
+    const wait = limiter.check(options.clientKey ? options.clientKey(req) : call.userId);
     if (wait) return fail(429, 'rate_limited', `Too many requests. Try again in ${wait} s.`, wait);
     const text = await req.text();
     if (text.length > 4_000) return fail(413, 'bad_request', 'The request is too large.');
@@ -136,6 +138,9 @@ export function createSpeechHandler(options: SpeechHandlerOptions): (req: Reques
     }
     const parsed = SpeechRequestSchema.safeParse(raw);
     if (!parsed.success) return fail(400, 'bad_request', `Invalid request: ${parsed.error.issues[0]?.message ?? 'invalid'}`);
+    const refused = await call.charge('speech');
+    if (refused) return refused;
+    call.setProvider(parsed.data.engine);
     try {
       const audio = await synthesize(parsed.data, req.signal);
       log({ status: 200, engine: parsed.data.engine, voice: parsed.data.voice, chars: parsed.data.text.length, bytes: audio.data.length, ms: Date.now() - started });
@@ -147,4 +152,6 @@ export function createSpeechHandler(options: SpeechHandlerOptions): (req: Reques
       return fail(status, pe.code, pe.message, pe.retryAfterSeconds);
     }
   };
+
+  return withAiCall(handle, { env: options.env, log, ...options.aiCall });
 }

@@ -7,7 +7,8 @@ import tailwindcss from '@tailwindcss/vite';
 /**
  * Serves the `/api/*` endpoints (assistant, speech, live-token, render, reference) from the dev server with the same handler as production. Server-only
  * settings (ASSISTANT_* and the provider keys) come from the shell or `.env.local`; they are not
- * VITE_-prefixed, so they never reach the browser bundle.
+ * VITE_-prefixed, so they never reach the browser bundle. The Supabase URL and publishable key are
+ * passed too, so local AI calls are verified and charged like production (spec 045).
  */
 type NodeHandlerFactory = (env: Record<string, string | undefined>) => (req: unknown, res: unknown) => Promise<void>;
 
@@ -15,7 +16,8 @@ function assistantApi(mode: string): Plugin {
   return {
     name: 'assistant-api',
     configureServer(server) {
-      const keys = ['ANTHROPIC_API_KEY', 'GEMINI_API_KEY', 'GOOGLE_API_KEY', 'OPENAI_API_KEY'];
+      // Supabase URL and publishable key: the AI endpoints verify the caller and charge credits (spec 045).
+      const keys = ['ANTHROPIC_API_KEY', 'GEMINI_API_KEY', 'GOOGLE_API_KEY', 'OPENAI_API_KEY', 'SUPABASE_URL', 'SUPABASE_ANON_KEY', 'VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY'];
       const fileEnv = loadEnv(mode, process.cwd(), ['ASSISTANT_', ...keys]);
       const env = { ...fileEnv, ...Object.fromEntries(Object.entries(process.env).filter(([k]) => k.startsWith('ASSISTANT_') || keys.includes(k))) };
       for (const [path, factory] of [['/api/assistant', 'nodeHandler'], ['/api/speech', 'speechNodeHandler'], ['/api/live-token', 'liveTokenNodeHandler'], ['/api/render', 'renderNodeHandler'], ['/api/reference', 'referenceNodeHandler']] as const) {

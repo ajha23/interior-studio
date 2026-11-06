@@ -64,7 +64,7 @@ As a reviewer, I want each returning domain to either reuse, rewrite or delete t
 
 ### Functional Requirements
 
-- **FR-001**: Each returning domain MUST be a new spec (054 onward) re-specified against the live schema and constitution 2.3.0.
+- **FR-001**: Each returning domain MUST be a new spec (057 onward; 054–056 are the self-serve specs added 2026-11-06) re-specified against the live schema and constitution 2.3.0.
 - **FR-002**: Each MUST ship its migrations and pgTAP policy tests in the same PR; CI MUST apply and run them.
 - **FR-003**: Each PR MUST link a green CI run and a Vercel preview URL that a person signed into and used.
 - **FR-004**: Each PR SHOULD be one user-visible change under ~400 changed lines; larger domains split into slices, each with its own gate written first.

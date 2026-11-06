@@ -14,7 +14,7 @@ Each phase of the review's refactor plan has a detailed `spec.md` below. Run eac
 | 1b | 056-studio-retention *(to specify)* | 042, 054 | 2–3 days | Studios with no member sign-in for 90 days are deleted after a day-76 warning email; accounts are kept; Pro and in-house exempt |
 | 1 | [043-cloud-projects](043-cloud-projects/spec.md) | 042 | 5–6 days | Same project on two devices; conflict and offline behave |
 | 1 | [044-project-import](044-project-import/spec.md) | 043 | 2–3 days | Local projects moved; 8 earlier projects badged |
-| 2 — Lock down | [045-ai-auth-and-credits](045-ai-auth-and-credits/spec.md) | 042 | 3 days | Anonymous `curl` → 401; credits drop per call |
+| 2 — Lock down | [045-ai-auth-and-credits](045-ai-auth-and-credits/spec.md) — **in review 2026-11-06**; production migration and firewall rule pending | 042 | 3 days | Anonymous `curl` → 401; credits drop per call |
 | 2 | [046-db-privilege-hardening](046-db-privilege-hardening/spec.md) | 043, 045, staging (048) | 2 days | Advisor zero findings on production |
 | 2 | [047-headers-and-storage](047-headers-and-storage/spec.md) | 043 | 2 days | No CSP violations in a full session |
 | 3 — CI/CD gate | [048-ci-db-gate](048-ci-db-gate/spec.md) | 041 | 4–5 days | Five throwaway PRs fail as designed; freeze lifted |
@@ -26,8 +26,16 @@ Each phase of the review's refactor plan has a detailed `spec.md` below. Run eac
 
 Phase 1 is done only when the 041–044 gates pass on the **production** URL. The feature freeze lifts when 048 merges.
 
-**Freeze exception (2026-11-06, founder):** specs 054–056 are product features but run right after 042 and before 043. With open sign-up (every login gets a Free studio), Free/Pro limits and studio retention protect cost and security, so they cannot wait for the 048 freeze to lift.
+**Freeze exception (2026-11-06, founder):** specs 054–056 are product features that run inside the foundation queue rather than after 048. With open sign-up (every login gets a Free studio), Free/Pro limits and studio retention protect cost and security, so they cannot wait for the 048 freeze to lift.
+
+**Execution order (review of 043–053, 2026-11-06, founder approved):** 042 ✅ → 054 (merged; gate pending) → **045** → 043 → 055 → 044 → 056 → 048 → 046 → 047 → 049 → 050 → 051 → 052 → 053. The review found:
+- the five AI endpoints accept anonymous calls, so 045 comes first, and 055's server-side Pro gating for AI depends on 045's signed-in, studio-scoped AI path;
+- projects are still saved only in the browser, so 056's retention has nothing in the database to delete until 043 ships;
+- Vercel previews use the production database until 048 adds staging, so preview tests create real users there.
+
+The table above keeps its phase grouping; this line is the order of work.
 
 ## Known issues (tracked, not yet specified)
 
 - **Flaky e2e: `e2e/package.spec.ts` client-package 3D capture** (found 2026-11-06). "Standard 3D views are captured, go stale and are captured again" waits 20 s for "Captured 3 3D views", which a loaded runner sometimes misses. It failed on `main` CI at d1249cf and passed on PR #15's CI. Locally it fails 2/2 in a full run both before and after the catalog commit 83f4e4e, and passes 3/3 alone. Proposed fix (fits 048, the CI gate): wait on a "capture finished" signal instead of a fixed timeout, and run the 3D-capture specs in their own CI shard.
+- **Flaky e2e: `e2e/placement-and-interiors.spec.ts` "the height grip resizes in 3D in 10 mm steps within range"** (found 2026-11-06). Failed on PR #16's CI at f079206 (88 passed, 1 failed); the identical content passed on `main` at bda5761. Same family as the 3D-capture flake: 3D interaction timing on a loaded runner. Same proposed fix in 048: wait on explicit render/settle signals and shard the 3D specs.
