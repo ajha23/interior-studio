@@ -64,7 +64,8 @@ test('the width grip resizes in 10 mm steps within the range, snapping to standa
   let gx = Number.NaN;
   for (let dx = 0; dx <= 160; dx += 3) {
     await page.mouse.move(label.x + label.width / 2 - dx, gy);
-    if ((await page.evaluate(() => document.body.style.cursor)) === 'ew-resize') {
+    // A string expression: the e2e TypeScript config has no DOM types.
+    if ((await page.evaluate<string>('document.body.style.cursor')) === 'ew-resize') {
       gx = label.x + label.width / 2 - dx;
       break;
     }
