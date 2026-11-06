@@ -22,11 +22,17 @@ function message(e: unknown): string {
   return 'Something went wrong. Please try again.';
 }
 
-async function loadMemberships(client: AppSupabaseClient): Promise<Membership[]> {
+async function loadMemberships(client: AppSupabaseClient, userId: string): Promise<Membership[]> {
   // Turns any pending invites for this address into memberships; safe to call on every sign-in.
   const accepted = await client.rpc('accept_pending_invites');
   if (accepted.error) throw accepted.error;
-  const { data, error } = await client.from('org_members').select('role, organizations ( id, name, slug )').order('created_at');
+  // Only the user's own rows: members may read every membership row of their studios (members_select),
+  // so without this filter a studio with four members would appear four times.
+  const { data, error } = await client
+    .from('org_members')
+    .select('role, organizations ( id, name, slug )')
+    .eq('user_id', userId)
+    .order('created_at');
   if (error) throw error;
   return (data ?? []).flatMap((row) => {
     const org = row.organizations as { id: string; name: string; slug: string } | null;
@@ -57,7 +63,7 @@ export function SessionProvider({ children, client = supabase }: { children: Rea
       if (loadedFor.current === next.user.id) return;
       loadedFor.current = next.user.id;
       try {
-        setMemberships(await loadMemberships(client));
+        setMemberships(await loadMemberships(client, next.user.id));
         setError(null);
       } catch (e) {
         setError(message(e));
@@ -131,7 +137,7 @@ export function SessionProvider({ children, client = supabase }: { children: Rea
   const refreshMemberships = useCallback(async () => {
     if (!client || !session) return;
     try {
-      setMemberships(await loadMemberships(client));
+      setMemberships(await loadMemberships(client, session.user.id));
       setError(null);
     } catch (e) {
       setError(message(e));

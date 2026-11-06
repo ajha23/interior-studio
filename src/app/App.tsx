@@ -4,7 +4,11 @@ import { ConfigErrorScreen } from '@/features/auth/ConfigErrorScreen';
 import { SessionProvider } from '@/features/auth/SessionProvider';
 import { SignInScreen } from '@/features/auth/SignInScreen';
 import { useSession } from '@/features/auth/useSession';
+import { chooseStudio } from '@/features/studio/roleActions';
+import { StudioGate } from '@/features/studio/StudioGate';
+import { StudioPicker } from '@/features/studio/StudioPicker';
 import { StudioShell } from '@/features/studio/StudioShell';
+import { readLastStudio } from '@/features/studio/useStudio';
 import { supabaseConfigError } from '@/infrastructure/supabase/client';
 import { HomeView } from '@/features/home/HomeView';
 import { openStoredProject } from '@/features/projects/projectActions';
@@ -12,7 +16,7 @@ import { ProjectsHome } from '@/features/projects/ProjectsHome';
 import { Workspace } from '@/features/kitchen-layout/Workspace';
 import { useEditorStore } from '@/state/editorStore';
 import { useHomeStore } from '@/state/homeStore';
-import { useRoute, type Route } from './router';
+import { navigate, useRoute, type Route } from './router';
 
 const Loading = ({ what }: { what: string }) => <div className="grid h-full place-items-center text-sm text-muted-foreground">Opening {what}…</div>;
 
@@ -40,14 +44,15 @@ function SignedInRoutes() {
   return <ProjectRoutes route={route} />;
 }
 
-/** `#/` → the user's studio. User Story 2 extends this with the last-used studio and a picker. */
+/** `#/`: the only studio, else the last-used one, else a picker; or say how to join one (spec 042, US2). */
 function StudioRedirect() {
   const { memberships, user, error } = useSession();
-  const first = memberships[0];
+  const chosen = chooseStudio(memberships, readLastStudio());
   useEffect(() => {
-    if (first) window.location.hash = `/s/${first.orgSlug}/projects`;
-  }, [first]);
-  if (first) return <Loading what="your studio" />;
+    if (chosen) navigate({ name: 'studio-projects', slug: chosen });
+  }, [chosen]);
+  if (chosen) return <Loading what="your studio" />;
+  if (memberships.length > 1) return <StudioPicker />;
   return (
     <StudioShell>
       <div className="mx-auto max-w-md px-6 py-16 text-center text-sm">
@@ -59,13 +64,21 @@ function StudioRedirect() {
 }
 
 function StudioPage({ route }: { route: Extract<Route, { name: 'studio-projects' | 'studio-settings' }> }) {
-  if (route.name === 'studio-projects') return <StudioShell><ProjectRoutes route={{ name: 'home' }} /></StudioShell>;
+  const section = route.name === 'studio-projects' ? 'projects' : 'settings';
   return (
-    <StudioShell>
-      <section className="mx-auto max-w-6xl px-6 py-8">
-        <h1 className="text-base font-semibold">Settings</h1>
-      </section>
-    </StudioShell>
+    <StudioGate slug={route.slug}>
+      {(studio) => (
+        <StudioShell studio={studio.membership} section={section}>
+          {route.name === 'studio-projects' ? (
+            <ProjectRoutes route={{ name: 'home' }} />
+          ) : (
+            <section className="mx-auto max-w-6xl px-6 py-8">
+              <h1 className="text-base font-semibold">Settings</h1>
+            </section>
+          )}
+        </StudioShell>
+      )}
+    </StudioGate>
   );
 }
 

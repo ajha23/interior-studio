@@ -81,15 +81,15 @@ description: "Task list for 042 — Google Sign-in and Studio Shell"
 
 ### Tests for User Story 2
 
-- [ ] T019 [P] [US2] Write `e2e/studio.spec.ts` (studio part): designer.a at `#/` lands on `#/s/alpha/projects` with "Alpha Studio" in the header; `both@example.test` at `#/` sees the studio picker, picks Beta, the URL becomes `#/s/beta/projects`, the switcher changes back to Alpha; designer.a at `#/s/beta/projects` sees "You don't have access to this studio" and the network log shows no request filtered by Beta's id; `stranger@example.test` sees "Ask a studio owner to invite stranger@example.test" and a Sign out action
-- [ ] T020 [P] [US2] Write `src/features/studio/StudioGate.test.tsx` and `src/features/studio/roleActions.test.ts`: slug → membership resolution; unknown slug → no-access screen without calling the members API; role → visible actions exactly as the table in [data-model.md](data-model.md) ("Owners never appear as a choice in the invite or role selectors")
+- [X] T019 [P] [US2] Write `e2e/studio.spec.ts` (studio part): designer.a at `#/` lands on `#/s/alpha/projects` with "Alpha Studio" in the header; `both@example.test` at `#/` sees the studio picker, picks Beta, the URL becomes `#/s/beta/projects`, the switcher changes back to Alpha; designer.a at `#/s/beta/projects` sees "You don't have access to this studio" and the network log shows no request filtered by Beta's id; `stranger@example.test` sees "Ask a studio owner to invite stranger@example.test" and a Sign out action
+- [X] T020 [P] [US2] Write `src/features/studio/StudioGate.test.tsx` and `src/features/studio/roleActions.test.ts`: slug → membership resolution; unknown slug → no-access screen without calling the members API; role → visible actions exactly as the table in [data-model.md](data-model.md) ("Owners never appear as a choice in the invite or role selectors")
 
 ### Implementation for User Story 2
 
-- [ ] T021 [P] [US2] Implement `src/features/studio/roleActions.ts` (role → visible actions map, FR-010) and `src/features/studio/useStudio.ts` (current membership from the URL slug + its actions)
-- [ ] T022 [US2] Implement `src/features/studio/StudioGate.tsx` (slug resolution; no-access screen; no-studio screen) and `src/features/studio/StudioPicker.tsx`; `#/` redirect rule: one studio → its projects; else the `interior-studio:last-studio` slug if still a membership; else the picker. Write the last-used slug on every studio route visit (try/catch)
-- [ ] T023 [US2] Complete `src/features/studio/StudioShell.tsx`: studio name and switcher (from memberships; switching keeps the section and changes the slug), navigation to Projects and Settings, the account menu from T017. Render `ProjectsHome` inside the shell for `studio-projects` in `src/app/App.tsx`; leave `ProjectsHome` itself unchanged
-- [ ] T024 [US2] Run the US2 unit tests and `npm run e2e -- e2e/studio.spec.ts`; then the full existing suite `npm run e2e` (62 tests must still pass through the `#/` redirect); record the output
+- [X] T021 [P] [US2] Implement `src/features/studio/roleActions.ts` (role → visible actions map, FR-010) and `src/features/studio/useStudio.ts` (current membership from the URL slug + its actions)
+- [X] T022 [US2] Implement `src/features/studio/StudioGate.tsx` (slug resolution; no-access screen; no-studio screen) and `src/features/studio/StudioPicker.tsx`; `#/` redirect rule: one studio → its projects; else the `interior-studio:last-studio` slug if still a membership; else the picker. Write the last-used slug on every studio route visit (try/catch)
+- [X] T023 [US2] Complete `src/features/studio/StudioShell.tsx`: studio name and switcher (from memberships; switching keeps the section and changes the slug), navigation to Projects and Settings, the account menu from T017. Render `ProjectsHome` inside the shell for `studio-projects` in `src/app/App.tsx`; leave `ProjectsHome` itself unchanged
+- [X] T024 [US2] Run the US2 unit tests and `npm run e2e -- e2e/studio.spec.ts`; then the full existing suite `npm run e2e` (62 tests must still pass through the `#/` redirect); record the output
 
 **Checkpoint**: US1 and US2 pass together; existing e2e suite unchanged and green.
 

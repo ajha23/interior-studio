@@ -62,11 +62,13 @@ export function createFakeClient(options: { session?: FakeSession | null; member
     },
     from: (table: string) => ({
       select: (columns: string) => ({
-        order: async () => {
-          calls.push(`select:${table}:${columns}`);
-          if (options.membershipError) return { data: null, error: { message: options.membershipError } };
-          return { data: options.memberships ?? [], error: null };
-        },
+        eq: (column: string, value: string) => ({
+          order: async () => {
+            calls.push(`select:${table}:${columns}:${column}=${value}`);
+            if (options.membershipError) return { data: null, error: { message: options.membershipError } };
+            return { data: options.memberships ?? [], error: null };
+          },
+        }),
       }),
     }),
   };

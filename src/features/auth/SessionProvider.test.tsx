@@ -52,6 +52,8 @@ describe('SessionProvider', () => {
     expect(calls.filter((c) => c === 'rpc:accept_pending_invites')).toHaveLength(1);
     expect(rpc).toBeGreaterThanOrEqual(0);
     expect(select).toBeGreaterThan(rpc);
+    // Only the signed-in user's own membership rows (members can read their colleagues' rows too).
+    expect(calls[select]).toBe('select:org_members:role, organizations ( id, name, slug ):user_id=u-1');
   });
 
   it('sign-out clears memberships and the last-used studio', async () => {
