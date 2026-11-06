@@ -7,11 +7,23 @@ async function newStraightKitchen(page: Page) {
   await expect(page.locator('canvas[data-rendered]')).toBeVisible({ timeout: 30_000 });
 }
 
+/**
+ * Presses `f` to focus the selection and waits for that camera flight to finish: the canvas counts
+ * finished flights in `data-camera-settled` (see CameraRig), so this does not depend on frame rate.
+ */
+async function focusAndSettle(page: Page) {
+  const canvas = page.locator('canvas').first();
+  const before = Number((await canvas.getAttribute('data-camera-settled')) ?? '0');
+  await page.keyboard.press('f');
+  await expect
+    .poll(async () => Number((await canvas.getAttribute('data-camera-settled')) ?? '0'), { timeout: 15_000 })
+    .toBeGreaterThan(before);
+}
+
 /** Selects the drawer unit (the last floor unit on the back wall, 300 mm from the wall end) and focuses it. */
 async function focusDrawer(page: Page) {
   await page.locator('[data-testid^=outline-]', { hasText: 'Drawer unit 600' }).click();
-  await page.keyboard.press('f');
-  await page.waitForTimeout(900);
+  await focusAndSettle(page);
   const box = (await page.locator('canvas').first().boundingBox())!;
   return { cx: box.x + box.width / 2, cy: box.y + box.height / 2 };
 }

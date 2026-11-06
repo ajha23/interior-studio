@@ -3,6 +3,8 @@ import { defineConfig, devices } from '@playwright/test';
 export default defineConfig({
   testDir: './e2e',
   timeout: 60_000,
+  // CI runners render software WebGL more slowly than a developer machine; allow assertions longer there only.
+  expect: { timeout: process.env.CI ? 10_000 : 5_000 },
   fullyParallel: false,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? 'github' : 'list',
