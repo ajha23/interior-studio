@@ -42,7 +42,19 @@ function fail(message) {
   throw new Error(message);
 }
 
+/** After `db reset`, PostgREST reloads its schema cache for a few seconds; wait until it answers. */
+async function waitForApi(timeoutMs = 30_000) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const { error } = await admin.from('organizations').select('id').limit(1);
+    if (!error) return;
+    if (Date.now() > deadline) fail(`the local API is not ready: ${error.message}`);
+    await new Promise((r) => setTimeout(r, 500));
+  }
+}
+
 try {
+  await waitForApi();
   // Setup (service key, local only): a user, a studio they own, and exactly CREDIT credits.
   const created = await admin.auth.admin.createUser({ email, password: 'password123', email_confirm: true });
   if (created.error) fail(`create user: ${created.error.message}`);

@@ -195,13 +195,13 @@ description: "Task list for 045 — Signed-in, Credit-Metered AI Endpoints"
 
 ## Phase 6: Polish & Gate
 
-- [ ] T024 Update `specs/FOUNDATION-PLAN.md`: 045 in review (PR number).
-- [ ] T025 Run the five-stage gate plus the database checks and record each exit code separately (no pipes hiding exits):
+- [X] T024 Update `specs/FOUNDATION-PLAN.md`: 045 in review (PR number). — **Done**: the plan row reads "in review 2026-11-06; production migration and firewall rule pending" (PR number added when opened).
+- [X] T025 Run the five-stage gate plus the database checks and record each exit code separately (no pipes hiding exits): — **Done**: lint, typecheck, test (163 files, **1006** passed), build → exit 0; `db:reset` exit 0; `db:test` → `Files=8, Tests=495`, PASS; `npm run e2e` → exit 1, **94 passed, 1 failed**: the known flaky `e2e/package.spec.ts` 3D-capture test (FOUNDATION-PLAN "Known issues"), which passes alone (`npx playwright test e2e/package.spec.ts` → 3 passed). `db:test:concurrency` **failed the first time** in its setup ("Could not query the database for the schema cache"): it ran seconds after `db:reset`, before PostgREST reloaded. The script now waits for the API (up to 30 s); re-run straight after a fresh reset → PASS (5 charged, 5 refused, balance 0).
   - `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`, `npm run e2e`;
   - `npm run db:reset && npm run db:test && npm run db:test:concurrency`.
 
   The known flaky 3D e2e tests (`specs/FOUNDATION-PLAN.md` "Known issues") are reported as such if they fail, with a solo re-run.
-- [ ] T026 Add `npm run db:test:concurrency` to the CI `db` job in `.github/workflows/ci.yml`, after `db:test`.
+- [X] T026 Add `npm run db:test:concurrency` to the CI `db` job in `.github/workflows/ci.yml`, after `db:test`. — **Done**: `.github/workflows/ci.yml` `db` job runs `npm run db:test:concurrency` after `db:test`.
 - [ ] T027 Push the branch and open a **draft** PR. Record the links for green `check`, `db` and `e2e`.
 - [ ] T028 **Founder**, production database: a fresh backup of schema and data with row counts → `npx supabase db push --remote --dry-run` lists only `<ts>_ai_metered_calls.sql` and no seeds → `npx supabase db push --remote --yes`. Then the agent verifies, read-only:
   - `migration list --remote` matches;
