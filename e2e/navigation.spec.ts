@@ -56,10 +56,20 @@ test('drag a unit along its wall in 3D with a live readout; undo restores it', a
 test('the width grip resizes in 10 mm steps within the range, snapping to standard sizes nearby', async ({ page }) => {
   await newStraightKitchen(page);
   await focusDrawer(page);
+  // The height label is centred 70 mm right of the width grip, so find the grip the way a user does:
+  // move left from the label's centre until the cursor becomes the grip's resize cursor. Using the
+  // label's left edge instead depends on how wide its text renders, which differs between platforms.
   const label = (await page.getByTestId('dim-height').boundingBox())!;
-  const gx = label.x - 6;
   const gy = label.y + label.height / 2;
-  await page.mouse.move(gx, gy);
+  let gx = Number.NaN;
+  for (let dx = 0; dx <= 160; dx += 3) {
+    await page.mouse.move(label.x + label.width / 2 - dx, gy);
+    if ((await page.evaluate(() => document.body.style.cursor)) === 'ew-resize') {
+      gx = label.x + label.width / 2 - dx;
+      break;
+    }
+  }
+  expect(gx, 'the width grip is under the pointer somewhere left of its height label').not.toBeNaN();
   await page.mouse.down();
   await page.mouse.move(gx + 30, gy, { steps: 4 });
   await page.mouse.move(gx + 60, gy, { steps: 4 });
