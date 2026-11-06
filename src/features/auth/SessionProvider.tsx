@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { passwordSignInEnabled, supabase, type AppSupabaseClient } from '@/infrastructure/supabase/client';
-import { rememberReturnTo } from './returnTo';
+import { cleanAuthParams, rememberReturnTo, takeReturnTo } from './returnTo';
 import { LAST_STUDIO_KEY, SessionContext, type Membership, type OrgRole, type SessionState, type SessionUser } from './sessionContext';
 
 function toUser(session: Session | null): SessionUser | null {
@@ -62,6 +62,11 @@ export function SessionProvider({ children, client = supabase }: { children: Rea
       } catch (e) {
         setError(message(e));
       }
+      // Back from Google: drop the OAuth parameters and return to the page that was asked for,
+      // before the signed-in routes render (so `#/` does not redirect away from it first).
+      cleanAuthParams();
+      const back = takeReturnTo();
+      if (back && back !== window.location.hash) window.location.hash = back.replace(/^#/, '');
       setStatus('signed-in');
     },
     [client],
