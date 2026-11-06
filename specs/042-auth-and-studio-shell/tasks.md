@@ -133,14 +133,41 @@ description: "Task list for 042 — Google Sign-in and Studio Shell"
 
 ---
 
+## Phase 6b: User Story 5 — A new user gets their own Free studio (Priority: P1)
+
+**Added 2026-11-06** after the founder decided sign-in must not depend on an invite (spec Clarifications; FR-017–FR-022). Task ids continue from T043; this phase runs **before** T038–T043.
+
+**Goal**: A confirmed new user gets one Free studio as owner; Free studios have 0 AI credits; only the founder grants credits; every sign-in records studio activity.
+
+**Independent Test**: `stranger@example.test` signs in and lands on their own studio's projects with a Free badge; a second sign-in creates no second studio; pgTAP proves credits are 0 and locked.
+
+### Tests for User Story 5 (database first)
+
+- [X] T044 [US5] Write `supabase/tests/06_self_serve.test.sql` before the migration: a confirmed user with no membership and no invite calling `public.start_session()` gets exactly one studio, as `owner`, with `plan = 'free'`; calling it again (and from a second call in the same test) still leaves one studio; a user with a pending invite joins that studio and gets no personal studio; an unconfirmed user gets nothing; `last_active_at` moves forward for the caller's studios; a Free studio's `ai_credit_balance()` is 0 after `private.ensure_monthly_grant`; an `inhouse` studio's fallback stays 500; admin.a cannot insert or update `ai_settings` and cannot insert an `ai_credit_ledger` top-up; `private.set_ai_credits` is not executable by `anon` or `authenticated`, and as `postgres` it sets the allowance and adds a top-up. Record that it fails on the current schema
+- [X] T045 [US5] Update `supabase/tests/03_roles.test.sql`: the "admin can add a top-up (live rule; revisit in spec 045)" assertion becomes "admin cannot add a top-up" (`42501`), per FR-020
+
+### Implementation for User Story 5
+
+- [X] T046 [US5] Create the migration with `npx supabase migration new self_serve_free_studios` implementing FR-017–FR-021: `organizations.last_active_at`; `public.start_session()` (security definer, `search_path = ''`, transaction-level advisory lock on the user id, studio name "<first name>'s studio" else the email local part, slug from the name plus a 6-character random suffix matching `^[a-z0-9-]{2,60}$`, `plan = 'free'`; emails compared with `lower()` per research R9); `ai_settings.monthly_credits` default 0; `private.ensure_monthly_grant` fallback 0 for `free`, 500 otherwise; drop the `ai_settings` insert/update policies and the `ai_credit_ledger` top-up policy; `private.set_ai_credits(...)` operator-only. Execute grants: `start_session` to `authenticated` only. Run `npm run db:reset && npm run db:test` (all pass)
+- [X] T047 [US5] Run `npm run db:types` and `npm run db:types:check`; commit the regenerated `src/infrastructure/supabase/database.types.ts`
+- [X] T048 [US5] In `src/features/auth/SessionProvider.tsx` call `rpc('start_session')` instead of `accept_pending_invites`, and load `organizations ( id, name, slug, plan )` so a membership carries its plan; update `src/features/auth/sessionContext.ts`, `testClient.ts` and `SessionProvider.test.tsx`
+- [X] T049 [P] [US5] Show a "Free" badge next to the studio name in `src/features/studio/StudioNav.tsx` for `plan = 'free'`; add a "Studio details" section to Settings (`src/features/studio/StudioDetails.tsx`, shown above Members) where owners and admins rename the studio (`organizations.name`, 2–120 characters, the live check) and others see the name read-only; unit tests in `src/features/studio/StudioDetails.test.tsx`
+- [X] T050 [US5] E2E: replace the "a user in no studio is told what to do" scenario in `e2e/studio.spec.ts` with "a new user gets their own Free studio" (`stranger@example.test` lands on their own studio, sees the Free badge, and a reload creates no second studio); add "an owner renames the studio" to `e2e/members.spec.ts` (restore the name afterwards); confirm the invited-user scenario still joins Alpha and gets no personal studio. Run the auth, studio and members specs, then the full suite
+- [X] T051 [P] [US5] Write `docs/operations/ai-credits.md`: how the founder grants credits with `private.set_ai_credits` in the Supabase SQL editor (examples for a monthly allowance and a one-off top-up), how to check a balance, and that Free studios start at 0
+- [X] T052 [P] [US5] Add specs 054 (email sign-in: magic link / 6-digit code), 055 (Free/Pro plans: Free = design only) and 056 (studio retention: delete after 90 days without member sign-in, day-76 warning email, accounts kept, Pro and in-house exempt) to `specs/FOUNDATION-PLAN.md`, ordered after 042 and before 043, with the freeze exception recorded
+
+**Checkpoint**: All five stories pass; the production push (T041) now carries two migrations.
+
+---
+
 ## Phase 7: Polish & Gate
 
-- [ ] T036 Run the five-stage gate and `npm run db:reset && npm run db:test`; record the output: `npm run lint && npm run typecheck && npm test && npm run build && npm run e2e`
-- [ ] T037 Push the branch and open a draft PR; record links for green `check`, `db` and `e2e` jobs
+- [X] T036 Run the five-stage gate and `npm run db:reset && npm run db:test`; record the output: `npm run lint && npm run typecheck && npm test && npm run build && npm run e2e`
+- [X] T037 Push the branch and open a draft PR; record links for green `check`, `db` and `e2e` jobs
 - [ ] T038 Founder: confirm the Google provider in the live project (FR-016); if missing, create the Google OAuth client (redirect URI `https://pkbctmaiawztzmwqkpgw.supabase.co/auth/v1/callback`) and enable the provider. Also confirm the **Email** provider is disabled in production (or that "Confirm email" is on). No agent handles the client secret
 - [ ] T039 Founder: in Supabase Auth → URL Configuration set the site URL to the production URL and add redirect URLs `http://localhost:5173/**`, `http://localhost:5174/**`, the Vercel preview wildcard for this project and the production URL; document the values (not secrets) in `docs/auth.md`
 - [ ] T040 Founder: add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` for the live project to Vercel Production and Preview; never set `VITE_AUTH_PASSWORD_SIGN_IN` there
-- [ ] T041 Founder, same procedure as spec 041 T038: fresh backup with row counts checked → `npx supabase db push --remote --dry-run` lists only `<timestamp>_invites_never_change_existing_members.sql` and no seeds → founder runs `npx supabase db push --remote` → agent verifies `migration list --remote` matches and `db diff --remote --schema public,private,storage` is empty
+- [ ] T041 Founder, same procedure as spec 041 T038: fresh backup with row counts checked → `npx supabase db push --remote --dry-run` lists only `20261106062126_invites_never_change_existing_members.sql` and the US5 `self_serve_free_studios` migration, and no seeds → founder runs `npx supabase db push --remote` → agent verifies `migration list --remote` matches and `db diff --remote --schema public,private,storage` is empty
 - [ ] T042 Founder gate on the PR's Vercel preview: sign in with Google, see your studio, invite a colleague; the colleague signs in with Google and lands in the same studio. Record the preview URL and the time from invite to landing in the studio (SC-001) in the PR
 - [ ] T043 Update `specs/FOUNDATION-PLAN.md` (042 done, date, PR) and complete the PR description: CI links, preview URL, the FR-015 finding and fix, production migration output, deleted files list
 

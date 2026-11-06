@@ -106,12 +106,11 @@ select throws_ok(
   $$insert into public.ai_credit_ledger (org_id, delta, reason, created_by)
     values ('aaaaaaaa-0000-4000-8000-000000000000', -100, 'debit', 'a2000000-0000-4000-8000-000000000002')$$,
   '42501', null, 'admin cannot write debits or refunds directly');
--- Live rule, asserted as is and flagged for spec 045: admins may add top-ups of up to 100000 credits
--- per row with no limit on the number of rows.
-select lives_ok(
+-- Spec 042 FR-020: studios cannot add their own credits; only the operator function can.
+select throws_ok(
   $$insert into public.ai_credit_ledger (org_id, delta, reason, created_by)
     values ('aaaaaaaa-0000-4000-8000-000000000000', 100, 'topup', 'a2000000-0000-4000-8000-000000000002')$$,
-  'admin can add a top-up (live rule; revisit in spec 045)');
+  '42501', null, 'admin cannot add a top-up');
 
 -- ---------------------------------------------------------------------------
 -- Nobody writes versions or AI jobs directly, not even the owner (a1)

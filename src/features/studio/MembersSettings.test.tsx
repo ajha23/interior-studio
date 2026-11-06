@@ -22,7 +22,7 @@ function fakeApi(overrides: Partial<MembersApi> = {}): MembersApi {
 }
 
 function studio(role: Membership['role']) {
-  const membership: Membership = { orgId: 'org-a', orgName: 'Alpha Studio', orgSlug: 'alpha', role };
+  const membership: Membership = { orgId: 'org-a', orgName: 'Alpha Studio', orgSlug: 'alpha', role, plan: 'inhouse' };
   return { membership, actions: actionsFor(role) };
 }
 

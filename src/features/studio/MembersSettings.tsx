@@ -64,7 +64,7 @@ export function MembersSettings({ studio, userId, api: injected }: { studio: Stu
   return (
     <section className="mx-auto grid max-w-3xl gap-6 px-6 py-8">
       <div>
-        <h1 className="text-base font-semibold">Members</h1>
+        <h2 className="text-base font-semibold">Members</h2>
         <p className="text-sm text-muted-foreground">
           {actions.invite ? `Invite colleagues to ${orgName} and choose what they can do.` : `People in ${orgName}. Owners and admins manage members.`}
         </p>
@@ -146,7 +146,7 @@ export function MembersSettings({ studio, userId, api: injected }: { studio: Stu
 
           {actions.seeInvites && (
             <div className="grid gap-2">
-              <h2 className="text-sm font-semibold">Pending invites</h2>
+              <h3 className="text-sm font-semibold">Pending invites</h3>
               {load.invites.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No pending invites. Invited people join the first time they sign in with Google.</p>
               ) : (

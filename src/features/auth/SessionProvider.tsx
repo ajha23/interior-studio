@@ -23,20 +23,21 @@ function message(e: unknown): string {
 }
 
 async function loadMemberships(client: AppSupabaseClient, userId: string): Promise<Membership[]> {
-  // Turns any pending invites for this address into memberships; safe to call on every sign-in.
-  const accepted = await client.rpc('accept_pending_invites');
-  if (accepted.error) throw accepted.error;
+  // Accepts pending invites, creates the user's own Free studio if they have none, and records
+  // studio activity (spec 042, FR-017). Safe to call on every sign-in.
+  const started = await client.rpc('start_session');
+  if (started.error) throw started.error;
   // Only the user's own rows: members may read every membership row of their studios (members_select),
   // so without this filter a studio with four members would appear four times.
   const { data, error } = await client
     .from('org_members')
-    .select('role, organizations ( id, name, slug )')
+    .select('role, organizations ( id, name, slug, plan )')
     .eq('user_id', userId)
     .order('created_at');
   if (error) throw error;
   return (data ?? []).flatMap((row) => {
-    const org = row.organizations as { id: string; name: string; slug: string } | null;
-    return org ? [{ orgId: org.id, orgName: org.name, orgSlug: org.slug, role: row.role as OrgRole }] : [];
+    const org = row.organizations as { id: string; name: string; slug: string; plan: string } | null;
+    return org ? [{ orgId: org.id, orgName: org.name, orgSlug: org.slug, role: row.role as OrgRole, plan: org.plan }] : [];
   });
 }
 

@@ -84,6 +84,11 @@ export function StudioNav({ studio, section }: { studio: Membership; section: St
       <span data-testid="studio-name" className="truncate text-sm font-semibold">
         {studio.orgName}
       </span>
+      {studio.plan === 'free' && (
+        <span data-testid="studio-plan" className="shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+          Free
+        </span>
+      )}
       <Switcher current={studio} section={section} />
       <nav aria-label="Studio" className="ml-3 flex items-center gap-1">
         {link('projects', 'Projects')}

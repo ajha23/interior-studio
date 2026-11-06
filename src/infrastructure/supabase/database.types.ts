@@ -195,14 +195,14 @@ isOneToOne: false
                   ]
                 },"organizations": {
                   Row: {
-                    "created_at": string,"id": string,"name": string,"plan": string,"slug": string
+                    "created_at": string,"id": string,"last_active_at": string,"name": string,"plan": string,"slug": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"id"?: string,"name": string,"plan"?: string,"slug": string
+                    "created_at"?: string,"id"?: string,"last_active_at"?: string,"name": string,"plan"?: string,"slug": string
                   }
                   Update: {
-                    "created_at"?: string,"id"?: string,"name"?: string,"plan"?: string,"slug"?: string
+                    "created_at"?: string,"id"?: string,"last_active_at"?: string,"name"?: string,"plan"?: string,"slug"?: string
                   }
                   Relationships: [
                     
@@ -450,7 +450,10 @@ isOneToOne: false
         to: "project_versions"
         isOneToOne: true
         isSetofReturn: false
-      } }
+      } },
+"start_session":
+{ Args: Record<PropertyKey, never>; Returns: number
+                           }
           }
           Enums: {
             "org_role": "owner"|"admin"|"designer"|"viewer","project_status": "lead"|"design"|"approved"|"production"|"installed"|"archived","version_kind": "autosave"|"manual"|"revision"

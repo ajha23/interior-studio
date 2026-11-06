@@ -47,6 +47,18 @@ test("an owner changes a member's role and it persists", async ({ page }) => {
   await expect(page.getByRole('status')).toContainText('Alpha Viewer is now viewer');
 });
 
+test('an owner renames the studio and the bar shows the new name', async ({ page }) => {
+  await signInAs(page, 'owner.a@example.test');
+  await page.getByLabel('Studio name').fill('Alpha Studio Renamed');
+  await page.getByRole('button', { name: 'Save name' }).click();
+  await expect(page.getByRole('status')).toContainText('Studio renamed');
+  await expect(page.getByTestId('studio-name')).toHaveText('Alpha Studio Renamed');
+  // Put the seed back for other tests.
+  await page.getByLabel('Studio name').fill('Alpha Studio');
+  await page.getByRole('button', { name: 'Save name' }).click();
+  await expect(page.getByTestId('studio-name')).toHaveText('Alpha Studio');
+});
+
 for (const email of ['designer.a@example.test', 'viewer.a@example.test']) {
   test(`${email.split('@')[0]} sees the members read-only`, async ({ page }) => {
     await signInAs(page, email);

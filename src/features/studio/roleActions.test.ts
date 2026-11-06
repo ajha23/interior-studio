@@ -20,7 +20,7 @@ describe('actionsFor (data-model.md: role → visible actions)', () => {
   });
 });
 
-const m = (slug: string): Membership => ({ orgId: `id-${slug}`, orgName: slug, orgSlug: slug, role: 'designer' });
+const m = (slug: string): Membership => ({ orgId: `id-${slug}`, orgName: slug, orgSlug: slug, role: 'designer', plan: 'free' });
 
 describe('chooseStudio (where #/ goes)', () => {
   it('a single studio is chosen directly', () => {

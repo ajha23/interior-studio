@@ -6,6 +6,7 @@ import { SignInScreen } from '@/features/auth/SignInScreen';
 import { useSession } from '@/features/auth/useSession';
 import { chooseStudio } from '@/features/studio/roleActions';
 import { MembersSettings } from '@/features/studio/MembersSettings';
+import { StudioDetails } from '@/features/studio/StudioDetails';
 import { StudioGate } from '@/features/studio/StudioGate';
 import { StudioPicker } from '@/features/studio/StudioPicker';
 import { StudioShell } from '@/features/studio/StudioShell';
@@ -65,7 +66,7 @@ function StudioRedirect() {
 }
 
 function StudioPage({ route }: { route: Extract<Route, { name: 'studio-projects' | 'studio-settings' }> }) {
-  const { user } = useSession();
+  const { user, refreshMemberships } = useSession();
   const section = route.name === 'studio-projects' ? 'projects' : 'settings';
   return (
     <StudioGate slug={route.slug}>
@@ -74,7 +75,10 @@ function StudioPage({ route }: { route: Extract<Route, { name: 'studio-projects'
           {route.name === 'studio-projects' ? (
             <ProjectRoutes route={{ name: 'home' }} />
           ) : (
-            <MembersSettings studio={studio} userId={user?.id ?? ''} />
+            <>
+              <StudioDetails studio={studio} onRenamed={refreshMemberships} />
+              <MembersSettings studio={studio} userId={user?.id ?? ''} />
+            </>
           )}
         </StudioShell>
       )}

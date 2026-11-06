@@ -4,7 +4,7 @@ import { SessionProvider } from './SessionProvider';
 import { useSession } from './useSession';
 import { createFakeClient, fakeSession, type FakeMembershipRow } from './testClient';
 
-const alpha: FakeMembershipRow = { role: 'designer', organizations: { id: 'org-a', name: 'Alpha Studio', slug: 'alpha' } };
+const alpha: FakeMembershipRow = { role: 'designer', organizations: { id: 'org-a', name: 'Alpha Studio', slug: 'alpha', plan: 'free' } };
 
 function Probe() {
   const s = useSession();
@@ -36,7 +36,7 @@ describe('SessionProvider', () => {
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('signed-out'));
   });
 
-  it('with a session, accepts pending invites once and then loads memberships', async () => {
+  it('with a session, starts the session once (invites, own studio) and then loads memberships', async () => {
     const { client, calls } = createFakeClient({ session: fakeSession(), memberships: [alpha] });
     render(
       <SessionProvider client={client}>
@@ -47,13 +47,13 @@ describe('SessionProvider', () => {
     expect(screen.getByTestId('email')).toHaveTextContent('designer.a@example.test');
     expect(screen.getByTestId('name')).toHaveTextContent('Alpha Designer');
     expect(screen.getByTestId('studios')).toHaveTextContent('alpha:designer');
-    const rpc = calls.indexOf('rpc:accept_pending_invites');
+    const rpc = calls.indexOf('rpc:start_session');
     const select = calls.findIndex((c) => c.startsWith('select:org_members:'));
-    expect(calls.filter((c) => c === 'rpc:accept_pending_invites')).toHaveLength(1);
+    expect(calls.filter((c) => c === 'rpc:start_session')).toHaveLength(1);
     expect(rpc).toBeGreaterThanOrEqual(0);
     expect(select).toBeGreaterThan(rpc);
     // Only the signed-in user's own membership rows (members can read their colleagues' rows too).
-    expect(calls[select]).toBe('select:org_members:role, organizations ( id, name, slug ):user_id=u-1');
+    expect(calls[select]).toBe('select:org_members:role, organizations ( id, name, slug, plan ):user_id=u-1');
   });
 
   it('sign-out clears memberships and the last-used studio', async () => {

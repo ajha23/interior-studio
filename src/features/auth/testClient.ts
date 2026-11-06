@@ -13,7 +13,7 @@ export interface FakeSession {
 
 export interface FakeMembershipRow {
   role: 'owner' | 'admin' | 'designer' | 'viewer';
-  organizations: { id: string; name: string; slug: string } | null;
+  organizations: { id: string; name: string; slug: string; plan: string } | null;
 }
 
 export function fakeSession(id = 'u-1', email = 'designer.a@example.test', name = 'Alpha Designer'): FakeSession {

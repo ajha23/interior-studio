@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { SessionContext, type Membership, type SessionState } from '@/features/auth/sessionContext';
 import { StudioGate } from './StudioGate';
 
-const alpha: Membership = { orgId: 'org-a', orgName: 'Alpha Studio', orgSlug: 'alpha', role: 'admin' };
+const alpha: Membership = { orgId: 'org-a', orgName: 'Alpha Studio', orgSlug: 'alpha', role: 'admin', plan: 'inhouse' };
 
 function session(memberships: Membership[]): SessionState {
   return {

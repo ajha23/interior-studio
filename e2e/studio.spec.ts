@@ -57,11 +57,18 @@ test("another studio's address shows no access and fetches nothing from it", asy
   expect(betaRequests).toEqual([]);
 });
 
-test('a user in no studio is told what to do and can sign out', async ({ page }) => {
+test('a new user without an invite gets their own Free studio', async ({ page }) => {
+  // stranger@example.test has no membership and no invite (seed). Spec 042, User Story 5.
   await signInAs(page, 'stranger@example.test');
-  await expect(page.getByRole('heading', { name: 'You are not in a studio yet' })).toBeVisible();
-  await expect(page.getByText('Ask a studio owner to invite stranger@example.test')).toBeVisible();
+  await expect(page).toHaveURL(/#\/s\/[a-z0-9-]+\/projects$/);
+  await expect(page.getByTestId('studio-name')).toHaveText("No's studio");
+  await expect(page.getByTestId('studio-plan')).toHaveText('Free');
+  const first = page.url();
+
+  // Signing in again creates no second studio: same studio, and no switcher.
   await page.getByRole('button', { name: 'Account' }).click();
   await page.getByRole('menuitem', { name: 'Sign out' }).click();
-  await expect(page.getByRole('heading', { name: 'Sign in to Interior Studio' })).toBeVisible();
+  await signInAs(page, 'stranger@example.test');
+  await expect(page).toHaveURL(first);
+  await expect(page.getByRole('button', { name: 'Switch studio' })).toHaveCount(0);
 });

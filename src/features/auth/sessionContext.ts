@@ -2,11 +2,15 @@ import { createContext } from 'react';
 
 export type OrgRole = 'owner' | 'admin' | 'designer' | 'viewer';
 
+/** The studio's plan, e.g. 'free' (self-serve studios, spec 042 US5), 'pro', 'inhouse'. Module gating is spec 055. */
+export type StudioPlan = string;
+
 export interface Membership {
   orgId: string;
   orgName: string;
   orgSlug: string;
   role: OrgRole;
+  plan: StudioPlan;
 }
 
 export interface SessionUser {
