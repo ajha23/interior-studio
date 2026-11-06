@@ -105,3 +105,12 @@ migrations (spec 041), and the pre-rewrite app at commit `eaf7d0f`.
 - Supabase Auth URL configuration: site URL = production URL; redirect URLs = `http://localhost:5173/**`,
   `http://localhost:5174/**`, the Vercel preview wildcard for this project, and the production URL.
 - Google provider: FR-016 (founder checks; sets up the OAuth client if missing).
+
+## R9 — Found during implementation: citext and `search_path = ''` (2026-11-06)
+
+`org_invites.email` and `profiles.email` are `citext`, but citext's case-insensitive `=` operator lives
+in schema `extensions`. Inside a function with `set search_path = ''` (constitution XI), Postgres does
+not find it and silently uses the case-sensitive text `=`. The first version of the FR-015 trigger
+therefore let `OWNER.A@example.test` past `owner.a@example.test`; `05_invites.test.sql` caught it.
+The migration compares `lower(email::text)` explicitly. **Spec 046 must check every function it moves
+to `search_path = ''` for citext comparisons** (and other operators from `extensions`).
