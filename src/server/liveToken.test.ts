@@ -3,31 +3,32 @@ import { describe, expect, it } from 'vitest';
 import { ProviderError } from '@/ai/providers/types';
 import { LIVE_MODEL, LIVE_TOOLS, liveConfig } from '@/ai/live';
 import { createLiveTokenHandler, tokenMinter } from './liveToken';
+import { AUTH_HEADERS, TEST_AI_ENV, allowAiCall } from './testAiCall';
 
-const post = (b: unknown, headers: Record<string, string> = {}) => new Request('http://localhost:5173/api/live-token', { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(b) });
+const post = (b: unknown, headers: Record<string, string> = {}) => new Request('http://localhost:5173/api/live-token', { method: 'POST', headers: { 'content-type': 'application/json', ...AUTH_HEADERS, ...headers }, body: JSON.stringify(b) });
 const quiet = () => undefined;
 const mint = async (voice: string) => ({ token: 'auth_tokens/abc', model: LIVE_MODEL, voice, expiresAt: '2026-10-31T12:00:00.000Z' });
 
 describe('/api/live-token', () => {
   it('returns a token for a listed Gemini voice and never the key', async () => {
-    const res = await createLiveTokenHandler({ env: { GEMINI_API_KEY: 'secret-key' }, log: quiet, mint })(post({ voice: 'Puck' }));
+    const res = await createLiveTokenHandler({ aiCall: allowAiCall().deps, env: { ...TEST_AI_ENV, GEMINI_API_KEY: 'secret-key' }, log: quiet, mint })(post({ voice: 'Puck' }));
     expect(res.status).toBe(200);
     const text = await res.text();
     expect(text).not.toContain('secret-key');
     expect(JSON.parse(text)).toEqual({ ok: true, token: 'auth_tokens/abc', model: LIVE_MODEL, voice: 'Puck', expiresAt: '2026-10-31T12:00:00.000Z' });
-    expect(await (await createLiveTokenHandler({ env: {}, log: quiet, mint })(post({}))).json()).toMatchObject({ voice: 'Kore' });
+    expect(await (await createLiveTokenHandler({ aiCall: allowAiCall().deps, env: { ...TEST_AI_ENV }, log: quiet, mint })(post({}))).json()).toMatchObject({ voice: 'Kore' });
   });
 
   it('rejects unknown voices, other origins and non-POST; says when the key is missing', async () => {
-    const handler = createLiveTokenHandler({ env: {}, log: quiet, mint });
+    const handler = createLiveTokenHandler({ aiCall: allowAiCall().deps, env: { ...TEST_AI_ENV }, log: quiet, mint });
     expect((await handler(post({ voice: 'marin' }))).status).toBe(400);
     expect((await handler(post({ voice: 'Kore', extra: 1 }))).status).toBe(400);
     expect((await handler(post({}, { origin: 'https://evil.example' }))).status).toBe(403);
-    expect((await handler(new Request('http://localhost/api/live-token'))).status).toBe(405);
-    const missing = await createLiveTokenHandler({ env: {}, log: quiet })(post({}));
+    expect((await handler(new Request('http://localhost/api/live-token', { headers: AUTH_HEADERS }))).status).toBe(405);
+    const missing = await createLiveTokenHandler({ aiCall: allowAiCall().deps, env: { ...TEST_AI_ENV }, log: quiet })(post({}));
     expect(missing.status).toBe(503);
     expect(await missing.json()).toMatchObject({ ok: false, error: { code: 'unavailable', message: expect.stringContaining('GEMINI_API_KEY') } });
-    const limited = await createLiveTokenHandler({ env: {}, log: quiet, mint: () => Promise.reject(new ProviderError('rate_limited', 'slow', true, 4)) })(post({}));
+    const limited = await createLiveTokenHandler({ aiCall: allowAiCall().deps, env: { ...TEST_AI_ENV }, log: quiet, mint: () => Promise.reject(new ProviderError('rate_limited', 'slow', true, 4)) })(post({}));
     expect(limited.status).toBe(429);
   });
 

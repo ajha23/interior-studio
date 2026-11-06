@@ -13,7 +13,7 @@ import { OpenAIProvider } from '@/ai/providers/openai';
 import { RuleBasedProvider } from '@/ai/providers/rules';
 import { ProviderError, type AssistantProvider } from '@/ai/providers/types';
 import { AssistantRequestSchema, AssistantResponseSchema, LIMITS, type AssistantReply } from '@/ai/schema';
-import type { AiCallEnv } from './aiCall';
+import { withAiCall, type AiCall, type AiCallDeps, type AiCallEnv } from './aiCall';
 
 /** Server settings. Includes the Supabase URL and publishable key the AI gate uses (spec 045). */
 export interface ServerEnv extends AiCallEnv {
@@ -103,14 +103,15 @@ export interface HandlerOptions {
   provider?: AssistantProvider;
   log?: (entry: Record<string, unknown>) => void;
   clientKey?: (req: Request) => string;
+  /** Overrides sign-in verification and the database client (tests). */
+  aiCall?: Pick<AiCallDeps, 'verify' | 'clientFor'>;
 }
 
 export function createAssistantHandler(options: HandlerOptions): (req: Request) => Promise<Response> {
   const limiter = options.limiter ?? new RateLimiter(Number(options.env.ASSISTANT_RATE_LIMIT) || 30, 60_000);
   const log = options.log ?? ((entry) => console.info(JSON.stringify({ event: 'assistant', ...entry })));
-  const clientKey = options.clientKey ?? ((req) => req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || 'local');
 
-  return async (req) => {
+  const handle = async (req: Request, call: AiCall): Promise<Response> => {
     const started = Date.now();
     // GET: which providers this server can use (never the keys).
     if (req.method === 'GET') return new Response(JSON.stringify(providerStatus(options.env)), { status: 200, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
@@ -118,7 +119,8 @@ export function createAssistantHandler(options: HandlerOptions): (req: Request) 
     // Same-origin only: browsers send Origin on cross-site POSTs.
     const origin = req.headers.get('origin');
     if (origin && new URL(req.url).host !== new URL(origin).host) return error(403, 'bad_request', 'Cross-origin requests are not allowed.');
-    const wait = limiter.check(clientKey(req));
+    // A courtesy limit per signed-in user; the controls are the sign-in, the credits and the firewall.
+    const wait = limiter.check(options.clientKey ? options.clientKey(req) : call.userId);
     if (wait) {
       log({ status: 429, reason: 'local_rate_limit' });
       return error(429, 'rate_limited', `Too many requests. Try again in ${wait} s.`, true, wait);
@@ -147,6 +149,11 @@ export function createAssistantHandler(options: HandlerOptions): (req: Request) 
       return error(503, pe.code, pe.message);
     }
 
+    // Charge after validation (a bad request costs nothing). The built-in rules cost 0 credits.
+    const refused = await call.charge(provider.id === 'rules' ? 'assistant_rules' : 'assistant');
+    if (refused) return refused;
+    call.setProvider(provider.id);
+
     try {
       const response = AssistantResponseSchema.parse(await provider.respond(request, req.signal));
       if (response.kind === 'plan' && response.operations.length > LIMITS.operations) throw new ProviderError('malformed_output', 'The proposal had too many steps.');
@@ -159,4 +166,6 @@ export function createAssistantHandler(options: HandlerOptions): (req: Request) 
       return error(status, pe.code, pe.message, pe.retryable, pe.retryAfterSeconds);
     }
   };
+
+  return withAiCall(handle, { env: options.env, log, ...options.aiCall });
 }

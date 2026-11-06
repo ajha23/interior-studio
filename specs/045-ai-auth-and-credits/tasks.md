@@ -103,12 +103,12 @@ description: "Task list for 045 — Signed-in, Credit-Metered AI Endpoints"
 
 ### Tests first
 
-- [ ] T009 [P] [US1] Extend `src/server/assistantHandler.test.ts`, `speech.test.ts`, `liveToken.test.ts` and `vision.test.ts`:
+- [X] T009 [P] [US1] Extend `src/server/assistantHandler.test.ts`, `speech.test.ts`, `liveToken.test.ts` and `vision.test.ts`: — **Done, order changed**: the wrapping (T011) was written first, so these tests were not seen failing beforehand. To compensate, a mutation check: removing the render handler's `charge` made 4 of them fail (403, 402, charge, refund); restored. Existing handler tests now build handlers with `allowAiCall()` from `src/server/testAiCall.ts` and send `AUTH_HEADERS`; the new cases are in `src/server/aiGate.test.ts` (39 cases across all five endpoints).
   - each handler built through `withAiCall` with a fake auth that rejects returns 401 for POST, and for GET on assistant, and the fake provider records **zero** calls;
   - with a fake auth plus a `charge` that throws 403, the response is 403 and the provider has zero calls.
 
   Update the existing tests to build handlers with an "allow" fake so they keep testing their own logic. See the new cases fail.
-- [ ] T010 [P] [US1] Write the API part of `e2e/ai-access.spec.ts`, using Playwright `request` with no storage state:
+- [X] T010 [P] [US1] Write the API part of `e2e/ai-access.spec.ts`, using Playwright `request` with no storage state: — **Done**: `e2e/ai-access.spec.ts` "API" tests. Also covers the public anon key used as a bearer → 401. Viewer and non-member checks use `/api/live-token` (the smallest valid body); the 403 comes from the charge, before any provider. Helpers `localAccessToken`, `localRpc`, `localStudioIds`, `localPublicKey` added to `e2e/support/localAdmin.ts` (local-only guard).
   - `POST` to each of the five endpoints with no token → 401 with code `unauthorized`;
   - `GET /api/assistant` → 401;
   - a tampered token → 401;
@@ -120,8 +120,8 @@ description: "Task list for 045 — Signed-in, Credit-Metered AI Endpoints"
 
 ### Implementation
 
-- [ ] T011 [US1] Wrap all five handlers in `withAiCall` (`src/server/assistantHandler.ts`, `speech.ts`, `liveToken.ts`, `vision.ts`). Remove the `Origin`-based checks as security (they may stay as a harmless same-origin courtesy). Key the courtesy `RateLimiter` by the verified user id instead of the IP. T009 passes; `npx vitest run src/server` green.
-- [ ] T012 [US1] Run `npx playwright test e2e/ai-access.spec.ts -g "API"` and record the output. T010 passes.
+- [X] T011 [US1] Wrap all five handlers in `withAiCall` (`src/server/assistantHandler.ts`, `speech.ts`, `liveToken.ts`, `vision.ts`). Remove the `Origin`-based checks as security (they may stay as a harmless same-origin courtesy). Key the courtesy `RateLimiter` by the verified user id instead of the IP. T009 passes; `npx vitest run src/server` green. — **Done**: all five handlers return `withAiCall(handle, { env, log, ...options.aiCall })`; the courtesy limiter is keyed by `call.userId` (a test supplies `clientKey`); the Origin check stays as a same-origin courtesy. `npx vitest run src/server` → 100 passed; `npm run typecheck` exit 0.
+- [X] T012 [US1] Run `npx playwright test e2e/ai-access.spec.ts -g "API"` and record the output. T010 passes. — **Done**: `npx playwright test e2e/ai-access.spec.ts` → **6 passed** (setup + 3 API access + 2 credits). The Playwright web server sets `GEMINI_API_KEY: ''`, so no real provider can be reached.
 
 **Checkpoint**: no anonymous, non-member or viewer call reaches a provider (SC-001 locally).
 
@@ -135,7 +135,7 @@ description: "Task list for 045 — Signed-in, Credit-Metered AI Endpoints"
 
 ### Tests first
 
-- [ ] T013 [P] [US2] Add charge tests to each handler test file, with a fake RPC that records `ai_start_call` and `ai_finish_call`:
+- [X] T013 [P] [US2] Add charge tests to each handler test file, with a fake RPC that records `ai_start_call` and `ai_finish_call`: — **Done** (with T009, same file `aiGate.test.ts`): per-endpoint op, charge only after validation (invalid body → no RPC), `assistant_rules` when the rules answer, provider failure → `finish(false)`, 402 with zero provider calls, body injection ignored, the per-user courtesy limit.
   - **assistant:** with a paid provider it charges `assistant` **after** schema validation (an invalid body → 400 and **no** `ai_start_call`); when the rules provider answers it charges `assistant_rules`; a provider error → `ai_finish_call(ok=false)`;
   - **speech:** charges `speech`;
   - **reference:** charges `reference`;
@@ -144,12 +144,12 @@ description: "Task list for 045 — Signed-in, Credit-Metered AI Endpoints"
   - **402:** `PT402` from `charge` → 402 `no_credits` with the contract message, and the fake provider has zero calls (SC-003).
 
   See them fail.
-- [ ] T014 [P] [US2] Add to `e2e/ai-access.spec.ts`: a brand-new user (local admin + password, gets a Free studio with 0 credits) calls `POST /api/speech` with a valid body → 402 `no_credits`. Calling `POST /api/assistant` with the local rules provider → 200 (0 credits, `assistant_rules`). See it fail.
+- [X] T014 [P] [US2] Add to `e2e/ai-access.spec.ts`: a brand-new user (local admin + password, gets a Free studio with 0 credits) calls `POST /api/speech` with a valid body → 402 `no_credits`. Calling `POST /api/assistant` with the local rules provider → 200 (0 credits, `assistant_rules`). See it fail. — **Done in part**: a new Free studio (0 credits) → `POST /api/speech` → 402 `no_credits`, balance still 0. The "assistant rules → 200 for a Free studio" case is **not** in e2e (it needs a full project body); it is covered by pgTAP (`assistant_rules` works for the 0-credit studio) and `aiGate.test.ts`. Also added: a designer passes the gate and, with no provider key locally, the live-token call fails 503 and is **refunded in the real database** (balance unchanged).
 
 ### Implementation
 
-- [ ] T015 [US2] Add the `charge(op)` calls at the points in research R8 in each handler. In the assistant, pick the op after `providerFor`: `rules` → `assistant_rules`, otherwise `assistant`. T013 passes; `npx vitest run src/server` green.
-- [ ] T016 [US2] Run `npx playwright test e2e/ai-access.spec.ts` and `npm run db:test:concurrency`, and record the output (SC-002, SC-003).
+- [X] T015 [US2] Add the `charge(op)` calls at the points in research R8 in each handler. In the assistant, pick the op after `providerFor`: `rules` → `assistant_rules`, otherwise `assistant`. T013 passes; `npx vitest run src/server` green. — **Done, pulled forward into T011**: the 403 for viewers and non-members (US1) comes from `charge`, so the charge points went in with the wrapping. Ops: assistant → `assistant` or `assistant_rules`; speech → `speech`; reference → `reference`; render → `render`; live-token → `live`.
+- [X] T016 [US2] Run `npx playwright test e2e/ai-access.spec.ts` and `npm run db:test:concurrency`, and record the output (SC-002, SC-003). — **Done**: `npx playwright test e2e/ai-access.spec.ts` → 6 passed; `npm run db:test:concurrency` → PASS (T006).
 
 **Checkpoint**: credits bound every paid call; the concurrency script and pgTAP prove a balance ≥ 0.
 
