@@ -46,7 +46,7 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -55,6 +55,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
+      # Every route needs a signed-in session (spec 042): start the local Supabase stack with the
+      # synthetic seed; playwright.config.ts reads its anon key and signs in as a seeded user.
+      - run: npm run db:start
+      - run: npm run db:reset
       - run: npm run e2e
         env:
           CI: 'true'
