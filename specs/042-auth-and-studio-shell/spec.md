@@ -14,6 +14,18 @@ No code in `src` calls `signInWith`, `getSession` or `onAuthStateChange`. A hand
 
 The pre-rewrite app (commit `eaf7d0f`) already had working Google sign-in (`apps/web/src/auth/AuthProvider.tsx`) and team management (`apps/web/src/data/team.ts`) against the live schema, which still has 3 profiles and the `org_invites` table. This spec restores identity using the official client and adds a studio-aware app shell.
 
+## Clarifications
+
+### Session 2026-11-06
+
+- Q: When someone is invited to a studio they already belong to, what should happen to their existing role? → A: The invite is refused when created ("already a member"), and accepting invites never changes an existing member's role (Option A). Found during clarify: the live `accept_pending_invites` overwrites the role on conflict, so an admin could demote the owner by inviting the owner's email as a viewer.
+- Q: Should 042 remove the whole Cloud Sync button and modal, or only strip the hard-coded test ids? → A: Remove the button, `CloudProjectModal.tsx` and its test in 042; `cloudProjectStore`, the persistence factory and the hand-built client stay until 043 (Option A).
+- Q: Should the editor's addresses move under the studio prefix in 042? → A: No. Shell pages are studio-scoped (`#/s/<slug>/projects`, `#/s/<slug>/settings/…`); editor routes stay `#/project/<id>` and `#/home/<id>` (and `#/home/<id>/room/<roomId>`) until 043/049. Every route still requires sign-in (Option A).
+- Q: Is Google sign-in still enabled in the live project's Auth settings with a working OAuth client? → A: Not yet confirmed; the founder checks Authentication → Sign In / Providers → Google. Captured as FR-016 (Option C).
+- Analysis (2026-11-06): `accept_pending_invites` trusted any `auth.users.email`, confirmed or not; with email sign-up open and confirmations off, anyone could claim an invited seat. Resolved by FR-015 (confirmed emails only) and FR-016 (email provider checked in production).
+- Founder decision (2026-11-06, after US1–US4 were built): sign-in must not depend on an invite. Every new user gets their own studio on the Free plan; invites stay optional (an invited person joins that studio instead). Free studios get 0 AI credits by default and only the founder can grant credits per studio. → User Story 5, FR-017–FR-021.
+- Same decision, split out to later specs: email sign-in by magic link or 6-digit code (spec 054); Free plan = design only, Pro modules locked (spec 055); studios with no member sign-in for 90 days are deleted after a day-76 warning email, accounts kept, Pro and in-house exempt (spec 056). 042 only records each studio's last-active time for 056.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 — Sign in with Google (Priority: P1)
@@ -27,7 +39,7 @@ As a designer, I want to sign in with my Google account and stay signed in, so t
 **Acceptance Scenarios**:
 
 1. **Given** I am signed out, **When** I open any route, **Then** I see the sign-in screen with a single "Continue with Google" action.
-2. **Given** I followed a deep link (e.g. `#/s/acme/projects`) while signed out, **When** sign-in completes, **Then** I land on that exact route.
+2. **Given** I followed a deep link (e.g. `#/s/alpha/settings/members`) while signed out, **When** sign-in completes, **Then** I land on that exact route.
 3. **Given** I am signed in, **When** I reload or reopen the browser, **Then** I am still signed in.
 4. **Given** I am signed in, **When** I choose Sign out in the account menu, **Then** the session is cleared, all cached studio data is removed from memory and storage, and I see the sign-in screen.
 5. **Given** `VITE_SUPABASE_URL` or the publishable/anon key is missing at build, **When** the app loads, **Then** it shows a configuration error screen naming the missing variable, never a blank page.
@@ -45,7 +57,7 @@ As a designer who belongs to one or more studios, I want to see the studio I am 
 1. **Given** I belong to exactly one studio, **When** I sign in, **Then** I land on `/s/<slug>/projects` for that studio.
 2. **Given** I belong to two studios, **When** I use the studio switcher, **Then** the URL changes to the other slug and the shell shows that studio's name.
 3. **Given** I edit the URL to a slug I am not a member of, **When** the route loads, **Then** I see "You don't have access to this studio" with a link back to my studios; no data from that studio is fetched or shown.
-4. **Given** I belong to no studio and have no pending invite, **When** I sign in, **Then** I see an explanation that a studio owner must invite me, with my signed-in email shown.
+4. **Given** I signed in but my email is not confirmed (so no studio could be created), **When** sign-in completes, **Then** I see that I am not in a studio yet and how to fix it, with my signed-in email shown. (A confirmed new user gets their own studio: User Story 5.)
 
 ---
 
@@ -75,7 +87,25 @@ As the founder, I want every hardcoded user and studio id and every dev-only ses
 
 1. **Given** the repo after this spec, **When** I search `src` for `00000000-0000-4000-8000`, **Then** matches appear only under test fixtures.
 2. **Given** the repo, **When** I list `src/server/auth/`, **Then** `actorResolver.ts`, `jwtVerifier.ts` and their tests no longer exist.
-3. **Given** the editor UI, **When** I look for "connect session", **Then** it does not exist.
+3. **Given** the editor UI, **When** I look for "Cloud Sync" or "connect session", **Then** neither exists.
+
+### User Story 5 — A new user gets their own Free studio (Priority: P1)
+
+As someone signing in for the first time without an invite, I want a studio of my own straight away, so that I can start designing without waiting for anyone.
+
+**Why this priority**: Sign-in must not depend on an invite (founder decision 2026-11-06).
+
+**Independent Test**: A confirmed user with no membership and no invite signs in and lands on their own studio's projects as owner, with a Free badge; signing in again creates no second studio.
+
+**Acceptance Scenarios**:
+
+1. **Given** a confirmed user with no membership and no pending invite, **When** they sign in, **Then** a studio named "<first name>'s studio" is created with them as owner and `plan = 'free'`, and they land on its projects page.
+2. **Given** that user signs in again, or opens two tabs at once, **When** sign-in completes, **Then** they still have exactly one studio.
+3. **Given** a user with a pending invite, **When** they sign in, **Then** they join the inviting studio and no personal studio is created.
+4. **Given** a Free studio, **When** its AI credits are checked, **Then** the balance is 0, and its owner cannot raise their allowance or add credits.
+5. **Given** the founder runs the operator function in the Supabase SQL editor for a studio, **When** it completes, **Then** that studio's monthly allowance (and any one-off top-up) applies.
+6. **Given** any member signs in, **When** sign-in completes, **Then** their studios' last-active time is updated.
+7. **Given** an owner or admin opens Settings, **When** they rename the studio, **Then** the new name shows in the bar.
 
 ### Edge Cases
 
@@ -83,7 +113,7 @@ As the founder, I want every hardcoded user and studio id and every dev-only ses
 - The user cancels Google consent: return to sign-in with a neutral message, no error stack.
 - A user is removed from the current studio while signed in: the next data request fails under RLS; the shell redirects to the studio list with a message.
 - The owner tries to demote the last owner: blocked by the database (if no live constraint exists, add one in a migration with a pgTAP test).
-- Invite to an email that already belongs to a member: shown as "already a member", no duplicate row.
+- Invite to an email that already belongs to a member of that studio: refused when created with the message "already a member"; no invite row is written. Roles change only in Settings → Members.
 - Session token expires mid-session: `supabase-js` refreshes it; if refresh fails, show sign-in and keep the deep link.
 
 ## Requirements *(mandatory)*
@@ -92,18 +122,26 @@ As the founder, I want every hardcoded user and studio id and every dev-only ses
 
 - **FR-001**: The app MUST use `@supabase/supabase-js` through a single module `src/infrastructure/supabase/client.ts`, built from `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (renamed to the publishable key in 046), with `flowType: 'pkce'`.
 - **FR-002**: Missing configuration MUST render a configuration error screen.
-- **FR-003**: The sign-in screen MUST offer Google only in production; email-password MUST be enabled only in local `supabase/config.toml` for tests.
+- **FR-003**: The sign-in screen MUST offer Google only in production for this spec (email magic-link sign-in arrives in spec 054); email-password MUST be enabled only in local `supabase/config.toml` and test builds.
 - **FR-004**: Session state MUST live in one small React context fed by `onAuthStateChange`; no new state library.
 - **FR-005**: First sign-in MUST rely on `private.handle_new_user` and then call `accept_pending_invites`.
 - **FR-006**: Every route except sign-in MUST require a session; the requested route MUST survive the sign-in round trip.
-- **FR-007**: The current studio MUST be derived only from the user's `org_members` rows and carried in the URL (`/s/<slug>/…`). No default organisation or user id anywhere outside test fixtures.
+- **FR-007**: The current studio MUST be derived only from the user's `org_members` rows and carried in the URL of studio pages: `#/s/<slug>/projects` and `#/s/<slug>/settings/…`. Editor routes (`#/project/<id>`, `#/home/<id>`, `#/home/<id>/room/<roomId>`) keep their current form until projects belong to a studio (043) and routing moves to a library (049); they still require a session. `#/` redirects a signed-in user to their studio's projects (or the studio list if they have several and none was last used). No default organisation or user id anywhere outside test fixtures.
 - **FR-008**: The shell MUST show studio name and switcher, navigation to Projects and Settings, and an account menu (name, email, sign out).
 - **FR-009**: Settings → Members MUST list members and invites and, for owner and admin only, allow inviting by email and changing roles via `org_invites` and `org_members` under existing RLS.
 - **FR-010**: The UI MUST read `org_role` only to hide or disable controls, via a role-to-visible-actions map; it MUST NOT authorize.
-- **FR-011**: Sign-out MUST clear the session and all cached studio data.
-- **FR-012**: Delete: `src/server/auth/actorResolver.ts`, `src/server/auth/jwtVerifier.ts` and tests; dev "connect session"; hardcoded ids in `CloudProjectModal.tsx` and `cloudProjectStore.ts`; the client-side evaluator as a gate.
+- **FR-011**: Sign-out MUST clear the session and all cached studio data. Browser-local projects in IndexedDB are not studio data until specs 043/044 and stay on the device.
+- **FR-012**: Delete: `src/server/auth/actorResolver.ts`, `src/server/auth/jwtVerifier.ts`, `src/server/authorizationMiddleware.ts`, `src/server/policyMiddleware.ts` and their tests (no API handler imports them); the "Cloud Sync" button in `TopBar.tsx`, `src/features/projects/CloudProjectModal.tsx` and its test (which removes the dev "connect session" and its hard-coded ids); hard-coded ids in `cloudProjectStore.test.ts`; and the client-side evaluator as a gate (`authorizationStore`, `useAuthorize`, `useSubscriptionPolicy`, which no feature imports). `cloudProjectStore`, `persistenceFactory` and the hand-built Supabase client stay until spec 043, because start-up still uses them.
 - **FR-013**: Supabase Auth redirect URLs MUST include localhost, a wildcard for Vercel previews, and production; documented in `docs/`.
 - **FR-014**: Any new table, column or policy MUST arrive as a new migration with pgTAP tests in this PR.
+- **FR-015**: Inviting an email that already belongs to a member of the studio MUST be refused by the database (not only the UI). `accept_pending_invites` MUST NOT change an existing member's role: on conflict it leaves the membership as it is and still marks the invite accepted. Both changes arrive as a new migration with pgTAP tests, including "an admin cannot demote the owner through an invite". `accept_pending_invites` MUST also act only for a user whose email is confirmed (`auth.users.email_confirmed_at is not null`), so an unconfirmed sign-up with an invited address gains nothing.
+- **FR-016**: Before the gate, the founder MUST confirm in the live project that the Google provider is enabled with a working OAuth client (Authentication → Sign In / Providers → Google). If it is not, the founder creates a Google Cloud OAuth client (web application; authorised redirect URI `https://pkbctmaiawztzmwqkpgw.supabase.co/auth/v1/callback`), enters its client ID and secret in Supabase, and enables the provider. No agent handles the client secret; it never enters the repository or Vercel. The founder MUST also confirm that the **Email** provider is disabled in production (or, if kept, that email confirmation is required), so FR-003's "Google only in production" is true in the live settings, not only in the UI.
+- **FR-017**: A database function `public.start_session()` (security definer, `search_path = ''`, executable by `authenticated` only) MUST, for a caller with a confirmed email: accept pending invites (FR-015 rules); if the caller then has no membership, create one studio (`plan = 'free'`, name "<first name>'s studio" from the profile, else the email's local part; slug derived from the name plus a short random suffix, matching the slug check) with the caller as owner; and update `last_active_at` of every studio the caller belongs to. It MUST be safe to call concurrently (one studio per user). The app calls it after every sign-in instead of `accept_pending_invites`.
+- **FR-018**: `organizations` MUST gain `last_active_at timestamptz not null default now()`; spec 056 uses it for the 90-day rule.
+- **FR-019**: AI credits: `ai_settings.monthly_credits` MUST default to 0, and `private.ensure_monthly_grant` MUST fall back to 0 for `plan = 'free'` studios (other plans keep the current 500 fallback, so the in-house studio is unchanged).
+- **FR-020**: Studio owners and admins MUST NOT change AI credits: remove the client insert/update policies on `ai_settings` and the top-up insert policy on `ai_credit_ledger`. Members may still read their studio's allowance and balance.
+- **FR-021**: An operator-only function `private.set_ai_credits(p_studio_slug, p_monthly_credits, p_top_up default 0, p_note default '')` MUST set a studio's monthly allowance and optionally add a one-off top-up. `EXECUTE` revoked from `public`, `anon`, `authenticated`; the founder runs it from the Supabase SQL editor. Documented in `docs/operations/ai-credits.md`.
+- **FR-022**: The shell MUST show the studio's plan (a "Free" badge for Free studios), and Settings MUST let owners and admins rename the studio.
 
 ### Key Entities
 
@@ -115,7 +153,7 @@ As the founder, I want every hardcoded user and studio id and every dev-only ses
 
 ## Success Criteria *(mandatory)*
 
-- **SC-001**: A new invited designer goes from invite email to their studio's project list in under 1 minute.
+- **SC-001**: A new invited designer goes from being invited to their studio's project list in under 1 minute (observed at the founder gate, time recorded in the PR).
 - **SC-002**: Zero matches for the dev UUID prefix outside test fixtures.
 - **SC-003**: All Playwright scenarios in User Stories 1–3 pass against local Supabase.
 - **SC-004**: pgTAP invite and member policy tests pass.
@@ -145,10 +183,13 @@ On the Vercel preview, the founder signs in with Google, sees the studio, invite
 - **Dependencies on Other Modules**: none.
 
 ### 2. Subscription Entitlement Requirements
-Not applicable: foundation spec — identity is available to every studio regardless of plan.
+- **Plans**: new self-serve studios are `free`; the existing studio stays `inhouse`. Module gating by plan (Free = design only) is spec 055; 042 only records and shows the plan.
 
 ### 3. Usage and Commercial Limits
-Not applicable: foundation spec — seat limits arrive with billing.
+- **Applicable Quotas**: AI credits. Free studios: monthly allowance 0 by default; other plans keep the current 500 fallback.
+- **Usage Measurement**: unchanged (`ai_credit_ledger`); the debit path is spec 045.
+- **Behavior When Limits Are Reached**: AI actions are refused (enforced by 045).
+- **Overage or Upgrade Behavior**: only the founder grants credits, per studio, with `private.set_ai_credits` (FR-021); studios cannot change their own allowance or top up (FR-020).
 
 ### 4. RBAC Requirements
 - **Required Permissions**: invite and role change require `org_role` in (owner, admin), enforced by RLS on `org_invites` and `org_members`.
@@ -171,7 +212,7 @@ Not applicable: foundation spec.
 - **Audit**: role changes and invites recorded if the live audit table supports it; otherwise deferred to 043's audit port.
 
 ### 8. Acceptance Criteria and Security Tests
-- **RBAC Permission Tests**: owner and admin can insert invites and update roles; designer and viewer cannot (pgTAP).
+- **RBAC Permission Tests**: owner and admin can insert invites and update roles; designer and viewer cannot (pgTAP). An invite for an existing member is rejected, and accepting a stale invite never changes an existing member's role, so an admin cannot demote the owner through an invite (pgTAP, FR-015).
 - **Tenant Isolation Tests**: a studio A owner cannot list, invite into or change roles in studio B (pgTAP); URL slug of a foreign studio shows no data (Playwright).
 - **Anonymous Tests**: signed-out requests read nothing (pgTAP `anon`).
 - **Flow Tests**: Playwright scenarios in User Stories 1–3.
