@@ -1,10 +1,11 @@
 // Spec 042, User Story 1: sign in, keep the session, sign out. Every test starts signed out.
+// The password form is the local/CI test path (VITE_AUTH_PASSWORD_SIGN_IN); spec 054 covers email codes.
 import { expect, test, type Page } from '@playwright/test';
 
 test.use({ storageState: { cookies: [], origins: [] } });
 
 async function signIn(page: Page, email = 'designer.a@example.test') {
-  await page.getByLabel('Email').fill(email);
+  await page.getByLabel('Email', { exact: true }).fill(email);
   await page.getByLabel('Password').fill('password123');
   await page.getByRole('button', { name: 'Sign in with email' }).click();
 }
@@ -14,6 +15,7 @@ test('a signed-out visit to any route shows the sign-in screen', async ({ page }
     await page.goto(`/${hash}`);
     await expect(page.getByRole('heading', { name: 'Sign in to Interior Studio' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Continue with Google' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Email me a sign-in code' })).toBeVisible(); // spec 054
   }
 });
 
@@ -48,7 +50,7 @@ test('sign out from the account menu ends the session', async ({ page }) => {
 
 test('a wrong password says so and stays on the sign-in screen', async ({ page }) => {
   await page.goto('/');
-  await page.getByLabel('Email').fill('designer.a@example.test');
+  await page.getByLabel('Email', { exact: true }).fill('designer.a@example.test');
   await page.getByLabel('Password').fill('not-the-password');
   await page.getByRole('button', { name: 'Sign in with email' }).click();
   await expect(page.getByRole('alert')).toContainText(/invalid/i);

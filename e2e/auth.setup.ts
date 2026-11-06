@@ -4,7 +4,7 @@ import { expect, test as setup } from '@playwright/test';
 
 setup('sign in as designer.a', async ({ page }) => {
   await page.goto('/');
-  await page.getByLabel('Email').fill('designer.a@example.test');
+  await page.getByLabel('Email', { exact: true }).fill('designer.a@example.test');
   await page.getByLabel('Password').fill('password123');
   await page.getByRole('button', { name: 'Sign in with email' }).click();
   await expect(page).toHaveURL(/#\/s\/alpha\/projects$/, { timeout: 30_000 });

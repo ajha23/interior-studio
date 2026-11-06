@@ -88,20 +88,20 @@ description: "Task list for 054 — Email Sign-in (Magic Link and 6-Digit Code)"
 
 ### Tests for User Story 1
 
-- [ ] T013 [P] [US1] Write `src/features/auth/SignInScreen.test.tsx` cases:
+- [X] T013 [P] [US1] Write `src/features/auth/SignInScreen.test.tsx` cases: — **Done**: 5 new cases plus the updated password-form case; seen failing (5 failed).
   - shows "Continue with Google", the "Work email" field and "Email me a sign-in code" without the password flag;
   - the password form appears only with `VITE_AUTH_PASSWORD_SIGN_IN=true`;
   - an invalid address is refused before calling `sendEmailCode`;
   - a successful send switches to the code step and stores the address in `sessionStorage['interior-studio:email-pending']`;
   - a send error shows its `role=alert` message on the email step.
-- [ ] T014 [P] [US1] Write `src/features/auth/EmailCodeForm.test.tsx`:
+- [X] T014 [P] [US1] Write `src/features/auth/EmailCodeForm.test.tsx`: — **Done**: 8 cases; seen failing (import missing).
   - status "We sent a code to <address>. It works for 15 minutes.";
   - the field is labelled "6-digit code" with `inputmode=numeric`, `autocomplete=one-time-code` and `maxlength=6`;
   - pasting "123 456" submits "123456";
   - a wrong code shows "That code is not right or has expired." and keeps the field;
   - "Use a different email" returns to the email step and clears the pending address;
   - "Resend email" is disabled with a countdown "Resend in N s" for 60 s after a send (fake timers), then resends.
-- [ ] T015 [US1] Write `e2e/email-sign-in.spec.ts` tests (no `storageState`, unique address per test, `Date.now()` in the address):
+- [X] T015 [US1] Write `e2e/email-sign-in.spec.ts` tests (no `storageState`, unique address per test, `Date.now()` in the address): — **Done**: 3 tests; seen failing (`locator.fill` timeout on "Work email", 3 failed / setup passed). Added `createLocalInvite` to `e2e/support/localAdmin.ts` (local-only guard).
   - **"a new address signs in with the emailed code and gets its own Free studio"**: send → `latestEmail` → type the code → `#/s/<slug>/projects`, `studio-plan` is "Free";
   - **"an invited address joins the inviting studio by code"**: create an invite for a new address in Alpha via `localAdmin`, then sign in by code → lands in Alpha, no switcher;
   - **"a wrong code shows the error and the right one still works"**.
@@ -110,8 +110,8 @@ description: "Task list for 054 — Email Sign-in (Magic Link and 6-Digit Code)"
 
 ### Implementation for User Story 1
 
-- [ ] T016 [US1] Create `src/features/auth/EmailCodeForm.tsx` per the contract's code-step table, using the existing `Button`, `Input` and `Label` UI components. Errors use `role=alert`, the status uses `role=status`, and focus moves to the code field when the step opens. T014 passes.
-- [ ] T017 [US1] Rework `src/features/auth/SignInScreen.tsx`:
+- [X] T016 [US1] Create `src/features/auth/EmailCodeForm.tsx` per the contract's code-step table, using the existing `Button`, `Input` and `Label` UI components. Errors use `role=alert`, the status uses `role=status`, and focus moves to the code field when the step opens. T014 passes. — **Done**: `EmailCodeForm.test.tsx` → 8 passed. `src/components/ui/input.tsx` now types props as `ComponentProps<'input'>` so it accepts `ref` (React 19).
+- [X] T017 [US1] Rework `src/features/auth/SignInScreen.tsx`: — **Done**: `npx vitest run src/features/auth` → 51 passed; `npm run typecheck` exit 0; `npx eslint src e2e` exit 0; `npm test` → 157 files, 910 passed. The four e2e helpers that typed into the password form's "Email" now use `getByLabel('Email', { exact: true })`, since "Work email" also matches.
   - intro "Continue with Google, or get a sign-in code by email.";
   - Google first, then the email form;
   - steps `choose` → `code-sent` per data-model;
@@ -119,7 +119,7 @@ description: "Task list for 054 — Email Sign-in (Magic Link and 6-Digit Code)"
   - keep the password form behind the flag, labelled "Local test accounts only".
 
   T013 passes.
-- [ ] T018 [US1] Run `npx playwright test e2e/email-sign-in.spec.ts -g "code"` and `e2e/auth.spec.ts`. Update `e2e/auth.spec.ts` for the new copy and record the output. The US1 tests from T015 pass.
+- [X] T018 [US1] Run `npx playwright test e2e/email-sign-in.spec.ts -g "code"` and `e2e/auth.spec.ts`. Update `e2e/auth.spec.ts` for the new copy and record the output. The US1 tests from T015 pass. — **Done**: `npx playwright test e2e/email-sign-in.spec.ts e2e/auth.spec.ts` → exit 0, **9 passed** (setup + 3 code tests + 5 auth). "A wrong code … the right one still works" passing confirms a wrong guess does not use up the code. `auth.spec.ts` also asserts the email option on every signed-out route (re-run: passed).
 
 **Checkpoint**: code sign-in works end to end locally (quickstart step 5).
 

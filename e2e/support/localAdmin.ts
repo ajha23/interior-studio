@@ -28,3 +28,16 @@ export async function ensureLocalUser(email: string, password = 'password123'): 
   if (res.status === 422 && /already|exists|registered/i.test(body)) return;
   throw new Error(`Could not create ${email}: ${res.status} ${body}`);
 }
+
+/** Creates a pending invite in a seeded studio on the LOCAL stack (spec 054 e2e), as the studio's owner would. */
+export async function createLocalInvite(orgId: string, email: string, role: 'admin' | 'designer' | 'viewer', invitedBy: string): Promise<void> {
+  const host = new URL(URL_LOCAL).hostname;
+  if (host !== '127.0.0.1' && host !== 'localhost') throw new Error(`Refusing to create invites on a non-local project: ${URL_LOCAL}`);
+  const key = localServiceKey();
+  const res = await fetch(`${URL_LOCAL}/rest/v1/org_invites`, {
+    method: 'POST',
+    headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+    body: JSON.stringify({ org_id: orgId, email: email.toLowerCase(), role, invited_by: invitedBy }),
+  });
+  if (!res.ok) throw new Error(`Could not invite ${email}: ${res.status} ${await res.text()}`);
+}

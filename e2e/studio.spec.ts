@@ -8,7 +8,7 @@ const BETA_ID = 'bbbbbbbb-0000-4000-8000-000000000000';
 
 async function signInAs(page: Page, email: string, hash = '') {
   await page.goto(`/${hash}`);
-  await page.getByLabel('Email').fill(email);
+  await page.getByLabel('Email', { exact: true }).fill(email);
   await page.getByLabel('Password').fill('password123');
   await page.getByRole('button', { name: 'Sign in with email' }).click();
 }
