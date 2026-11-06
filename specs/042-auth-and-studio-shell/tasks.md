@@ -101,11 +101,11 @@ description: "Task list for 042 — Google Sign-in and Studio Shell"
 
 **Independent Test**: `grep -rn "00000000-0000-4000-8000" src` matches only test fixtures; the deleted files are gone; no "Cloud Sync" or "connect session" in the UI.
 
-- [ ] T025 [P] [US4] Delete `src/server/auth/actorResolver.ts`, `src/server/auth/actorResolver.test.ts`, `src/server/auth/jwtVerifier.ts`, `src/server/auth/jwtVerifier.test.ts`, `src/server/authorizationMiddleware.ts`, `src/server/authorizationMiddleware.test.ts`, `src/server/policyMiddleware.ts`, `src/server/policyMiddleware.test.ts`; first confirm with `grep` that no API handler (`src/server/*Handler.ts`, `src/server/vercel*.ts`, `src/server/node.ts`) imports them
-- [ ] T026 [P] [US4] Remove the Cloud Sync button and its state from `src/components/layout/TopBar.tsx`; delete `src/features/projects/CloudProjectModal.tsx` and `src/features/projects/CloudProjectModal.test.tsx`
-- [ ] T027 [P] [US4] Delete `src/state/authorizationStore.ts`, `src/state/authorizationStore.test.ts`, `src/features/shared/useAuthorize.ts`, `src/features/shared/useSubscriptionPolicy.ts` and their tests; keep `src/domain/platform/authorization/` (pure catalogue, research R7)
-- [ ] T028 [P] [US4] Replace hard-coded `00000000-0000-4000-8000-…` ids in `src/state/cloudProjectStore.test.ts` with ids from `crypto.randomUUID()` or a local fixture constant in `src/test/ids.ts`
-- [ ] T029 [US4] Run `grep -rn "00000000-0000-4000-8000" src` (matches only under `src/test/` or in `*.test.ts(x)` fixtures), `grep -rni "cloud sync\|connect session" src` (no matches), `npm run lint && npm run typecheck && npm test`; record the output
+- [X] T025 [P] [US4] Delete `src/server/auth/actorResolver.ts`, `src/server/auth/actorResolver.test.ts`, `src/server/auth/jwtVerifier.ts`, `src/server/auth/jwtVerifier.test.ts`, `src/server/authorizationMiddleware.ts`, `src/server/authorizationMiddleware.test.ts`, `src/server/policyMiddleware.ts`, `src/server/policyMiddleware.test.ts`; first confirm with `grep` that no API handler (`src/server/*Handler.ts`, `src/server/vercel*.ts`, `src/server/node.ts`) imports them
+- [X] T026 [P] [US4] Remove the Cloud Sync button and its state from `src/components/layout/TopBar.tsx`; delete `src/features/projects/CloudProjectModal.tsx` and `src/features/projects/CloudProjectModal.test.tsx`
+- [X] T027 [P] [US4] Delete `src/state/authorizationStore.ts`, `src/state/authorizationStore.test.ts`, `src/features/shared/useAuthorize.ts`, `src/features/shared/useSubscriptionPolicy.ts` and their tests; keep `src/domain/platform/authorization/` (pure catalogue, research R7)
+- [X] T028 [P] [US4] Replace hard-coded `00000000-0000-4000-8000-…` ids in `src/state/cloudProjectStore.test.ts` with ids from `crypto.randomUUID()` or a local fixture constant in `src/test/ids.ts`
+- [X] T029 [US4] Run `grep -rn "00000000-0000-4000-8000" src` (matches only under `src/test/` or in `*.test.ts(x)` fixtures), `grep -rni "cloud sync\|connect session" src` (no matches), `npm run lint && npm run typecheck && npm test`; record the output
 
 **Checkpoint**: SC-002 holds; nothing imports the deleted files.
 

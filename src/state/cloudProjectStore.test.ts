@@ -4,6 +4,7 @@ import { serializeHome, serializeProject, type Home } from '@/domain';
 import { setPersistenceAdapter, useCloudProjectStore } from './cloudProjectStore';
 import { useEditorStore } from './editorStore';
 import { InMemoryPersistenceAdapter } from '@/infrastructure/persistence/inMemoryPersistenceAdapter';
+import { OTHER_TEST_ORG_ID, TEST_ACTOR_ID, TEST_ORG_ID } from '@/test/ids';
 
 describe('useCloudProjectStore (Feature 034 State & Integration Tests)', () => {
   beforeEach(() => {
@@ -14,8 +15,8 @@ describe('useCloudProjectStore (Feature 034 State & Integration Tests)', () => {
     });
     useCloudProjectStore.setState({
       readinessState: 'ready',
-      currentOrgId: '00000000-0000-4000-8000-000000000001',
-      activeActorId: '00000000-0000-4000-8000-000000000002',
+      currentOrgId: TEST_ORG_ID,
+      activeActorId: TEST_ACTOR_ID,
       currentProject: null,
       projects: [],
       spaces: [],
@@ -191,7 +192,7 @@ describe('useCloudProjectStore (Feature 034 State & Integration Tests)', () => {
   });
 
   it('rejects mutating operations when active organization is missing (currentOrgId is null)', async () => {
-    useCloudProjectStore.getState().setActiveActor('00000000-0000-4000-8000-000000000002');
+    useCloudProjectStore.getState().setActiveActor(TEST_ACTOR_ID);
     useCloudProjectStore.getState().setOrgId(null);
     const store = useCloudProjectStore.getState();
 
@@ -217,10 +218,10 @@ describe('useCloudProjectStore (Feature 034 State & Integration Tests)', () => {
     expect(useCloudProjectStore.getState().spaces).toHaveLength(1);
 
     // Switch to Org B
-    store.setOrgId('00000000-0000-4000-8000-000000000099');
+    store.setOrgId(OTHER_TEST_ORG_ID);
 
     // Remote caches must be purged to prevent cross-tenant leakage
-    expect(useCloudProjectStore.getState().currentOrgId).toBe('00000000-0000-4000-8000-000000000099');
+    expect(useCloudProjectStore.getState().currentOrgId).toBe(OTHER_TEST_ORG_ID);
     expect(useCloudProjectStore.getState().projects).toEqual([]);
     expect(useCloudProjectStore.getState().currentProject).toBeNull();
     expect(useCloudProjectStore.getState().spaces).toEqual([]);
