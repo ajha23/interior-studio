@@ -7,11 +7,23 @@ async function newStraightKitchen(page: Page) {
   await expect(page.locator('canvas[data-rendered]')).toBeVisible({ timeout: 30_000 });
 }
 
+/**
+ * Presses `f` to focus the selection and waits for that camera flight to finish: the canvas counts
+ * finished flights in `data-camera-settled` (see CameraRig), so this does not depend on frame rate.
+ */
+async function focusAndSettle(page: Page) {
+  const canvas = page.locator('canvas').first();
+  const before = Number((await canvas.getAttribute('data-camera-settled')) ?? '0');
+  await page.keyboard.press('f');
+  await expect
+    .poll(async () => Number((await canvas.getAttribute('data-camera-settled')) ?? '0'), { timeout: 15_000 })
+    .toBeGreaterThan(before);
+}
+
 /** Selects the drawer unit (the last floor unit on the back wall, 300 mm from the wall end) and focuses it. */
 async function focusDrawer(page: Page) {
   await page.locator('[data-testid^=outline-]', { hasText: 'Drawer unit 600' }).click();
-  await page.keyboard.press('f');
-  await page.waitForTimeout(900);
+  await focusAndSettle(page);
   const box = (await page.locator('canvas').first().boundingBox())!;
   return { cx: box.x + box.width / 2, cy: box.y + box.height / 2 };
 }
@@ -44,10 +56,21 @@ test('drag a unit along its wall in 3D with a live readout; undo restores it', a
 test('the width grip resizes in 10 mm steps within the range, snapping to standard sizes nearby', async ({ page }) => {
   await newStraightKitchen(page);
   await focusDrawer(page);
+  // The height label is centred 70 mm right of the width grip, so find the grip the way a user does:
+  // move left from the label's centre until the cursor becomes the grip's resize cursor. Using the
+  // label's left edge instead depends on how wide its text renders, which differs between platforms.
   const label = (await page.getByTestId('dim-height').boundingBox())!;
-  const gx = label.x - 6;
   const gy = label.y + label.height / 2;
-  await page.mouse.move(gx, gy);
+  let gx = Number.NaN;
+  for (let dx = 0; dx <= 160; dx += 3) {
+    await page.mouse.move(label.x + label.width / 2 - dx, gy);
+    // A string expression: the e2e TypeScript config has no DOM types.
+    if ((await page.evaluate<string>('document.body.style.cursor')) === 'ew-resize') {
+      gx = label.x + label.width / 2 - dx;
+      break;
+    }
+  }
+  expect(gx, 'the width grip is under the pointer somewhere left of its height label').not.toBeNaN();
   await page.mouse.down();
   await page.mouse.move(gx + 30, gy, { steps: 4 });
   await page.mouse.move(gx + 60, gy, { steps: 4 });

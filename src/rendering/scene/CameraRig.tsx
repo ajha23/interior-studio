@@ -46,6 +46,9 @@ type WalkProps = Omit<Parameters<typeof WalkControls>[0], 'project'>;
 function OrbitRig({ project, request, nonce, projection }: { project: KitchenProject; request: CameraRequest; nonce: number; projection: Projection }) {
   const get = useThree((s) => s.get);
   const flight = useRef<Flight | null>(null);
+  // Frames left before a finished flight counts as settled, and how many flights have settled.
+  const settling = useRef(0);
+  const settled = useRef(0);
 
   useEffect(() => {
     const { camera, controls, size } = get();
@@ -58,7 +61,10 @@ function OrbitRig({ project, request, nonce, projection }: { project: KitchenPro
     const ortho = camera instanceof OrthoCam;
     const toZoom = ortho ? (Math.min(size.width, size.height) / (2 * g.radius)) * 0.9 : 1;
     flight.current = { t: 0, fromPos: camera.position.clone(), toPos, fromTarget: c.target.clone(), toTarget: new Vector3(...g.target), fromZoom: (camera as OrthoCam).zoom ?? 1, toZoom };
-    const cancel = () => (flight.current = null);
+    const cancel = () => {
+      if (flight.current) settling.current = 2;
+      flight.current = null;
+    };
     c.addEventListener('start', cancel);
     return () => c.removeEventListener('start', cancel);
     // Fly only on an explicit request (nonce) or a projection switch, not on every edit.
@@ -67,7 +73,15 @@ function OrbitRig({ project, request, nonce, projection }: { project: KitchenPro
 
   useFrame((_, dt) => {
     const f = flight.current;
-    if (!f) return;
+    if (!f) {
+      // Two frames after a flight ends the camera and the labels projected from it have caught up.
+      // `data-camera-settled` counts finished flights so tests can wait for one instead of guessing.
+      if (settling.current > 0 && --settling.current === 0) {
+        settled.current += 1;
+        get().gl.domElement.setAttribute('data-camera-settled', String(settled.current));
+      }
+      return;
+    }
     const { camera, controls } = get();
     const c = controls as unknown as Controls | null;
     if (!c) return;
@@ -80,7 +94,10 @@ function OrbitRig({ project, request, nonce, projection }: { project: KitchenPro
       camera.updateProjectionMatrix();
     }
     c.update();
-    if (f.t >= 1) flight.current = null;
+    if (f.t >= 1) {
+      flight.current = null;
+      settling.current = 2;
+    }
   });
 
   return (

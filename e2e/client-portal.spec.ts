@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('client presentation portal: locked client mode, option delta, and digital quote sign-off', async ({ page }) => {
+test('client presentation portal: locked client mode, option delta, and digital quote sign-off', async ({ page }, testInfo) => {
   await page.goto('/');
   await page.getByLabel('Project name').fill('Luxury Villa Kitchen');
   await page.getByRole('button', { name: 'Create project' }).click();
@@ -30,9 +30,7 @@ test('client presentation portal: locked client mode, option delta, and digital 
   await page.getByTestId('consent-checkbox').check();
 
   // Capture screenshot before sign-off
-  await page.screenshot({
-    path: '/Users/akhil/.gemini/antigravity/brain/bcfaf49e-bdd9-4243-a6d9-ec40897e547e/06_client_presentation_signoff.png',
-  });
+  await page.screenshot({ path: testInfo.outputPath('06_client_presentation_signoff.png') });
 
   // Submit Sign-Off
   await page.getByTestId('accept-quote-button').click();

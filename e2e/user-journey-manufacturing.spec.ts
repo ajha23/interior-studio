@@ -1,10 +1,7 @@
 import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 
-const ARTIFACT_DIR = '/Users/akhil/.gemini/antigravity/brain/bcfaf49e-bdd9-4243-a6d9-ec40897e547e';
-
-test('full user interaction journey: 3D design -> deliverables -> quotation & GST -> OptiCut cut-list', async ({ page }) => {
+test('full user interaction journey: 3D design -> deliverables -> quotation & GST -> OptiCut cut-list', async ({ page }, testInfo) => {
   // 1. Visit App & Create Project
   await page.goto('/');
   await page.getByLabel('Project name').fill('Dr. Rahul Sharma Residence');
@@ -15,7 +12,7 @@ test('full user interaction journey: 3D design -> deliverables -> quotation & GS
   await page.waitForTimeout(1000);
 
   // Take screenshot of initial 3D kitchen layout
-  await page.screenshot({ path: join(ARTIFACT_DIR, '01_kitchen_3d_design.png') });
+  await page.screenshot({ path: testInfo.outputPath('01_kitchen_3d_design.png') });
 
   // 2. Select a base cabinet in 3D
   await page.locator('[data-testid^=outline-]').first().click();
@@ -39,7 +36,7 @@ test('full user interaction journey: 3D design -> deliverables -> quotation & GS
   await expect(page.getByText(/State GST \(SGST 9%\)/i)).toBeVisible();
 
   // Capture screenshot of Intra-State Quotation
-  await page.screenshot({ path: join(ARTIFACT_DIR, '02_quotation_intra_state.png') });
+  await page.screenshot({ path: testInfo.outputPath('02_quotation_intra_state.png') });
 
   // 5. Test Interactive Mode Switch: Change to Inter-State (IGST 18%)
   const taxModeSelect = page.getByTestId('tax-mode-select');
@@ -48,7 +45,7 @@ test('full user interaction journey: 3D design -> deliverables -> quotation & GS
   await expect(page.getByText(/Central GST \(CGST 9%\)/i)).not.toBeVisible();
 
   // Capture screenshot of Inter-State Quotation
-  await page.screenshot({ path: join(ARTIFACT_DIR, '03_quotation_inter_state.png') });
+  await page.screenshot({ path: testInfo.outputPath('03_quotation_inter_state.png') });
 
   // 6. Test User Download of Quotation CSV
   const [quoteDownload] = await Promise.all([
@@ -80,7 +77,7 @@ test('full user interaction journey: 3D design -> deliverables -> quotation & GS
   await page.waitForTimeout(500);
 
   // Capture screenshot of Floor Plan Technical Sheet
-  await page.screenshot({ path: join(ARTIFACT_DIR, '04_floor_plan_sheet.png') });
+  await page.screenshot({ path: testInfo.outputPath('04_floor_plan_sheet.png') });
 
   // 9. Navigate to Technical Drawings (Back Wall Elevation)
   await nav.getByRole('button', { name: /Back wall elevation/ }).click();
@@ -88,5 +85,5 @@ test('full user interaction journey: 3D design -> deliverables -> quotation & GS
   await page.waitForTimeout(500);
 
   // Capture screenshot of Wall Elevation Technical Sheet
-  await page.screenshot({ path: join(ARTIFACT_DIR, '05_wall_elevation_sheet.png') });
+  await page.screenshot({ path: testInfo.outputPath('05_wall_elevation_sheet.png') });
 });
