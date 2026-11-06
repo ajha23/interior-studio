@@ -33,7 +33,7 @@ description: "Task list for 054 — Email Sign-in (Magic Link and 6-Digit Code)"
 - [ ] T003 Update `supabase/config.toml`:
   - `[auth.email]`: `enable_confirmations = true`, `max_frequency = "60s"`, `otp_expiry = 900`, `otp_length = 6`;
   - add `[auth.email.template.magic_link]` and `[auth.email.template.confirmation]`, each with subject `"Your Interior Studio sign-in code: {{ .Token }}"` and `content_path` pointing at the T002 files;
-  - `[auth.rate_limit]` `email_sent = 10`;
+  - `[auth.rate_limit]` `email_sent = 1000`, with a comment: local only so repeated e2e runs never hit it; production is 10 an hour (T027, `docs/auth.md`);
   - `[auth]` `additional_redirect_urls` gains `"http://localhost:5173/**"` and `"http://localhost:5174/**"`.
 
   Then `npm run db:stop && npm run db:start && npm run db:reset`, and confirm the stack starts.
@@ -204,7 +204,7 @@ description: "Task list for 054 — Email Sign-in (Magic Link and 6-Digit Code)"
   - errors use `role=alert` and statuses use `role=status`;
   - focus moves to the code field and to the "Sign in" button on the link page;
   - keyboard only: Tab, Enter.
-- [ ] T033 Update `specs/FOUNDATION-PLAN.md`: 054 in review, then done after merge.
+- [ ] T033 Update `specs/FOUNDATION-PLAN.md` with 054 **in review** (PR number), as part of T035's push. "Done" is set by the next spec's branch after the merge, as in 042.
 - [ ] T034 Run the five-stage gate plus pgTAP and record the output: `npm run lint && npm run typecheck && npm test && npm run build && npm run e2e`, and `npm run db:reset && npm run db:test` (expect 452/452, unchanged).
 - [ ] T035 Push the branch and open a draft PR. Record the links for green `check`, `db` and `e2e` jobs.
 - [ ] T036 Check the preview with a browser probe: the sign-in screen shows Google, the "Work email" field and "Email me a sign-in code"; **no password field** (SC-005, FR-012); no config error, no page errors.
@@ -215,7 +215,9 @@ description: "Task list for 054 — Email Sign-in (Magic Link and 6-Digit Code)"
   4. land in the address's own Free studio.
 
   Record the preview URL, the sender shown and the time from send to the project list (SC-001 < 2 min).
-- [ ] T038 The agent verifies the gate in production read-only: the new user exists with `email_confirmed_at` set and provider `email`, and exactly one Free studio with that user as owner. Then complete the PR description (CI links, preview URL, gate evidence, the founder settings applied, no secrets) and mark it ready. The founder merges.
+- [ ] T038 The agent verifies the gate in production read-only:
+  - the new user exists with `email_confirmed_at` set and provider `email`, and exactly one Free studio with that user as owner;
+  - **FR-008**: the founder also signs in **by email** with the address of their Google account. That user id now has both `google` and `email` identities, is still in Interior Studio, and has no new studio. Then complete the PR description (CI links, preview URL, gate evidence, the founder settings applied, no secrets) and mark it ready. The founder merges.
 
 ---
 
@@ -229,6 +231,11 @@ description: "Task list for 054 — Email Sign-in (Magic Link and 6-Digit Code)"
 ### Within stories
 
 Tests first and seen failing (T013–T015 before T016–T017; T019–T021 before T022–T023; T030 before T031).
+
+### Accepted test gaps (analysis 2026-11-06)
+
+- The project-wide hourly-cap message (US4 scenario 2) is unit-tested only (T005). Hitting the real cap locally would block the other e2e tests.
+- The 15-minute expiry (FR-005) is set by configuration (T003, T027) and not waited out in a test. Single use and supersession are tested (T004, T021).
 
 ## Parallel Examples
 
