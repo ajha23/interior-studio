@@ -133,14 +133,14 @@ description: "Task list for 054 — Email Sign-in (Magic Link and 6-Digit Code)"
 
 ### Tests for User Story 2
 
-- [ ] T019 [P] [US2] Write `src/features/auth/EmailLinkConfirm.test.tsx`:
+- [X] T019 [P] [US2] Write `src/features/auth/EmailLinkConfirm.test.tsx`: — **Done**: 6 cases + 1 for `readEmailLinkToken`; seen failing (import missing).
   - renders "Sign in to Interior Studio" and one "Sign in" button, and does **not** call `confirmEmailLink` on render;
   - the click calls `confirmEmailLink(tokenHash)`; on success it calls `history.replaceState` to `/` plus the email return-to hint or `#/`;
   - on error it shows "This sign-in link has expired." and a "Back to sign-in" link to `/`;
   - when already signed in it cleans the URL and goes to `#/` without a click;
   - missing `token_hash` shows the expired state.
-- [ ] T020 [P] [US2] Write tests in `src/app/App.test.tsx`: a `location.search` containing `token_hash` renders `EmailLinkConfirm` at any path (`/auth/confirm`, `/`) before the sign-in gate; without it, 042 routing is unchanged.
-- [ ] T021 [US2] Add these tests to `e2e/email-sign-in.spec.ts`:
+- [X] T020 [P] [US2] Write tests in `src/app/App.test.tsx`: a `location.search` containing `token_hash` renders `EmailLinkConfirm` at any path (`/auth/confirm`, `/`) before the sign-in gate; without it, 042 routing is unchanged. — **Done, moved**: `App.tsx` has no unit test file and imports the whole editor, so the routing check lives in `EmailLinkGate` (`src/features/auth/EmailLinkConfirm.tsx`), tested in `EmailLinkConfirm.test.tsx` (2 cases: token → link page, then the app after sign-in; no token → app unchanged). `App.tsx` only wraps `SessionGate` in it.
+- [X] T021 [US2] Add these tests to `e2e/email-sign-in.spec.ts`: — **Done**: 4 tests; seen failing (4 failed / setup passed). The "same browser" test uses a fresh address invited to Alpha (not seeded `designer.a`) so re-runs never hit the 60 s interval.
   - **"the link signs in on another device after one click"**: send in context A, open the link from `latestEmail` in a **new browser context** B, assert no session before the click, click "Sign in", land in the studio in B;
   - **"opening the link without clicking does not use it up"**: `page.request.get(link)` first (a scanner), then open and click → signs in;
   - **"a used link shows expired"**: sign in by code, then open the same email's link → "This sign-in link has expired.";
@@ -150,9 +150,9 @@ description: "Task list for 054 — Email Sign-in (Magic Link and 6-Digit Code)"
 
 ### Implementation for User Story 2
 
-- [ ] T022 [US2] Create `src/features/auth/EmailLinkConfirm.tsx` per the contract's link-page section and the data-model state machine (`ready → verifying → done | expired`; `already signed in`). It reads `token_hash` with `new URLSearchParams(location.search)`; no other parsing. T019 passes.
-- [ ] T023 [US2] Wire it into `src/app/App.tsx`: inside `SessionProvider`, if `location.search` has `token_hash`, render `EmailLinkConfirm` instead of `SessionGate`. T020 passes, and the existing App tests pass.
-- [ ] T024 [US2] Run `npx playwright test e2e/email-sign-in.spec.ts` and record the output; all US1 and US2 tests pass.
+- [X] T022 [US2] Create `src/features/auth/EmailLinkConfirm.tsx` per the contract's link-page section and the data-model state machine (`ready → verifying → done | expired`; `already signed in`). It reads `token_hash` with `new URLSearchParams(location.search)`; no other parsing. T019 passes. — **Done**: `EmailLinkConfirm.test.tsx` → 9 passed. `src/components/ui/button.tsx` now types props as `ComponentProps<'button'>` so it accepts `ref` (focus on "Sign in").
+- [X] T023 [US2] Wire it into `src/app/App.tsx`: inside `SessionProvider`, if `location.search` has `token_hash`, render `EmailLinkConfirm` instead of `SessionGate`. T020 passes, and the existing App tests pass. — **Done**: `npx vitest run src/features/auth` → 60 passed; `npm run typecheck` exit 0; `npx eslint src e2e` exit 0; `npm test` → 158 files, 919 passed.
+- [X] T024 [US2] Run `npx playwright test e2e/email-sign-in.spec.ts` and record the output; all US1 and US2 tests pass. — **Done**: `npx playwright test e2e/email-sign-in.spec.ts` → exit 0, **8 passed** (setup + 3 code + 4 link): another device after one click (token gone from the address bar), a scanner GET and a scanner that renders the page do not use the link, a used link shows expired and "Back to sign-in" works, and the same browser restores `#/s/alpha/settings/members` while the waiting tab signs in too.
 
 **Checkpoint**: link sign-in works on a second browser context and survives a scanner GET.
 

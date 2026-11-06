@@ -55,3 +55,75 @@ test.describe('User Story 1: sign in with a code from my email', () => {
     await expect(page).toHaveURL(/#\/s\/[a-z0-9-]+\/projects$/);
   });
 });
+
+test.describe('User Story 2: sign in by clicking the link', () => {
+  test('the link signs in on another device after one click', async ({ page, browser }) => {
+    const address = fresh('link-other-device');
+    await requestEmail(page, address);
+    const { link } = await latestEmail(address);
+    expect(new URL(link).pathname).toBe('/auth/confirm');
+
+    const phone = await browser.newContext(); // no storage shared with `page`: another device
+    const other = await phone.newPage();
+    await other.goto(link);
+    await expect(other.getByRole('heading', { name: 'Sign in to Interior Studio' })).toBeVisible();
+    await expect(other.getByRole('button', { name: 'Account' })).toHaveCount(0);
+    await other.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await expect(other).toHaveURL(/\/#\/s\/[a-z0-9-]+\/projects$/);
+    await expect(other.getByTestId('studio-plan')).toHaveText('Free');
+    expect(new URL(other.url()).search).toBe('');
+    await phone.close();
+  });
+
+  test('opening the link without clicking does not use it up (mail scanners)', async ({ page, browser }) => {
+    const address = fresh('link-scanner');
+    await requestEmail(page, address);
+    const { link } = await latestEmail(address);
+
+    // A scanner fetches the page and may even run its scripts, but never clicks.
+    expect((await page.request.get(link)).ok()).toBe(true);
+    const scannerContext = await browser.newContext();
+    const scanner = await scannerContext.newPage();
+    await scanner.goto(link);
+    await expect(scanner.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible();
+    await scannerContext.close();
+
+    const person = await browser.newContext();
+    const tab = await person.newPage();
+    await tab.goto(link);
+    await tab.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await expect(tab).toHaveURL(/#\/s\/[a-z0-9-]+\/projects$/);
+    await person.close();
+  });
+
+  test('a link whose code was already used shows expired', async ({ page, browser }) => {
+    const address = fresh('link-used');
+    await requestEmail(page, address);
+    const { code, link } = await latestEmail(address);
+    await enterCode(page, code);
+    await expect(page).toHaveURL(/#\/s\/[a-z0-9-]+\/projects$/);
+
+    const other = await browser.newContext();
+    const tab = await other.newPage();
+    await tab.goto(link);
+    await tab.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await expect(tab.getByRole('alert')).toHaveText('This sign-in link has expired.');
+    await tab.getByRole('link', { name: 'Back to sign-in' }).click();
+    await expect(tab.getByRole('button', { name: 'Email me a sign-in code' })).toBeVisible();
+    await other.close();
+  });
+
+  test('the link in the same browser restores the page asked for', async ({ page, context }) => {
+    // A fresh address invited to Alpha, so the deep link is a page it can open after joining.
+    const address = fresh('link-return-to');
+    await createLocalInvite(ALPHA_ID, address, 'designer', ALPHA_OWNER);
+    await requestEmail(page, address, '#/s/alpha/settings/members');
+    const { link } = await latestEmail(address);
+    const tab = await context.newPage(); // the email client opens a new tab
+    await tab.goto(link);
+    await tab.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await expect(tab).toHaveURL(/\/#\/s\/alpha\/settings\/members$/);
+    // The first tab, waiting on the code step, is signed in too.
+    await expect(page.getByRole('button', { name: 'Account' })).toBeVisible();
+  });
+});
