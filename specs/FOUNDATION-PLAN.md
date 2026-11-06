@@ -27,3 +27,7 @@ Each phase of the review's refactor plan has a detailed `spec.md` below. Run eac
 Phase 1 is done only when the 041–044 gates pass on the **production** URL. The feature freeze lifts when 048 merges.
 
 **Freeze exception (2026-11-06, founder):** specs 054–056 are product features but run right after 042 and before 043. With open sign-up (every login gets a Free studio), Free/Pro limits and studio retention protect cost and security, so they cannot wait for the 048 freeze to lift.
+
+## Known issues (tracked, not yet specified)
+
+- **Flaky e2e: `e2e/package.spec.ts` client-package 3D capture** (found 2026-11-06). "Standard 3D views are captured, go stale and are captured again" waits 20 s for "Captured 3 3D views", which a loaded runner sometimes misses. It failed on `main` CI at d1249cf and passed on PR #15's CI. Locally it fails 2/2 in a full run both before and after the catalog commit 83f4e4e, and passes 3/3 alone. Proposed fix (fits 048, the CI gate): wait on a "capture finished" signal instead of a fixed timeout, and run the 3D-capture specs in their own CI shard.
