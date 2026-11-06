@@ -13,8 +13,10 @@ import { OpenAIProvider } from '@/ai/providers/openai';
 import { RuleBasedProvider } from '@/ai/providers/rules';
 import { ProviderError, type AssistantProvider } from '@/ai/providers/types';
 import { AssistantRequestSchema, AssistantResponseSchema, LIMITS, type AssistantReply } from '@/ai/schema';
+import type { AiCallEnv } from './aiCall';
 
-export interface ServerEnv {
+/** Server settings. Includes the Supabase URL and publishable key the AI gate uses (spec 045). */
+export interface ServerEnv extends AiCallEnv {
   /** Default provider when a request names none: gemini (default), anthropic, openai or rules. */
   ASSISTANT_PROVIDER?: string;
   GEMINI_API_KEY?: string;

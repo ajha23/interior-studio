@@ -377,7 +377,7 @@ export const AssistantRequestSchema = z.object({
 });
 export type AssistantRequest = z.infer<typeof AssistantRequestSchema>;
 
-export const ProviderErrorCodeSchema = z.enum(['timeout', 'rate_limited', 'malformed_output', 'provider_error', 'unavailable', 'bad_request', 'refused']);
+export const ProviderErrorCodeSchema = z.enum(['timeout', 'rate_limited', 'malformed_output', 'provider_error', 'unavailable', 'bad_request', 'refused', 'unauthorized', 'forbidden', 'no_credits']);
 export type ProviderErrorCode = z.infer<typeof ProviderErrorCodeSchema>;
 
 export const AssistantReplySchema = z.discriminatedUnion('ok', [

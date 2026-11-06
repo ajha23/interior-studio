@@ -427,8 +427,11 @@ isOneToOne: false
 "ai_credit_balance":
 { Args: { "p_org": string }; Returns: number
                            },
-"ai_debit":
-{ Args: { "p_cost": number,"p_job": string,"p_note": string,"p_org": string,"p_user": string }; Returns: number
+"ai_finish_call":
+{ Args: { "p_error"?: string,"p_finish_token": string,"p_job": string,"p_ok": boolean,"p_provider"?: string }; Returns: string
+                           },
+"ai_start_call":
+{ Args: { "p_op": string,"p_org": string }; Returns: Json
                            },
 "save_project_version":
 { Args: { "p_kind"?: Database["public"]['Enums']["version_kind"],"p_message"?: string,"p_project": string,"p_scene": Json,"p_scene_hash": string,"p_schema_version": number }; Returns: {

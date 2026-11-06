@@ -2,6 +2,8 @@
 
 All public functions are `SECURITY INVOKER` wrappers. Execute is revoked from `public` and `anon` and granted to `authenticated` only. Each calls a `private` `SECURITY DEFINER` body with `search_path = ''` and schema-qualified names. The user is always `auth.uid()`; no argument names a user.
 
+Because an invoker wrapper runs with the caller's privileges, the **private bodies are also executable by `authenticated`** (and revoked from `public` and `anon`). They are not reachable through the API because the `private` schema is not exposed (the same way RLS policies already call `private.is_org_member`). `private.ai_costs` and `private.ai_call_tokens` have no grants for `anon` or `authenticated`; only the definer bodies read them.
+
 ## `public.ai_start_call(p_org uuid, p_op text) returns jsonb`
 
 Returns `{ "job_id": uuid, "finish_token": text, "balance": int, "cost": int }`. All steps run in one transaction:

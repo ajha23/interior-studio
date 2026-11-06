@@ -20,8 +20,8 @@ description: "Task list for 045 — Signed-in, Credit-Metered AI Endpoints"
 
 ## Phase 1: Setup
 
-- [ ] T001 Baseline from `/Users/akhil/WorkSpace/interior-studio-045`: `npm run db:reset && npm run db:test` (expect 452), `npm test` (expect 921), and record. Run the live check (research R12) again before the production push, not now.
-- [ ] T002 [P] Write `docs/operations/ai-endpoints.md`:
+- [X] T001 Baseline from `/Users/akhil/WorkSpace/interior-studio-045`: `npm run db:reset && npm run db:test` (expect 452), `npm test` (expect 921), and record. Run the live check (research R12) again before the production push, not now. — **Done 2026-11-06**: `db:reset` exit 0; `db:test` → `Files=7, Tests=452`, PASS; `npm test` → 158 files, **921** passed.
+- [X] T002 [P] Write `docs/operations/ai-endpoints.md`: — **Done**: `docs/operations/ai-endpoints.md` (checks, costs, operator SQL, the firewall steps, quick curl check).
   - the cost table (contracts/ai-endpoints.md);
   - the order of checks and status codes;
   - how the operator reads jobs and the ledger for a studio, in SQL;
@@ -34,7 +34,7 @@ description: "Task list for 045 — Signed-in, Credit-Metered AI Endpoints"
 
 ### Tests first
 
-- [ ] T003 Write `supabase/tests/07_ai_metering.test.sql`. Use the `t045` helper schema and the impersonation pattern from `03_roles.test.sql`/`06_self_serve.test.sql`, seeded Alpha/Beta users, and a Free test studio with 0 credits. Cover:
+- [X] T003 Write `supabase/tests/07_ai_metering.test.sql`. Use the `t045` helper schema and the impersonation pattern from `03_roles.test.sql`/`06_self_serve.test.sql`, seeded Alpha/Beta users, and a Free test studio with 0 credits. Cover: — **Done**: 43 assertions; seen failing before the migration (`function "public.ai_start_call(uuid, text)" does not exist`, 43/43 failed).
   - **grants:** `ai_start_call` and `ai_finish_call` are executable by `authenticated` only (not `anon`, not `public`); `ai_debit` no longer exists; `ai_credit_balance` and both private bodies have `search_path=""`; `private.ai_costs` and `private.ai_call_tokens` are not selectable by `authenticated`;
   - **roles:** anon → `PT401`; Beta's owner on Alpha → `PT403`; Alpha viewer → `PT403`; Alpha designer, admin and owner → ok;
   - **costs:** after `ai_start_call(alpha, 'assistant')`, the balance drops by exactly 1, with one `debit` row (`-1`, same `job_id`) and one `running` job of kind `command`; each op's cost matches the table (`render` 10, `live` 5, …); `assistant_rules` writes a job and no ledger row; an unknown op → `22023`;
@@ -44,14 +44,14 @@ description: "Task list for 045 — Signed-in, Credit-Metered AI Endpoints"
   - **isolation:** an Alpha member can't start or finish a job for Beta.
 
   Run `npm run db:test` and see it fail (functions missing).
-- [ ] T004 [P] Write `scripts/test-ai-concurrency.mjs`. It works only on local URLs (same guard as `e2e/support/localAdmin.ts`). It:
+- [X] T004 [P] Write `scripts/test-ai-concurrency.mjs`. It works only on local URLs (same guard as `e2e/support/localAdmin.ts`). It: — **Done**: seen failing before the migration (10 × `PGRST202`, balance left at 5).
   1. creates a fresh studio and owner through the local admin API and service key (setup only), and sets the balance to exactly 5 with a `topup` ledger row;
   2. signs in as that owner and fires 10 parallel `rpc('ai_start_call', { p_org, p_op: 'assistant' })` from 10 separate clients;
   3. asserts exactly 5 ok and 5 `PT402`, a final balance of 0 and exactly 5 jobs;
   4. cleans up.
 
   Add the npm script `"db:test:concurrency": "node scripts/test-ai-concurrency.mjs"`. Run it and see it fail.
-- [ ] T005 [P] Write `src/server/aiCall.test.ts` for the wrapper `withAiCall(handler, deps)`, with a fake `getClaims` and a fake RPC client:
+- [X] T005 [P] Write `src/server/aiCall.test.ts` for the wrapper `withAiCall(handler, deps)`, with a fake `getClaims` and a fake RPC client: — **Done**: 22 cases (plus 1 added with T007 for the default verifier); seen failing (import missing).
   - no header, an empty `Bearer`, or `getClaims` returning `data: null` → 401 `unauthorized`;
   - `AuthInvalidJwtError` → 401;
   - any other `getClaims` error → 503 `unavailable`;
@@ -69,18 +69,18 @@ description: "Task list for 045 — Signed-in, Credit-Metered AI Endpoints"
 
 ### Implementation
 
-- [ ] T006 Create the migration `npx supabase migration new ai_metered_calls` per `contracts/ai-rpc.md` and `data-model.md`:
+- [X] T006 Create the migration `npx supabase migration new ai_metered_calls` per `contracts/ai-rpc.md` and `data-model.md`: — **Done**: `supabase/migrations/20261106163231_ai_metered_calls.sql`. `db:reset` exit 0; `db:test` → `Files=8, Tests=495`, PASS (452 + 43). Each assertion shown passing with psql in the db container (43/43). **Mutation check**: setting the render cost to 9 made 5 assertions fail (costs, both boundaries, then empty, refund); restored to 10. `db:test:concurrency` → `{"calls":10,"credit":5,"charged":5,"refusedNoCredits":5,"otherErrors":[],"jobs":5,"balance":0}` PASS. `db:types` regenerated (`ai_debit` gone, `ai_start_call`/`ai_finish_call` added); `db:types:check` → current. **Correction to the design**: an invoker wrapper runs with the caller's privileges, so `authenticated` also executes the private bodies (revoked from `public`/`anon`); `private` is not exposed through the API. `contracts/ai-rpc.md` and this task were updated.
   - `private.ai_costs`, seeded `assistant command 1`, `assistant_rules command 0`, `speech audio 1`, `reference image 3`, `render image 10`, `live live 5`;
   - `private.ai_call_tokens`;
   - the `ai_jobs_kind_check` constraint becomes `('image','model','command','audio','live')`;
   - `private.ai_start_call` and `private.ai_finish_call`: `security definer`, `set search_path = ''`, qualified names, `auth.uid()` only, `SQLSTATE` `PT401`/`PT403`/`PT402`/`PT409`/`22023`, `for update` on `public.organizations`, the stale-job refund, and `private.ensure_monthly_grant`;
   - the public invoker wrappers `public.ai_start_call(uuid, text)` and `public.ai_finish_call(uuid, text, boolean, text, text)`;
-  - `revoke all … from public, anon, authenticated` on the private bodies; on the wrappers `revoke … from public, anon` and `grant execute … to authenticated`;
+  - on the private bodies and the public wrappers alike, `revoke all … from public, anon` and `grant execute … to authenticated` (an invoker wrapper needs the caller to be able to execute the body; `private` is not exposed through the API); no grants on `private.ai_costs` or `private.ai_call_tokens`;
   - drop `public.ai_debit(uuid, int, uuid, uuid, text)`;
   - recreate `public.ai_credit_balance` with `search_path = ''`.
 
   Then `npm run db:reset && npm run db:test`: T003 passes and the earlier suites stay green. Then `npm run db:test:concurrency`: T004 passes. Then `npm run db:types && npm run db:types:check`.
-- [ ] T007 Implement `src/server/aiCall.ts` (`withAiCall`, `AiCall` with `charge(op)`, and an `AiOp` type of the six ops):
+- [X] T007 Implement `src/server/aiCall.ts` (`withAiCall`, `AiCall` with `charge(op)`, and an `AiOp` type of the six ops): — **Done**: `src/server/aiCall.ts`. It also rejects a verified token without `role = authenticated` and a `sub` (the anon key is itself a signed JWT). `ProviderErrorCodeSchema` gains `unauthorized`, `forbidden`, `no_credits`. `aiCall.test.ts` → 23 passed.
   - read `SUPABASE_URL ?? VITE_SUPABASE_URL` and `SUPABASE_ANON_KEY ?? VITE_SUPABASE_ANON_KEY`;
   - `getClaims` on a verifier client;
   - the per-request client per research R2;
@@ -89,7 +89,7 @@ description: "Task list for 045 — Signed-in, Credit-Metered AI Endpoints"
   - set `x-ai-credits`.
 
   Add the new codes `unauthorized`, `forbidden` and `no_credits` to `ProviderErrorCodeSchema` in `src/ai/schema.ts`. T005 passes.
-- [ ] T008 Wire the Supabase env through `ServerEnv` (`src/server/assistantHandler.ts`), `src/server/node.ts`, `src/server/vercel*.ts` and the dev-server plugin in `vite.config.ts`. `scripts/build-vercel-output.mjs` is unchanged (env comes from Vercel at runtime). `npm run typecheck` exit 0.
+- [X] T008 Wire the Supabase env through `ServerEnv` (`src/server/assistantHandler.ts`), `src/server/node.ts`, `src/server/vercel*.ts` and the dev-server plugin in `vite.config.ts`. `scripts/build-vercel-output.mjs` is unchanged (env comes from Vercel at runtime). `npm run typecheck` exit 0. — **Done**: `ServerEnv extends AiCallEnv`; the dev-server plugin passes `SUPABASE_URL`/`SUPABASE_ANON_KEY`/`VITE_SUPABASE_*`; `node.ts` and `vercel*.ts` unchanged (they pass `process.env`). `npm run typecheck` exit 0; `npm run lint` exit 0; `npx vitest run src/server` → 61 passed; `npm test` → 159 files, 944 passed.
 
 **Checkpoint**: the database refuses and charges correctly, and the wrapper is tested. No endpoint is wrapped yet.
 
@@ -112,6 +112,7 @@ description: "Task list for 045 — Signed-in, Credit-Metered AI Endpoints"
   - `POST` to each of the five endpoints with no token → 401 with code `unauthorized`;
   - `GET /api/assistant` → 401;
   - a tampered token → 401;
+  - the public anon key sent as the bearer token → 401 (it verifies, but is not a signed-in user);
   - signed in as `viewer.b@example.test`, using its access token from the page's session, `POST /api/assistant` with Beta's id → 403;
   - `designer.a`'s token with Beta's id → 403.
 
