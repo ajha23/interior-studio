@@ -69,7 +69,7 @@ description: "Task list for 054 — Email Sign-in (Magic Link and 6-Digit Code)"
   - `confirmEmailLink` calls `verifyOtp({ token_hash, type: 'email' })`;
   - on `SIGNED_IN` the existing `enter()` runs `start_session` (unchanged 042 behaviour);
   - `signOut` also clears the email hint and `interior-studio:email-pending`.
-- [X] T011 Implement T009–T010 in `src/features/auth/SessionProvider.tsx` and add the three functions to the context value. T010 passes and the existing 042 SessionProvider tests still pass. — **Done**: `npx vitest run src/features/auth` → 38 passed; `npm run typecheck` clean; `npm test` green (see T012).
+- [X] T011 Implement T009–T010 in `src/features/auth/SessionProvider.tsx` and add the three functions to the context value. T010 passes and the existing 042 SessionProvider tests still pass. — **Done**: `npx vitest run src/features/auth` → 38 passed; `npm test` → 156 files, 897 passed. **Correction**: the first `npm run typecheck` failed (two test fakes of `SessionState` lacked the new functions; the exit code was hidden by a pipe and commit f87ebb1 went in anyway). Fixed with a shared `src/features/auth/testSessionState.ts`; re-run `npm run typecheck` → exit 0, `eslint src/features/auth src/features/studio` → exit 0, auth + studio tests → 60 passed.
 - [X] T012 [P] Create `e2e/support/mailpit.ts`: — **Done**: lint clean.
   - `latestEmail(address, { after?: Date, timeoutMs = 10000 })` polls `GET {MAILPIT_URL}/api/v1/search?query=to:<address>` and then reads `GET /api/v1/message/<ID>`;
   - returns `{ subject, text, html, code, link }`. The code comes from `/\b\d{6}\b/` in the subject or body; the link is the first `href` containing `token_hash=`;

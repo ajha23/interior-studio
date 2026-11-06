@@ -3,20 +3,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SignInScreen } from './SignInScreen';
 import { ConfigErrorScreen } from './ConfigErrorScreen';
 import { SessionContext, type SessionState } from './sessionContext';
+import { fakeSessionState } from './testSessionState';
 
-function session(overrides: Partial<SessionState> = {}): SessionState {
-  return {
-    status: 'signed-out',
-    user: null,
-    memberships: [],
-    error: null,
-    signInWithGoogle: vi.fn(async () => {}),
-    signInWithPassword: null,
-    signOut: vi.fn(async () => {}),
-    refreshMemberships: vi.fn(async () => {}),
-    ...overrides,
-  };
-}
+const session = fakeSessionState;
 
 function renderWith(value: SessionState) {
   return render(
