@@ -86,6 +86,7 @@ full snapshots. IndexedDB becomes the offline cache and queue.
 | No default ids | The studio comes from the route's membership; the user from the session | ✅ |
 | Done = evidence | The gate is on the Vercel preview; CI runs pgTAP and the concurrency script; links go in each PR | ✅ |
 | Branches ≤ 3 days, about 400 lines per PR | Split into 043a/b/c (R11) | ✅ |
+| VIII — rollback runbook | `docs/operations/rollback-043.md` ships in PR 043a (task T008a) | ✅ |
 
 Post-design re-check (after `research.md`, `data-model.md` and `contracts/`): all ✅. The risks the
 design closes:
@@ -117,6 +118,7 @@ supabase/tests/01_anon · 02_cross_tenant · 03_roles.test.sql   # direct insert
 supabase/seed.sql                                # versions get doc_type 'legacy_v1'; one real kitchen per studio
 scripts/test-project-concurrency.mjs             # NEW; package.json db:test:project-concurrency; ci.yml db job
 src/infrastructure/supabase/database.types.ts    # regenerated
+docs/operations/rollback-043.md                  # NEW rollback runbook (constitution VIII)
 
 # 043b — studio projects
 src/infrastructure/projects/cloudProjects.ts     # NEW adapter (client passed in), typed errors

@@ -109,12 +109,12 @@ As a designer, I want to see who saved what and when, open an old version and re
 ### Functional Requirements
 
 - **FR-001**: The Projects list MUST read `public.projects` for the current studio only and support create, rename, archive and unarchive (owner, admin, designer), and permanent delete (owner and admin only, only for an archived project, after typing the project name to confirm).
-- **FR-001a**: Browser-only projects (kitchens and homes already in IndexedDB) MUST appear in a separate "On this device" section of the Projects list, open and save locally exactly as before, and MUST NOT be uploaded until the 044 import flow moves them. Cloud projects are the default list.
+- **FR-001a**: Browser-only projects (kitchens and homes already in IndexedDB) MUST appear in a separate "On this device" section of the Projects list, open and save locally exactly as before, and MUST NOT be uploaded until the 044 import flow moves them. Cloud projects are the default list. Importing an exported file creates a studio project; it is a user action, not the 044 move.
 - **FR-002**: A migration MUST add `doc_type` (`'kitchen' | 'home' | 'legacy_v1'`) to `project_versions` and backfill existing rows as `legacy_v1`.
 - **FR-003**: A migration MUST extend `save_project_version` with `p_expected_version_no` (compare-and-swap: raise a distinct conflict error when `projects.current_version_no` differs) and `p_idempotency_key` (a retried save returns the original version).
 - **FR-004**: The scene hash MUST be computed in the database, never accepted from the client.
 - **FR-005**: The save function MUST set `search_path = ''`, use schema-qualified names, derive the user from `auth.uid()`, accept no actor id, and have `EXECUTE` revoked from `public` and `anon` and granted only to `authenticated` (constitution XI).
-- **FR-006**: The save function MUST reject scenes over 2 MB with a typed error.
+- **FR-006**: The save function MUST reject scenes over 2 MB (2 000 000 bytes of `scene::text`) with a typed error.
 - **FR-007**: Idempotency records MUST be unique on `(org_id, actor_id, op, key)` using `insert … on conflict do nothing`; records older than 7 days MAY be purged.
 - **FR-008**: Each successful save, rename, archive, unarchive and delete MUST write one row to a single append-only audit table (ported pattern from 034.x); no update or delete on that table is permitted, and audit rows MUST outlive a deleted project (no cascade from `projects`).
 - **FR-009**: Autosave MUST fire 2 s after the last editor command with kind `autosave`; explicit save uses kind `manual` with optional message; restore uses kind `restore`.
@@ -196,6 +196,6 @@ Not applicable: foundation spec.
 ### 8. Acceptance Criteria and Security Tests
 - **Tenant Isolation Tests**: studio B user cannot read, save to, rename or archive studio A projects or versions (pgTAP and Playwright).
 - **RBAC Permission Tests**: viewer save is rejected (pgTAP); designer save succeeds; designer delete is rejected; admin delete of a non-archived project is rejected; admin delete of an archived project succeeds.
-- **Concurrent Usage Tests**: two concurrent saves with the same expected head — exactly one succeeds, the other gets a conflict (pgTAP on independent connections).
+- **Concurrent Usage Tests**: two concurrent saves with the same expected head — exactly one succeeds, the other gets a conflict (a concurrency script on independent connections against the local stack, run by the CI `db` job; pgTAP runs in one transaction and cannot do this).
 - **Idempotency Tests**: same key twice — one version, identical response.
 - **Audit Tests**: update/delete on the audit table is rejected.

@@ -8,7 +8,7 @@
 | `saving` | Saving… | a save is in flight, or the 2 s debounce is pending after a change |
 | `offline` | Offline (queued N) | `navigator.onLine === false` or the last send failed with a network error; N > 0 entries are waiting |
 | `conflict` | Conflict | a `PT409` stopped the queue; the dialog is open or can be reopened from the indicator |
-| `error` | Couldn't save: Retry | `PT413`, `PT423`, `42501` after a role change, or 5xx; Retry resends the head of the queue |
+| `error` | Couldn't save (+ Retry for 5xx and network errors only) | `PT413` or `PT423`: a fixed message, the entry leaves the queue, the scene stays in `cloud_docs`. `42501`/`PT404` after a role change: the queue stops and is kept. 5xx: Retry resends the same entry and key |
 
 The indicator sits in the editor's top bar (kitchen, home plan and room editor) and has
 `role="status"` and `aria-live="polite"`. Viewers don't see it. They see a "View only" badge
@@ -40,6 +40,7 @@ Title: "Someone else saved this project". The body names who saved version N+1, 
   On start, the controller drains any entries for the signed-in user and studio.
 - `create`, `rename`, `archive`, `unarchive`, `delete`, `New project`, `Import`, Restore and
   History are disabled offline with "You're offline — this needs a connection."
+- `cloud_docs` is written on every open and every successful save; `cloud_lists` on every successful list load.
 - Opening a cloud project offline uses `cloud_docs` and shows the banner "Offline — showing the
   copy on this device". The Projects page shows `cloud_lists` with the same banner.
 - A `42501` or `PT404` on drain (membership revoked) stops the queue. The entries are kept, and the
@@ -47,7 +48,7 @@ Title: "Someone else saved this project". The body names who saved version N+1, 
 
 ## Projects page (FR-001, FR-001a)
 
-- **Studio projects** (default): name, client, a kitchen/home badge, last updated, owner, and a
+- **Studio projects** (default): name, client, status (read-only in 043), a kitchen/home badge, last updated, owner, and a
   row menu (Rename, Archive or Unarchive, Delete for admins on archived projects). A "Show
   archived" toggle is off by default. A project whose head is `legacy_v1` shows "Older format:
   opens after the import update" and doesn't open (044).
