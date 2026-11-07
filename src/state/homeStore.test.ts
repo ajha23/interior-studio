@@ -77,3 +77,20 @@ describe('the assistant on the home plan', () => {
     expect(homeCommand('add a sofa')).toMatch(/open that room/);
   });
 });
+
+describe('a read-only home (spec 043, FR-013)', () => {
+  it('ignores home-level edits and opens its rooms read-only', () => {
+    const before = store().home!;
+    store().setReadOnly(true);
+    const room = before.rooms[0]!;
+    expect(store().updateRoom(room.id, { width: room.design.room.width + 100 })).toEqual(['View only: ask a studio owner for edit access.']);
+    store().rename('Renamed by a viewer');
+    store().restyle('warm');
+    expect(store().home).toBe(before);
+    expect(store().dirty).toBe(false);
+    store().enterRoom(room.id);
+    expect(useEditorStore.getState().readOnly).toBe(true);
+    store().setReadOnly(false);
+  });
+});
+

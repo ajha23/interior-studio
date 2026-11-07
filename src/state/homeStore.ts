@@ -8,7 +8,7 @@ import { create } from 'zustand';
 import { executeCommand, newId, roomDesign, roomProjectId, type Home, type HomeRoom, type KitchenProject, type RoomType } from '@/domain';
 import { generateHome, restyleHome, type HomeBrief, type HomeStyleId } from '@/engine/home/generate';
 import { loadHome, saveHome } from '@/persistence/projectDb';
-import { useEditorStore } from './editorStore';
+import { useEditorStore, VIEW_ONLY_MESSAGE } from './editorStore';
 
 interface HomeStore {
   home: Home | null;
@@ -19,6 +19,9 @@ interface HomeStore {
   notes: string[];
   selectedRoomId: string | null;
   level: number;
+  /** Viewers open homes read-only (spec 043, FR-013); rooms then open read-only in the editor. */
+  readOnly: boolean;
+  setReadOnly: (readOnly: boolean) => void;
   open: (id: string) => Promise<string | null>;
   create: (brief: HomeBrief) => Promise<Home>;
   enterRoom: (roomId: string) => boolean;
@@ -42,6 +45,8 @@ export const useHomeStore = create<HomeStore>()((set, get) => ({
   notes: [],
   selectedRoomId: null,
   level: 0,
+  readOnly: false,
+  setReadOnly: (readOnly) => set({ readOnly }),
   open: async (id) => {
     if (get().home?.id === id) return null;
     const loaded = await loadHome(id);
@@ -62,10 +67,11 @@ export const useHomeStore = create<HomeStore>()((set, get) => ({
     if (!home || !room) return false;
     const editor = useEditorStore.getState();
     if (editor.project?.id !== roomProjectId(home, room)) {
-      editor.openProject(roomDesign(home, room));
+      editor.openProject(roomDesign(home, room), { readOnly: get().readOnly });
       // Unsaved home changes stay visible as unsaved in the room too.
       if (get().dirty) useEditorStore.setState({ savedProject: null });
     }
+    if (useEditorStore.getState().readOnly !== get().readOnly) useEditorStore.getState().setReadOnly(get().readOnly);
     set({ roomId, selectedRoomId: roomId, level: room.level });
     return true;
   },
@@ -85,6 +91,7 @@ export const useHomeStore = create<HomeStore>()((set, get) => ({
     const home = get().home;
     const room = home?.rooms.find((r) => r.id === roomId);
     if (!home || !room) return ['No such room.'];
+    if (get().readOnly) return [VIEW_ONLY_MESSAGE];
     let design = room.design;
     if (patch.width !== undefined || patch.length !== undefined) {
       const { project, result } = executeCommand(design, { type: 'set_room', room: { ...design.room, ...(patch.width !== undefined ? { width: patch.width } : {}), ...(patch.length !== undefined ? { length: patch.length } : {}) } });
@@ -97,12 +104,12 @@ export const useHomeStore = create<HomeStore>()((set, get) => ({
   },
   restyle: (style) => {
     const home = get().home;
-    if (!home) return;
+    if (!home || get().readOnly) return;
     set({ home: restyleHome(home, style), dirty: true });
   },
   rename: (name) => {
     const home = get().home;
-    if (home && name.trim()) set({ home: { ...home, name: name.trim().slice(0, 120) }, dirty: true });
+    if (home && name.trim() && !get().readOnly) set({ home: { ...home, name: name.trim().slice(0, 120) }, dirty: true });
   },
   close: () => set({ home: null, roomId: null, dirty: false, notes: [], selectedRoomId: null }),
 }));

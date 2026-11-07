@@ -9,8 +9,4 @@ export * from '../../../src/domain/commands/execute';
 export * from '../../../src/domain/commands/schema';
 export * from '../../../src/domain/project/lifecycle';
 export * from '../../../src/domain/project/serialization';
-export * from '../../../src/domain/project/cloudTypes';
 export * from '../../../src/domain/project/canonicalHash';
-export * from '../../../src/domain/project/cloudPersistence';
-export * from '../../../src/domain/project/cloudErrors';
-export * from '../../../src/domain/project/cloudPersistencePort';
