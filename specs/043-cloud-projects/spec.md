@@ -14,6 +14,16 @@ Projects are stored only in the browser's IndexedDB (`src/persistence/projectDb.
 
 This spec saves both current document types to the live tables with compare-and-swap and idempotency, keeps IndexedDB as an offline cache and queue, and replaces the "Cloud Sync" modal with autosave and a quiet status.
 
+## Clarifications
+
+### Session 2026-11-07
+
+- Q: Before spec 044 (import) ships, what should the Projects list do with projects that exist only in this browser? → A: Show cloud projects, plus a separate "On this device" section; those open and save locally as today and are not uploaded until 044.
+- Q: Should designers be able to create, rename or archive a cloud project while offline, or should only edits to an open project queue up offline? → A: Only version saves queue offline; create, rename and archive need a connection and are disabled offline with a clear "You're offline" message.
+- Q: When a designer opens a cloud project while offline, should it open from this device's copy? → A: Yes. Every cloud project opened or saved on this device is cached (keyed by user and studio, cleared on sign-out) and opens offline with the banner "Offline — showing the copy on this device"; the Projects list shows the last known list.
+- Q: Should a cloud project's client packages and site photos stay on this device for now, or move to the studio in 043? → A: Stay on this device, linked to the cloud project id, with the note "Packages and photos are on this device only" until a later spec (047 storage) moves them.
+- Q: Besides archiving, should cloud projects be restorable from the archive and permanently deletable, and by whom? → A: Owner, admin and designer can archive and unarchive; only owner and admin can permanently delete, only an archived project, after typing its name to confirm; every action is audited.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 — My projects are in my studio (Priority: P1)
@@ -98,17 +108,19 @@ As a designer, I want to see who saved what and when, open an old version and re
 
 ### Functional Requirements
 
-- **FR-001**: The Projects list MUST read `public.projects` for the current studio only and support create, rename and archive.
+- **FR-001**: The Projects list MUST read `public.projects` for the current studio only and support create, rename, archive and unarchive (owner, admin, designer), and permanent delete (owner and admin only, only for an archived project, after typing the project name to confirm).
+- **FR-001a**: Browser-only projects (kitchens and homes already in IndexedDB) MUST appear in a separate "On this device" section of the Projects list, open and save locally exactly as before, and MUST NOT be uploaded until the 044 import flow moves them. Cloud projects are the default list.
 - **FR-002**: A migration MUST add `doc_type` (`'kitchen' | 'home' | 'legacy_v1'`) to `project_versions` and backfill existing rows as `legacy_v1`.
 - **FR-003**: A migration MUST extend `save_project_version` with `p_expected_version_no` (compare-and-swap: raise a distinct conflict error when `projects.current_version_no` differs) and `p_idempotency_key` (a retried save returns the original version).
 - **FR-004**: The scene hash MUST be computed in the database, never accepted from the client.
 - **FR-005**: The save function MUST set `search_path = ''`, use schema-qualified names, derive the user from `auth.uid()`, accept no actor id, and have `EXECUTE` revoked from `public` and `anon` and granted only to `authenticated` (constitution XI).
 - **FR-006**: The save function MUST reject scenes over 2 MB with a typed error.
 - **FR-007**: Idempotency records MUST be unique on `(org_id, actor_id, op, key)` using `insert … on conflict do nothing`; records older than 7 days MAY be purged.
-- **FR-008**: Each successful save MUST write one row to a single append-only audit table (ported pattern from 034.x); no update or delete on that table is permitted.
+- **FR-008**: Each successful save, rename, archive, unarchive and delete MUST write one row to a single append-only audit table (ported pattern from 034.x); no update or delete on that table is permitted, and audit rows MUST outlive a deleted project (no cascade from `projects`).
 - **FR-009**: Autosave MUST fire 2 s after the last editor command with kind `autosave`; explicit save uses kind `manual` with optional message; restore uses kind `restore`.
 - **FR-010**: The status indicator MUST show exactly one of: Saved, Saving, Offline (queued), Conflict, Error.
-- **FR-011**: Offline saves MUST be queued in IndexedDB and sent in order on reconnect; the queue MUST survive reload.
+- **FR-011**: Offline saves MUST be queued in IndexedDB and sent in order on reconnect; the queue MUST survive reload. Only version saves are queued: create, rename and archive need a connection and MUST be disabled offline with the message "You're offline — this needs a connection."
+- **FR-011a**: Every cloud project opened or saved on this device MUST be cached in IndexedDB (scene and head `version_no`, keyed by user id and studio id). Offline, it MUST open from that cache with the banner "Offline — showing the copy on this device", and the Projects list MUST show the last known list. The cache MUST be cleared on sign-out.
 - **FR-012**: The conflict dialog MUST offer "Load theirs" and "Save mine on top"; no silent overwrite.
 - **FR-013**: Viewers MUST open projects read-only; `private.can_edit_org` decides in the database; owner, admin and designer may save.
 - **FR-014**: Rooms of a home MUST remain inside the home document; no separate rooms table.
@@ -139,7 +151,7 @@ As a designer, I want to see who saved what and when, open an old version and re
 
 ## Out of Scope
 
-`legacy_v1` projects (044), render storage, AI, real-time co-editing.
+`legacy_v1` projects (044), render storage, AI, real-time co-editing. Client packages and site photos of a cloud project stay in this device's IndexedDB, linked to the cloud project id, and the project shows "Packages and photos are on this device only"; moving them to Storage is a later spec (047).
 
 ## Gate
 
@@ -163,7 +175,7 @@ Not applicable: foundation spec — project storage is available to every studio
 - **Behavior When Limits Are Reached**: typed error, local copy kept.
 
 ### 4. RBAC Requirements
-- **Required Permissions**: read — any member; save, rename, archive — owner, admin, designer (`private.can_edit_org`).
+- **Required Permissions**: read — any member; save, rename, archive, unarchive — owner, admin, designer (`private.can_edit_org`); permanent delete of an archived project — owner, admin (`private.can_admin_org`).
 - **Applicable Roles**: owner, admin, designer, viewer.
 - **Resource-Level Permissions**: studio-wide (no per-project assignment yet).
 
@@ -179,11 +191,11 @@ Not applicable: foundation spec.
 ### 7. Enforcement Requirements
 - **Frontend**: viewers get read-only editor; enforcement is in the database.
 - **Backend**: RLS and the save function; conflict and size errors are typed.
-- **Audit**: one append-only audit row per save, rename and archive.
+- **Audit**: one append-only audit row per save, rename, archive, unarchive and delete.
 
 ### 8. Acceptance Criteria and Security Tests
 - **Tenant Isolation Tests**: studio B user cannot read, save to, rename or archive studio A projects or versions (pgTAP and Playwright).
-- **RBAC Permission Tests**: viewer save is rejected (pgTAP); designer save succeeds.
+- **RBAC Permission Tests**: viewer save is rejected (pgTAP); designer save succeeds; designer delete is rejected; admin delete of a non-archived project is rejected; admin delete of an archived project succeeds.
 - **Concurrent Usage Tests**: two concurrent saves with the same expected head — exactly one succeeds, the other gets a conflict (pgTAP on independent connections).
 - **Idempotency Tests**: same key twice — one version, identical response.
 - **Audit Tests**: update/delete on the audit table is rejected.
