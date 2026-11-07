@@ -196,6 +196,11 @@ test.describe('US2: autosave with a clear status', () => {
     await page.reload();
     await page.getByRole('button', { name: 'Plan', exact: true }).click();
     await expect(page.getByTestId('plan-view').getByRole('button', { name: 'Base cabinet 800', exact: true })).toBeVisible({ timeout: 30_000 });
+
+    // The design is saved to the studio; its client packages and photos stay on this device (spec 043).
+    await page.getByRole('button', { name: 'Deliverables' }).click();
+    await page.getByRole('navigation', { name: 'Sheets' }).getByRole('button', { name: /Client package/ }).click();
+    await expect(page.getByText('Packages and photos are on this device only')).toBeVisible();
   });
 
   test('a viewer opens a studio project view-only and never saves', async ({ page }) => {

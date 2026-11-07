@@ -368,5 +368,5 @@ devices. 043c adds safety (conflicts, offline) and history. 043c's gate (T047) i
 ## Phase 10: Convergence
 
 - [ ] T049 Measure SC-001 on production: 30 saves of a 125 KB home in a throwaway project in the founder's studio (signed in as the founder; or note the `save_project_version` durations in the preview's Network tab), record the p95 here and in PR #20, then delete the throwaway project per SC-001 (partial)
-- [ ] T050 [P] Add an e2e assertion in `e2e/cloud-projects.spec.ts` that a studio project's Deliverables → Client package header shows "Packages and photos are on this device only" per T024 (partial)
+- [X] T050 [P] Add an e2e assertion in `e2e/cloud-projects.spec.ts` that a studio project's Deliverables → Client package header shows "Packages and photos are on this device only" per T024 (partial) — **Done 2026-11-07**: added to § US2 "an edit autosaves…"; `npx playwright test e2e/cloud-projects.spec.ts -g "an edit autosaves"` → passed.
 - [ ] T051 Decide which spec owns an offline app shell (service worker caching of the app, so a studio project opens after a reload while offline): add it to 049 or 050's scope in `specs/FOUNDATION-PLAN.md` per FR-011a (partial)
