@@ -263,7 +263,7 @@ studio; the design is identical.
   - as viewer.a: "View only", the inspector's edit controls are disabled (and a `dispatch` from the command palette is refused as a backstop), and **no** request to `/rest/v1/rpc/save_project_version` (record the requests with `page.on('request')`).
 
   Run it and record the result.
-- [ ] T031 Run the full check from AGENTS.md and record it. Open **PR 043b** with the CI link. A person signs in on the preview, creates a project, and opens it on a second device; record the preview URL.
+- [X] T031 Run the full check from AGENTS.md and record it. Open **PR 043b** with the CI link. A person signs in on the preview, creates a project, and opens it on a second device; record the preview URL. — **Done 2026-11-07**: PR #19; CI green on 20d65a3 (https://github.com/ajha23/interior-studio/actions/runs/42354771337). Gate: the founder signed into the preview (https://interior-studio-git-043b-stu-bbda2a-akhileshs-projects-91333371.vercel.app), created a project, saw Saving… → Saved, opened it identically on a second device, then archived and deleted it. Reported as working.
 
 **Checkpoint**: MVP: studio projects with autosave, on any device.
 
