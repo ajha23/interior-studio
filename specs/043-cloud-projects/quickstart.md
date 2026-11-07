@@ -28,7 +28,7 @@ against a non-local URL.
 | 4 | US2-4 | Sign in as the viewer and open the project | "View only"; edits refused; no request to `save_project_version` |
 | 5 | US3 | Two tabs, edit both, tab 2 saves second | Tab 2 shows Conflict. "Save mine on top" makes N+2; History lists N+1 and N+2 |
 | 6 | US4 | DevTools offline, 3 edits 3 s apart, online | Offline (queued 3), then Saved; 3 new versions in order |
-| 7 | FR-011a | Offline, reload, open the project | The banner "Offline — showing the copy on this device" and the last design |
+| 7 | FR-011a | In an open tab: go offline, open Projects, then the project (there is no offline app shell yet, so not after a reload) | The banner "Offline — showing the copy on this device" and the last design |
 | 8 | US5 | History, then Open v1, then Restore | A read-only banner, then a new `restore` version on top; nothing deleted |
 | 9 | FR-001 | Archive, Show archived, Unarchive; as admin, archive then Delete (typing the name) | Each step persists after reload; delete only on archived |
 | 10 | FR-001a | An old browser-only kitchen | Listed under "On this device", opens and saves locally |
