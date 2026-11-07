@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProjectRow, Result } from '@/infrastructure/projects/cloudProjects';
 import type { AppSupabaseClient } from '@/infrastructure/supabase/client';
+import { createProject, DEFAULT_ROOM } from '@/domain';
 import * as cache from '@/persistence/cloudCache';
 import type { StudioContext } from './studioContext';
 
@@ -112,10 +113,13 @@ describe('the studio project list (US1, FR-001)', () => {
 
   it('offline: the last list from this device, and every change disabled with a reason', async () => {
     await cache.putList('u1', 'org-a', [row({ name: 'Cached kitchen' })]);
+    // Created and opened here after the list was last loaded: still listed offline.
+    await cache.putDoc({ userId: 'u1', orgId: 'org-a', projectId: 'p9', versionNo: 2, name: 'Made here', doc: { type: 'kitchen', project: { ...createProject({ name: 'Made here', room: DEFAULT_ROOM, layout: 'empty' }), id: 'p9' } } });
     setOnline(false);
     render(<StudioProjects studio={studio('designer')} />);
     const card = await waitFor(() => cardOf('Cached kitchen'));
     expect(screen.getByText('Offline — showing the copy on this device')).toBeInTheDocument();
+    expect(cardOf('Made here')).toHaveTextContent('by you (on this device)');
     expect(api.listProjects).not.toHaveBeenCalled();
     for (const b of [within(card).getByRole('button', { name: 'Rename Cached kitchen' }), within(card).getByRole('button', { name: 'Archive Cached kitchen' })]) {
       expect(b).toBeDisabled();

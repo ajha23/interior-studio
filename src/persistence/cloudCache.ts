@@ -76,6 +76,12 @@ export async function getDoc(userId: string, orgId: string, projectId: string): 
   return ((await run<CachedDoc>([CLOUD_DOCS], 'readonly', (tx) => tx.objectStore(CLOUD_DOCS).get([userId, orgId, projectId]))) ?? null) as CachedDoc | null;
 }
 
+/** Every studio project with a copy on this device, for this user and studio. */
+export async function docsFor(userId: string, orgId: string): Promise<CachedDoc[]> {
+  const all = ((await run<CachedDoc[]>([CLOUD_DOCS], 'readonly', (tx) => tx.objectStore(CLOUD_DOCS).index('userId').getAll(IDBKeyRange.only(userId)))) ?? []) as CachedDoc[];
+  return all.filter((d) => d.orgId === orgId);
+}
+
 export async function putList<Row>(userId: string, orgId: string, rows: Row[]): Promise<void> {
   await run([CLOUD_LISTS], 'readwrite', (tx) => tx.objectStore(CLOUD_LISTS).put({ userId, orgId, rows, cachedAt: new Date().toISOString() }));
 }

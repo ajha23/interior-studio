@@ -31,6 +31,12 @@ describe('the cloud cache (FR-011a)', () => {
     expect((await cache.getDoc('u1', 'org-a', 'p1'))?.versionNo).toBe(4);
   });
 
+  it('lists every project with a copy here, per user and studio', async () => {
+    await cache.putDoc({ userId: 'u1', orgId: 'org-a', projectId: 'p1', versionNo: 2, doc: kitchen('p1'), name: 'A' });
+    await cache.putDoc({ userId: 'u1', orgId: 'org-b', projectId: 'p2', versionNo: 1, doc: kitchen('p2'), name: 'B' });
+    expect((await cache.docsFor('u1', 'org-a')).map((d) => d.projectId)).toEqual(['p1']);
+  });
+
   it('keeps the last project list per user and studio', async () => {
     await cache.putList('u1', 'org-a', [{ id: 'p1', name: 'Rao kitchen' }]);
     expect(await cache.getList('u1', 'org-a')).toMatchObject({ rows: [{ id: 'p1' }] });

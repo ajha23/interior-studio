@@ -29,8 +29,25 @@ async function fetchRows(studio: StudioContext): Promise<Loaded> {
     return { rows: result.value, fromCache: false };
   }
   if (result && result.error.kind !== 'offline') return { error: result.error.message };
-  const copy = await cache.getList<cloud.ProjectRow>(studio.userId, studio.orgId);
-  return { rows: copy?.rows ?? [], fromCache: true };
+  // Offline: the last list seen here, plus any project opened or saved here since (FR-011a).
+  const [copy, docs] = await Promise.all([cache.getList<cloud.ProjectRow>(studio.userId, studio.orgId), cache.docsFor(studio.userId, studio.orgId)]);
+  const rows = copy?.rows ?? [];
+  const known = new Set(rows.map((r) => r.id));
+  const extra = docs
+    .filter((d) => !known.has(d.projectId))
+    .map((d): cloud.ProjectRow => ({
+      id: d.projectId,
+      name: d.name,
+      clientName: '',
+      status: 'design',
+      headVersionNo: d.versionNo,
+      docType: d.doc.type,
+      archivedAt: null,
+      updatedAt: d.cachedAt ?? new Date(0).toISOString(),
+      ownerId: null,
+      ownerName: 'you (on this device)',
+    }));
+  return { rows: [...extra, ...rows], fromCache: true };
 }
 
 export function StudioProjects({ studio }: { studio: StudioContext }) {
