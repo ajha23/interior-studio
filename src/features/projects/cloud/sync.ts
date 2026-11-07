@@ -157,6 +157,8 @@ function drain(o: AttachOptions): Promise<void> {
 async function drainOnce(o: AttachOptions): Promise<boolean> {
   for (;;) {
     if (options !== o) return false;
+    // While a conflict is open, saves wait for the user's choice (US4-3); the dialog resumes them.
+    if (useSyncStore.getState().status === 'conflict') return false;
     const [next] = await refreshCount(o);
     if (!next) {
       useSyncStore.setState({ status: timer || writing > 0 ? 'saving' : 'saved', error: null, canRetry: false });
@@ -262,7 +264,7 @@ export const useSyncStore = create<SyncState>()((set, get) => ({
 
   retry: async () => {
     const o = options;
-    if (!o || o.readOnly) return;
+    if (!o || o.readOnly || get().status === 'conflict') return;
     set({ error: null, canRetry: false });
     await drain(o);
   },
@@ -282,7 +284,7 @@ export const useSyncStore = create<SyncState>()((set, get) => ({
     }
     await writes;
     await cache.rebase(o.userId, o.orgId, o.projectId, theirs);
-    set({ head: theirs, conflict: null, error: null, conflictOpen: false });
+    set({ head: theirs, conflict: null, error: null, conflictOpen: false, status: 'saving' });
     await drain(o);
     return options === o && get().status === 'saved';
   },
