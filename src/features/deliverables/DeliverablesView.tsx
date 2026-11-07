@@ -1,4 +1,6 @@
 import { AlertTriangle, BookOpen, CheckCircle2, Download, FileSpreadsheet, FileText, History, Layers, MonitorPlay, Receipt, RefreshCw, Scissors, ShieldAlert, ShieldCheck, Table2 } from 'lucide-react';
+import { PACKAGES_ON_DEVICE } from '@/features/projects/cloud/notes';
+import { useSyncStore } from '@/features/projects/cloud/sync';
 import { useMemo, type ReactNode } from 'react';
 import { buildBom } from '@/engine/deliverables/bom';
 import { SCALES, type Paper, type ScaleChoice } from '@/engine/deliverables/drawing';
@@ -33,6 +35,8 @@ export function DeliverablesView() {
   const dxfEntitlement = useEntitlement('drawings.dxf');
   const accountingEntitlement = useEntitlement('accounting.export');
   const { openUpgradeModal } = useBillingStore.getState();
+  // A studio project's design is saved to the studio, but its packages and photos stay here (spec 043).
+  const studioProject = useSyncStore((s) => s.projectId !== null);
 
   // Explode active project into immutable manufacturing package (ARC-02, ARC-04)
   const pkg = useMemo(
@@ -55,6 +59,7 @@ export function DeliverablesView() {
         <div className="flex items-center gap-2 border-b bg-card px-3 py-1 text-xs">
           <Button size="xs" variant="ghost" onClick={() => setSection('readiness')}>← Technical deliverables</Button>
           <span className="font-medium">Client package</span>
+          {studioProject && <span className="ml-auto text-muted-foreground">{PACKAGES_ON_DEVICE}</span>}
         </div>
         <div className="min-h-0 flex-1">
           <PackageStudio />

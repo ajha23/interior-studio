@@ -88,12 +88,13 @@ async function refreshCount(o: AttachOptions) {
 async function enqueue(o: AttachOptions, kind: cloud.VersionKind, message: string): Promise<boolean> {
   const doc = o.read();
   if (!doc) return false;
+  const head = useSyncStore.getState().head;
   const waiting = await cache.queued(o.userId, o.orgId, o.projectId);
   const seq = await cache.enqueue({
     userId: o.userId,
     orgId: o.orgId,
     projectId: o.projectId,
-    expectedVersionNo: useSyncStore.getState().head + waiting.length,
+    expectedVersionNo: head + waiting.length,
     idempotencyKey: crypto.randomUUID(),
     doc,
     kind,
@@ -210,6 +211,9 @@ export const useSyncStore = create<SyncState>()((set, get) => ({
   },
 
   detach: () => {
+    // An edit still waiting for its autosave is kept: it goes to the device queue and is sent the
+    // next time this project opens.
+    if (timer && options && !options.readOnly) void enqueue(options, 'autosave', '');
     clearTimer();
     stopWatching?.();
     stopWatching = null;

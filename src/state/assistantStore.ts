@@ -17,6 +17,7 @@ import { runSceneAction } from './sceneActions';
 import { homeCommand } from './homeCommands';
 import { useHomeStore } from './homeStore';
 import { navigate } from '@/app/router';
+import { docRoutes } from '@/app/docRoutes';
 import { useEditorStore } from './editorStore';
 
 /** The AI provider and model the designer picked; "rules" runs in the browser without a server. */
@@ -81,7 +82,7 @@ export function editorPort(): EditorPort {
       void useHomeStore
         .getState()
         .create(brief)
-        .then((home) => navigate({ name: 'house', homeId: home.id }));
+        .then((home) => navigate(docRoutes.home(home.id)));
       return `Designing a ${brief.bhk}BHK ${brief.kind}${brief.carpetAreaSqft ? ` of about ${brief.carpetAreaSqft} sq ft` : ''}: rooms, doors and windows, furniture and finishes. It opens in a moment; then open any room to refine it.`;
     },
   };

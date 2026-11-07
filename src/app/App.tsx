@@ -17,6 +17,9 @@ import { supabaseConfigError } from '@/infrastructure/supabase/client';
 import { HomeView } from '@/features/home/HomeView';
 import { openStoredProject } from '@/features/projects/projectActions';
 import { ProjectsHome } from '@/features/projects/ProjectsHome';
+import { StudioDocumentPage } from '@/features/projects/cloud/StudioDocumentPage';
+import { useStudioScope } from '@/features/projects/cloud/useStudioScope';
+import type { Membership } from '@/features/auth/sessionContext';
 import { Workspace } from '@/features/kitchen-layout/Workspace';
 import { useEditorStore } from '@/state/editorStore';
 import { useHomeStore } from '@/state/homeStore';
@@ -50,6 +53,7 @@ function SignedInRoutes() {
   const route = useRoute();
   if (route.name === 'home') return <StudioRedirect />;
   if (route.name === 'studio-projects' || route.name === 'studio-settings') return <StudioPage route={route} />;
+  if (route.name === 'cloud-kitchen' || route.name === 'cloud-home' || route.name === 'cloud-room') return <StudioDocumentPage route={route} />;
   return <ProjectRoutes route={route} />;
 }
 
@@ -80,7 +84,7 @@ function StudioPage({ route }: { route: Extract<Route, { name: 'studio-projects'
       {(studio) => (
         <StudioShell studio={studio.membership} section={section}>
           {route.name === 'studio-projects' ? (
-            <ProjectRoutes route={{ name: 'home' }} />
+            <StudioProjectsPage membership={studio.membership} />
           ) : (
             <>
               <StudioDetails studio={studio} onRenamed={refreshMemberships} />
@@ -91,6 +95,16 @@ function StudioPage({ route }: { route: Extract<Route, { name: 'studio-projects'
       )}
     </StudioGate>
   );
+}
+
+/** The studio's Projects page: studio projects first, then the ones on this device (spec 043). */
+function StudioProjectsPage({ membership }: { membership: Membership }) {
+  const studio = useStudioScope(membership);
+  useEffect(() => {
+    useEditorStore.getState().closeProject();
+    useHomeStore.getState().close();
+  }, []);
+  return <ProjectsHome studio={studio ?? undefined} />;
 }
 
 /** The editor and the browser's own projects, unchanged from before sign-in existed. */

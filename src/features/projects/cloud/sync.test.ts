@@ -175,3 +175,18 @@ describe('errors', () => {
     expect(sync()).toMatchObject({ status: 'saved', head: 2 });
   });
 });
+
+describe('leaving the project', () => {
+  it('an edit still waiting for its autosave is kept on the device', async () => {
+    database(1);
+    await attach();
+    edit(3300);
+    sync().detach();
+    await vi.waitFor(async () => expect(await cache.queued('u1', 'org-a', ID)).toHaveLength(1));
+    const [left] = await cache.queued('u1', 'org-a', ID);
+    expect(left).toMatchObject({ expectedVersionNo: 1, kind: 'autosave' });
+    expect((left!.doc as { project: KitchenProject }).project.room.width).toBe(3300);
+    expect(save).not.toHaveBeenCalled();
+  });
+});
+

@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { Box, ChevronLeft, DoorOpen, Layers, List, Map as MapIcon, PanelRight, Save } from 'lucide-react';
 import { AssistantLauncher } from '@/features/assistant/AssistantLauncher';
 import { navigate } from '@/app/router';
+import { docRoutes } from '@/app/docRoutes';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -17,6 +18,9 @@ import { cn } from '@/lib/utils';
 import { useEditorStore } from '@/state/editorStore';
 import { useHomeStore } from '@/state/homeStore';
 import { HomePlan } from './HomePlan';
+import { SaveStatus } from '@/features/projects/cloud/SaveStatus';
+import { useSyncStore } from '@/features/projects/cloud/sync';
+import { saveCurrentProject } from '@/features/projects/projectActions';
 import { HomeScene } from './HomeScene';
 
 export function HomeView() {
@@ -30,6 +34,8 @@ export function HomeView() {
   const [view, setView] = useState<'plan' | '3d'>('plan');
   const [unit, setUnit] = useState<LengthUnit>('ft-in');
   const [saving, setSaving] = useState(false);
+  const studioHome = useSyncStore((s) => s.projectId === home.id);
+  const viewOnly = useSyncStore((s) => s.projectId === home.id && s.readOnly);
   // Below 1280 px the room list and the room details are drawers; selecting a room opens its details.
   const [listOpen, setListOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -39,13 +45,13 @@ export function HomeView() {
   };
   const area = carpetArea(home);
   const selected = home.rooms.find((r) => r.id === selectedId) ?? null;
-  const open = (roomId: string) => navigate({ name: 'room', homeId: home.id, roomId });
+  const open = (roomId: string) => navigate(docRoutes.room(home.id, roomId));
   const styleId = (Object.entries(HOME_STYLES).find(([, v]) => v.label === home.style)?.[0] ?? '') as HomeStyleId | '';
 
   const leave = () => {
-    if (dirty && !window.confirm('You have unsaved changes to this home. Leave without saving?')) return;
+    if (!studioHome && dirty && !window.confirm('You have unsaved changes to this home. Leave without saving?')) return;
     useHomeStore.getState().close();
-    navigate({ name: 'home' });
+    navigate(docRoutes.projects());
   };
 
   return (
@@ -58,7 +64,7 @@ export function HomeView() {
         <span className="text-xs whitespace-nowrap text-muted-foreground" data-testid="home-summary">
           {home.bhk}BHK {home.kind} · {home.rooms.length} rooms · {Math.round(area.sqft).toLocaleString()} sq ft carpet ({area.m2.toFixed(0)} m²)
         </span>
-        {dirty && <span className="text-xs text-amber-600">Unsaved changes</span>}
+        {studioHome ? <SaveStatus /> : dirty && <span className="text-xs text-amber-600">Unsaved changes</span>}
         <div className="ml-auto flex items-center gap-1.5">
           <Select aria-label="Style for every room" value={styleId} onChange={(e) => restyle(e.target.value as HomeStyleId)} className="h-8 w-40 text-xs" title="Apply a style to every room: floors, walls, wood, kitchen and soft furnishings">
             {!styleId && <option value="">Custom style</option>}
@@ -73,9 +79,11 @@ export function HomeView() {
             <option value="m">m</option>
             <option value="mm">mm</option>
           </Select>
-          <Button size="sm" disabled={saving} onClick={async () => (setSaving(true), await save(), setSaving(false))}>
-            <Save /> Save
-          </Button>
+          {!viewOnly && (
+            <Button size="sm" disabled={saving} onClick={async () => (setSaving(true), await (studioHome ? saveCurrentProject() : save()), setSaving(false))} title={studioHome ? 'Save a version now (changes also save automatically)' : 'Save to this browser'}>
+              <Save /> {studioHome ? 'Save version' : 'Save'}
+            </Button>
+          )}
         </div>
       </header>
 
