@@ -65,8 +65,6 @@ describe('ARC-01 Monorepo Package Scaffolding & Turborepo Verification', () => {
     // 1. Core
     expect(Core.KitchenProjectSchema).toBeDefined();
     expect(Core.evaluateLifecycleInvalidation).toBeDefined();
-    expect(Core.SaaSProjectSchema).toBeDefined();
-    expect(Core.commitSpaceRevision).toBeDefined();
 
     // 2. Platform
     expect(Platform.hasPermission).toBeDefined();

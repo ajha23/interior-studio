@@ -8,7 +8,34 @@ import { create } from 'zustand';
 import { executeCommand, newId, roomDesign, roomProjectId, type Home, type HomeRoom, type KitchenProject, type RoomType } from '@/domain';
 import { generateHome, restyleHome, type HomeBrief, type HomeStyleId } from '@/engine/home/generate';
 import { loadHome, saveHome } from '@/persistence/projectDb';
-import { useEditorStore } from './editorStore';
+import { useEditorStore, VIEW_ONLY_MESSAGE } from './editorStore';
+
+/**
+ * Where homes are created and saved. On this device by default; inside a studio, the app installs
+ * studio storage (spec 043): create makes a studio project (which may give the home a new id) and
+ * save sends a version.
+ */
+export interface HomeStorage {
+  create: (home: Home) => Promise<Home>;
+  save: (home: Home) => Promise<void>;
+}
+
+export const deviceHomeStorage: HomeStorage = {
+  create: async (home) => {
+    await saveHome(home);
+    return home;
+  },
+  save: async (home) => void (await saveHome(home)),
+};
+
+let storage: HomeStorage = deviceHomeStorage;
+
+/** Installs where homes are created and saved; returns the previous storage. */
+export function setHomeStorage(next: HomeStorage): HomeStorage {
+  const previous = storage;
+  storage = next;
+  return previous;
+}
 
 interface HomeStore {
   home: Home | null;
@@ -19,7 +46,14 @@ interface HomeStore {
   notes: string[];
   selectedRoomId: string | null;
   level: number;
+  /** Viewers open homes read-only (spec 043, FR-013); rooms then open read-only in the editor. */
+  readOnly: boolean;
+  setReadOnly: (readOnly: boolean) => void;
   open: (id: string) => Promise<string | null>;
+  /** Opens a home that was loaded elsewhere (a studio project, spec 043). */
+  openDocument: (home: Home, options?: { readOnly?: boolean }) => void;
+  /** The open home reached its storage unchanged: nothing is unsaved any more. */
+  markSaved: (home: Home) => void;
   create: (brief: HomeBrief) => Promise<Home>;
   enterRoom: (roomId: string) => boolean;
   leaveRoom: () => void;
@@ -42,6 +76,8 @@ export const useHomeStore = create<HomeStore>()((set, get) => ({
   notes: [],
   selectedRoomId: null,
   level: 0,
+  readOnly: false,
+  setReadOnly: (readOnly) => set({ readOnly }),
   open: async (id) => {
     if (get().home?.id === id) return null;
     const loaded = await loadHome(id);
@@ -50,10 +86,17 @@ export const useHomeStore = create<HomeStore>()((set, get) => ({
     set({ home: loaded.home, roomId: null, dirty: false, notes: [], selectedRoomId: null, level: 0 });
     return null;
   },
+  openDocument: (home, options) => set({ home, roomId: null, dirty: false, notes: [], selectedRoomId: null, level: 0, readOnly: options?.readOnly ?? false }),
+  markSaved: (home) => {
+    if (get().home !== home) return;
+    set({ dirty: false });
+    const editor = useEditorStore.getState();
+    if (editor.project && get().roomId) editor.markSaved(editor.project);
+  },
   create: async (brief) => {
-    const { home, notes } = generateHome(brief, newId);
-    await saveHome(home);
-    set({ home, roomId: null, dirty: false, notes, selectedRoomId: null, level: 0 });
+    const generated = generateHome(brief, newId);
+    const home = await storage.create(generated.home);
+    set({ home, roomId: null, dirty: false, notes: generated.notes, selectedRoomId: null, level: 0, readOnly: false });
     return home;
   },
   enterRoom: (roomId) => {
@@ -62,10 +105,11 @@ export const useHomeStore = create<HomeStore>()((set, get) => ({
     if (!home || !room) return false;
     const editor = useEditorStore.getState();
     if (editor.project?.id !== roomProjectId(home, room)) {
-      editor.openProject(roomDesign(home, room));
+      editor.openProject(roomDesign(home, room), { readOnly: get().readOnly });
       // Unsaved home changes stay visible as unsaved in the room too.
       if (get().dirty) useEditorStore.setState({ savedProject: null });
     }
+    if (useEditorStore.getState().readOnly !== get().readOnly) useEditorStore.getState().setReadOnly(get().readOnly);
     set({ roomId, selectedRoomId: roomId, level: room.level });
     return true;
   },
@@ -73,7 +117,8 @@ export const useHomeStore = create<HomeStore>()((set, get) => ({
   save: async () => {
     const home = get().home;
     if (!home) return false;
-    await saveHome(home);
+    await storage.save(home);
+    if (get().home !== home) return true;
     set({ dirty: false });
     const editor = useEditorStore.getState();
     if (editor.project && get().roomId) editor.markSaved(editor.project);
@@ -85,6 +130,7 @@ export const useHomeStore = create<HomeStore>()((set, get) => ({
     const home = get().home;
     const room = home?.rooms.find((r) => r.id === roomId);
     if (!home || !room) return ['No such room.'];
+    if (get().readOnly) return [VIEW_ONLY_MESSAGE];
     let design = room.design;
     if (patch.width !== undefined || patch.length !== undefined) {
       const { project, result } = executeCommand(design, { type: 'set_room', room: { ...design.room, ...(patch.width !== undefined ? { width: patch.width } : {}), ...(patch.length !== undefined ? { length: patch.length } : {}) } });
@@ -97,12 +143,12 @@ export const useHomeStore = create<HomeStore>()((set, get) => ({
   },
   restyle: (style) => {
     const home = get().home;
-    if (!home) return;
+    if (!home || get().readOnly) return;
     set({ home: restyleHome(home, style), dirty: true });
   },
   rename: (name) => {
     const home = get().home;
-    if (home && name.trim()) set({ home: { ...home, name: name.trim().slice(0, 120) }, dirty: true });
+    if (home && name.trim() && !get().readOnly) set({ home: { ...home, name: name.trim().slice(0, 120) }, dirty: true });
   },
   close: () => set({ home: null, roomId: null, dirty: false, notes: [], selectedRoomId: null }),
 }));

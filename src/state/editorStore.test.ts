@@ -64,4 +64,33 @@ describe('editor store', () => {
     store().dispatch({ type: 'remove_entity', entityId: base().id });
     expect(store().selectedId).toBeNull();
   });
+
+  it('a read-only project refuses every edit, transaction, undo and redo (spec 043, FR-013)', () => {
+    const id = base().id;
+    store().dispatch({ type: 'resize_cabinet', cabinetId: id, dimensions: { width: 900, height: 720, depth: 560 } });
+    store().undo();
+    const before = store().project!;
+    const revision = store().revision;
+    store().setReadOnly(true);
+
+    const result = store().dispatch({ type: 'resize_cabinet', cabinetId: id, dimensions: { width: 800, height: 720, depth: 560 } });
+    expect(result).toMatchObject({ success: false, errors: ['View only: ask a studio owner for edit access.'] });
+    expect(store().applyTransaction([{ type: 'set_material', targetIds: [id], materialId: 'shutter-oak' }], 'Oak')).toMatchObject({ success: false });
+    store().redo();
+    expect(store().project).toBe(before);
+    expect(store().revision).toBe(revision);
+    expect(store().feedback).toMatchObject({ kind: 'error', messages: ['View only: ask a studio owner for edit access.'] });
+
+    store().setReadOnly(false);
+    store().redo();
+    expect(base().dimensions.width).toBe(900);
+  });
+
+  it('opening a project sets read-only from the caller and otherwise clears it', () => {
+    const p = createProject({ name: 'Viewer copy', room: DEFAULT_ROOM, layout: 'empty' });
+    store().openProject(p, { readOnly: true });
+    expect(store().readOnly).toBe(true);
+    store().openProject(p);
+    expect(store().readOnly).toBe(false);
+  });
 });

@@ -24,7 +24,7 @@ test('in interact mode a click opens a drawer like a real one, and a second clic
   await expect(states.filter({ hasText: ': open' })).toHaveCount(0);
   expect(opened).toMatch(/drawer/);
   // Opening and closing is not a design change.
-  await expect(page.getByTestId('save-state')).toHaveText('Saved');
+  await expect(page.locator('[data-save-status="saved"]')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Undo' })).toBeDisabled();
 });
 

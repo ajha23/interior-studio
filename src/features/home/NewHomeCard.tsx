@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Home as HomeIcon } from 'lucide-react';
 import { navigate } from '@/app/router';
+import { docRoutes } from '@/app/docRoutes';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -11,7 +12,7 @@ import { HOME_STYLES, type HomeBrief, type HomeStyleId } from '@/engine/home/gen
 import { useHomeStore } from '@/state/homeStore';
 
 /** Design a whole home (apartment or villa) from a brief: generated, furnished and ready to refine. */
-export function NewHomeCard() {
+export function NewHomeCard({ blocked = null }: { blocked?: string | null }) {
   const [brief, setBrief] = useState<HomeBrief>({ bhk: 2, kind: 'apartment', style: 'modern' });
   const [area, setArea] = useState('');
   const [describe, setDescribe] = useState('');
@@ -25,7 +26,7 @@ export function NewHomeCard() {
     try {
       const sqft = Number(area.replace(/[^\d]/g, ''));
       const home = await useHomeStore.getState().create({ ...brief, ...(sqft >= 300 ? { carpetAreaSqft: sqft } : {}) });
-      navigate({ name: 'house', homeId: home.id });
+      navigate(docRoutes.home(home.id));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'The home could not be created.');
     } finally {
@@ -95,7 +96,8 @@ export function NewHomeCard() {
               {error}
             </p>
           )}
-          <Button type="submit" disabled={busy}>
+          {blocked && <p className="text-xs text-muted-foreground">{blocked}</p>}
+          <Button type="submit" disabled={busy || Boolean(blocked)}>
             <HomeIcon /> Design home
           </Button>
         </form>

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Box, ChevronLeft, Columns2, Database, Download, FileText, Map as MapIcon, Redo2, Ruler, Save, Search, Shield, ShieldCheck, Table2, Undo2 } from 'lucide-react';
 import { useDesignChecks } from '@/features/checks/useDesignChecks';
 import { navigate } from '@/app/router';
+import { docRoutes } from '@/app/docRoutes';
 import { useHomeStore } from '@/state/homeStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,6 +16,8 @@ import { SiteCaptureModal } from '@/features/measurement/SiteCaptureModal';
 import { useSiteCaptureStore } from '@/state/siteCaptureStore';
 import { SettingsLayout } from '@/features/settings/SettingsLayout';
 import { useCommandPaletteStore } from '@/features/command-palette/commandPaletteStore';
+import { SaveStatus } from '@/features/projects/cloud/SaveStatus';
+import { useSyncStore } from '@/features/projects/cloud/sync';
 
 export function TopBar() {
   const project = useEditorStore((s) => s.project)!;
@@ -30,6 +33,10 @@ export function TopBar() {
   const { undo, redo, setView, toggleBom, toggleChecks, dispatch } = useEditorStore.getState();
   const [name, setName] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // A studio project autosaves; Save makes a named version (spec 043, FR-009).
+  const studioProject = useSyncStore((s) => s.projectId !== null);
+  const viewOnly = useSyncStore((s) => s.projectId !== null && s.readOnly);
+  const [versionMessage, setVersionMessage] = useState<string | null>(null);
   const [showTables, setShowTables] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const openSiteCapture = useSiteCaptureStore((s) => s.openModal);
@@ -44,11 +51,12 @@ export function TopBar() {
   const leave = () => {
     // A room's edits stay in its home (unsaved until Save), so going back to the plan loses nothing.
     if (inHome) {
-      navigate({ name: 'house', homeId: inHome.id });
+      navigate(docRoutes.home(inHome.id));
       return;
     }
-    if (dirty && !window.confirm('You have unsaved changes. Leave without saving?')) return;
-    navigate({ name: 'home' });
+    // Studio projects keep unsent edits in the device queue, so only device projects ask.
+    if (!studioProject && dirty && !window.confirm('You have unsaved changes. Leave without saving?')) return;
+    navigate(docRoutes.projects());
   };
 
   return (
@@ -68,9 +76,13 @@ export function TopBar() {
         }}
         className="h-8 w-56 border-transparent bg-transparent font-medium shadow-none hover:border-input"
       />
-      <span className={dirty ? 'text-xs text-amber-600' : 'text-xs text-muted-foreground'} data-testid="save-state">
-        {saving ? 'Saving…' : dirty ? 'Unsaved changes' : 'Saved'}
-      </span>
+      {studioProject ? (
+        <SaveStatus />
+      ) : (
+        <span className={dirty ? 'text-xs text-amber-600' : 'text-xs text-muted-foreground'} data-testid="save-state">
+          {saving ? 'Saving…' : dirty ? 'Unsaved changes' : 'Saved'}
+        </span>
+      )}
 
       <div className="mx-auto flex items-center gap-1">
         <Button variant="ghost" size="icon-sm" onClick={undo} disabled={!canUndo} aria-label="Undo" title={undoLabel ? `Undo: ${undoLabel} (⌘Z)` : 'Undo (⌘Z)'}>
@@ -136,18 +148,42 @@ export function TopBar() {
       <Button variant="ghost" size="sm" onClick={() => exportProject(project)} title="Download the project as a .kitchen.json file">
         <Download /> Export
       </Button>
-      <Button
-        size="sm"
-        disabled={saving}
-        onClick={async () => {
-          setSaving(true);
-          await saveCurrentProject();
-          setSaving(false);
-        }}
-        title="Save to this browser (⌘S)"
-      >
-        <Save /> Save
-      </Button>
+      {studioProject && !viewOnly && versionMessage !== null && (
+        <form
+          className="flex items-center gap-1"
+          aria-label="Save version"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setSaving(true);
+            await saveCurrentProject(versionMessage);
+            setSaving(false);
+            setVersionMessage(null);
+          }}
+        >
+          <Input autoFocus aria-label="Version message" placeholder="What changed? (optional)" maxLength={500} value={versionMessage} onChange={(e) => setVersionMessage(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && setVersionMessage(null)} className="h-8 w-56 text-xs" />
+          <Button type="submit" size="sm" disabled={saving}>
+            <Save /> Save version
+          </Button>
+        </form>
+      )}
+      {!viewOnly && versionMessage === null && (
+        <Button
+          size="sm"
+          disabled={saving}
+          onClick={async () => {
+            if (studioProject) {
+              setVersionMessage('');
+              return;
+            }
+            setSaving(true);
+            await saveCurrentProject();
+            setSaving(false);
+          }}
+          title={studioProject ? 'Save a named version (autosave keeps every change; ⌘S saves a version now)' : 'Save to this browser (⌘S)'}
+        >
+          <Save /> {studioProject ? 'Save version…' : 'Save'}
+        </Button>
+      )}
       <StudioTableEditor isOpen={showTables} onClose={() => setShowTables(false)} />
       {showSettings && (
         <div className="fixed inset-0 z-50 bg-background overflow-y-auto" data-testid="settings-modal-wrapper">

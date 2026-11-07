@@ -63,8 +63,8 @@ test('Phase 1 acceptance: 12 × 10 ft room, units, both views, openings, cabinet
   await expect(width).toHaveAttribute('data-mm', '762');
 
   // 8. Save, reload, and keep the dimensions (and the display unit).
-  await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByTestId('save-state')).toHaveText('Saved');
+  // A studio project saves itself (spec 043); wait for it, then reload from the database.
+  await expect(page.locator('[data-save-status="saved"]')).toBeVisible({ timeout: 15_000 });
   await page.reload();
   await expect(page.locator('canvas[data-rendered]')).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId('status-room')).toHaveAttribute('data-mm', '3658x3048x2700');

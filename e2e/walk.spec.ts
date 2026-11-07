@@ -68,5 +68,6 @@ test('save where you stand as a viewpoint and jump back to it', async ({ page })
   await expect.poll(async () => (await pose(page)).z, { timeout: 5000 }).toBeGreaterThan(2000);
   await page.getByRole('button', { name: /^At the sink/ }).click();
   await expect.poll(async () => Math.abs((await pose(page)).x - atSink.x), { timeout: 5000 }).toBeLessThan(20);
-  await expect(page.getByTestId('save-state')).toHaveText('Unsaved changes');
+  // A viewpoint is part of the design: it can be undone (and it autosaves).
+  await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeEnabled();
 });

@@ -7,7 +7,7 @@ import { carpetArea, parseHomeFile, parseProjectFile, serializeHome, serializePr
 import { parsePackageFile, serializePackage, type ClientPackage, type PackageParse } from '@/engine/package/schema';
 
 const DB_NAME = 'interior-studio';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 const STORE = 'projects';
 /** Whole homes (apartments, villas): each record holds the serialized home file. */
 const HOMES = 'homes';
@@ -15,6 +15,10 @@ const HOMES = 'homes';
 const PACKAGES = 'packages';
 /** Images of client packages (reference images, 3D snapshots): JPEG bytes, by asset id. */
 const ASSETS = 'assets';
+/** Studio projects on this device (spec 043): last copies, last lists and waiting saves (see cloudCache.ts). */
+export const CLOUD_DOCS = 'cloud_docs';
+export const CLOUD_LISTS = 'cloud_lists';
+export const CLOUD_QUEUE = 'cloud_queue';
 
 export interface ProjectSummary {
   id: string;
@@ -33,7 +37,8 @@ let dbPromise: Promise<IDBDatabase> | null = null;
 /** Shown when another tab, still running an older version, holds the database open during an upgrade. */
 export const BLOCKED_MESSAGE = 'Interior Studio is open in another tab with an older version, which blocks an update of local storage. Close or reload the other Interior Studio tabs, then try again.';
 
-function openDb(): Promise<IDBDatabase> {
+/** The device's database, shared with the studio-project cache (spec 043). */
+export function openLocalDb(): Promise<IDBDatabase> {
   dbPromise ??= new Promise((resolve, reject) => {
     let failed = false;
     const req = indexedDB.open(DB_NAME, DB_VERSION);
@@ -50,6 +55,9 @@ function openDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(HOMES)) db.createObjectStore(HOMES, { keyPath: 'id' }).createIndex('updatedAt', 'updatedAt');
       if (!db.objectStoreNames.contains(PACKAGES)) db.createObjectStore(PACKAGES, { keyPath: 'id' }).createIndex('projectId', 'projectId');
       if (!db.objectStoreNames.contains(ASSETS)) db.createObjectStore(ASSETS, { keyPath: 'id' }).createIndex('projectId', 'projectId');
+      if (!db.objectStoreNames.contains(CLOUD_DOCS)) db.createObjectStore(CLOUD_DOCS, { keyPath: ['userId', 'orgId', 'projectId'] }).createIndex('userId', 'userId');
+      if (!db.objectStoreNames.contains(CLOUD_LISTS)) db.createObjectStore(CLOUD_LISTS, { keyPath: ['userId', 'orgId'] }).createIndex('userId', 'userId');
+      if (!db.objectStoreNames.contains(CLOUD_QUEUE)) db.createObjectStore(CLOUD_QUEUE, { keyPath: 'seq', autoIncrement: true }).createIndex('userId', 'userId');
     };
     req.onsuccess = () => {
       const db = req.result;
@@ -70,7 +78,7 @@ function openDb(): Promise<IDBDatabase> {
 }
 
 function request<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequest<T>, store = STORE): Promise<T> {
-  return openDb().then(
+  return openLocalDb().then(
     (db) =>
       new Promise<T>((resolve, reject) => {
         const tx = db.transaction(store, mode);

@@ -16,7 +16,8 @@ test('Client package: pages, notes, label edits, stale detection, regeneration, 
   await page.goto('/');
   await page.getByLabel('Project file').setInputFiles(FIXTURE);
   await expect(page.locator('canvas[data-rendered]')).toBeVisible({ timeout: 30_000 });
-  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  // The imported project is a studio project and saves itself (spec 043).
+  await expect(page.locator('[data-save-status="saved"]')).toBeVisible({ timeout: 15_000 });
   await page.getByRole('button', { name: 'Deliverables' }).click();
   await page.getByRole('navigation', { name: 'Sheets' }).getByRole('button', { name: /Client package/ }).click();
 
@@ -116,9 +117,10 @@ test('Client package: pages, notes, label edits, stale detection, regeneration, 
   await expect(sheet).toContainText('NOTE: The gas pipe will be covered later');
   await chatBox.fill('Which pages are outdated?');
   await chatBox.press('Enter');
-  // The reload reopened the last saved design (before the height edit): now elevation A, which was
-  // regenerated from the edit, is the stale page.
-  await expect(page.getByTestId('package-chat-message').last()).toContainText('Elevation A — Back wall: Technical content stale');
+  // Spec 043: the height edit autosaved, so the reload reopened it. Elevation A, regenerated from that
+  // edit, is current; the cabinet schedule was never regenerated and is still stale.
+  await expect(page.getByTestId('package-chat-message').last()).toContainText('Cabinet schedule: Technical content stale');
+  await expect(page.getByTestId('package-chat-message').last()).not.toContainText('Elevation A — Back wall: Technical content stale');
   await chatBox.fill('Change every page to A4');
   await chatBox.press('Enter');
   const approve = page.getByTestId('package-chat-message').last();

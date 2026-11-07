@@ -28,14 +28,18 @@ describe('local storage upgrade while an older tab is open', () => {
     oldTab.close();
     await saveProject(project);
     expect((await loadProject(project.id))?.ok).toBe(true);
+    // Spec 043: the upgrade adds the studio-project stores and keeps the device projects.
+    const { openLocalDb } = await import('./projectDb');
+    const db = await openLocalDb();
+    expect([...db.objectStoreNames]).toEqual(expect.arrayContaining(['projects', 'homes', 'packages', 'assets', 'cloud_docs', 'cloud_lists', 'cloud_queue']));
   });
 
   it('releases the database when a newer version needs to upgrade it', async () => {
     const { saveProject } = await import('./projectDb');
     await saveProject(createExampleProject());
-    // A "newer tab" opening version 4 is not blocked by this one.
-    const newer = await open(4);
-    expect(newer.version).toBe(4);
+    // A "newer tab" opening version 5 is not blocked by this one.
+    const newer = await open(5);
+    expect(newer.version).toBe(5);
     newer.close();
   });
 });

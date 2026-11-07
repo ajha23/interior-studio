@@ -14,6 +14,9 @@ import { setAll, setOpening, toggleOpening, type Openness } from './openings';
 
 const HISTORY_LIMIT = 100;
 
+/** Shown when a viewer (or a past version being viewed) tries to edit (spec 043, FR-013). */
+export const VIEW_ONLY_MESSAGE = 'View only: ask a studio owner for edit access.';
+
 export type ViewMode = '3d' | 'plan' | 'split' | 'drawings';
 export type CameraPreset = 'iso' | 'top' | 'front' | 'left' | 'right';
 export type VisualStyle = 'realistic' | 'edges' | 'xray';
@@ -83,6 +86,11 @@ export interface EditorState {
   revision: number;
   /** The project as last saved; the editor is dirty while `project !== savedProject`. */
   savedProject: KitchenProject | null;
+  /**
+   * Viewers and past versions open read-only: edits, transactions, undo and redo are refused. This
+   * only decides what the editor allows; the database refuses a viewer's save anyway (spec 043).
+   */
+  readOnly: boolean;
   past: HistoryEntry[];
   future: HistoryEntry[];
   selectedId: string | null;
@@ -115,7 +123,8 @@ export interface EditorState {
   camera: { request: CameraRequest; nonce: number };
   preview: Preview | null;
 
-  openProject: (project: KitchenProject) => void;
+  openProject: (project: KitchenProject, options?: { readOnly?: boolean }) => void;
+  setReadOnly: (readOnly: boolean) => void;
   closeProject: () => void;
   dispatch: (command: DesignCommand) => CommandResult;
   /**
@@ -184,6 +193,7 @@ export const useEditorStore = create<EditorState>()(
     project: null,
     revision: 0,
     savedProject: null,
+    readOnly: false,
     past: [],
     future: [],
     selectedId: null,
@@ -207,11 +217,12 @@ export const useEditorStore = create<EditorState>()(
     camera: { request: { kind: 'fit' }, nonce: 0 },
     preview: null,
 
-    openProject: (project) =>
+    openProject: (project, options) =>
       set((s) => {
         s.project = project;
         s.revision += 1;
         s.savedProject = project;
+        s.readOnly = options?.readOnly ?? false;
         s.past = [];
         s.future = [];
         s.selectedId = null;
@@ -223,10 +234,13 @@ export const useEditorStore = create<EditorState>()(
         s.camera = { request: { kind: 'fit' }, nonce: s.camera.nonce + 1 };
       }),
 
+    setReadOnly: (readOnly) => set((s) => void (s.readOnly = readOnly)),
+
     closeProject: () =>
       set((s) => {
         s.project = null;
         s.savedProject = null;
+        s.readOnly = false;
         s.past = [];
         s.future = [];
         s.selectedId = null;
@@ -236,6 +250,10 @@ export const useEditorStore = create<EditorState>()(
     dispatch: (command) => {
       const current = get().project;
       if (!current) return { success: false, errors: ['No project is open.'], affectedEntityIds: [], summary: '' };
+      if (get().readOnly) {
+        set((s) => void (s.feedback = { kind: 'error', messages: [VIEW_ONLY_MESSAGE], at: Date.now() }));
+        return { success: false, errors: [VIEW_ONLY_MESSAGE], affectedEntityIds: [], summary: '' };
+      }
       const { project, result } = executeCommand(current, command);
       set((s) => {
         if (!result.success) {
@@ -258,6 +276,10 @@ export const useEditorStore = create<EditorState>()(
     applyTransaction: (commands, label, expectedRevision) => {
       const { project: current, revision } = get();
       if (!current) return { success: false, errors: ['No project is open.'] };
+      if (get().readOnly) {
+        set((s) => void (s.feedback = { kind: 'error', messages: [VIEW_ONLY_MESSAGE], at: Date.now() }));
+        return { success: false, errors: [VIEW_ONLY_MESSAGE] };
+      }
       if (expectedRevision !== undefined && expectedRevision !== revision) return { success: false, stale: true, errors: ['The project changed since this change was previewed.'] };
       const run = executeBatch(current, commands);
       if (!run.success) {
@@ -280,6 +302,7 @@ export const useEditorStore = create<EditorState>()(
 
     undo: () =>
       set((s) => {
+        if (s.readOnly) return;
         const entry = s.past.pop();
         if (!entry || !s.project) return;
         s.future.push({ project: s.project, label: entry.label });
@@ -292,6 +315,7 @@ export const useEditorStore = create<EditorState>()(
 
     redo: () =>
       set((s) => {
+        if (s.readOnly) return;
         const entry = s.future.pop();
         if (!entry || !s.project) return;
         s.past.push({ project: s.project, label: entry.label });

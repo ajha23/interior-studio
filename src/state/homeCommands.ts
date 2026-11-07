@@ -4,6 +4,7 @@
  * (furniture, finishes of one room) happen inside the room, where the full assistant works.
  */
 import { navigate } from '@/app/router';
+import { docRoutes } from '@/app/docRoutes';
 import { carpetArea, ROOM_TYPE_LABELS, roomArea, type HomeRoom } from '@/domain';
 import { parseHomeBrief } from '@/engine/home/brief';
 import { HOME_STYLES, type HomeStyleId } from '@/engine/home/generate';
@@ -26,7 +27,7 @@ export function homeCommand(text: string): string | null {
 
   const brief = parseHomeBrief(text);
   if (brief && /\b(new|another|design|create|generate|make)\b/.test(t)) {
-    void store.create(brief).then((h) => navigate({ name: 'house', homeId: h.id }));
+    void store.create(brief).then((h) => navigate(docRoutes.home(h.id)));
     return `Designing a new ${brief.bhk}BHK ${brief.kind}${brief.carpetAreaSqft ? ` of about ${brief.carpetAreaSqft} sq ft` : ''}. It opens in a moment (this one stays in your projects once saved).`;
   }
 
@@ -52,7 +53,7 @@ export function homeCommand(text: string): string | null {
   if (open) {
     const room = findRoom(home.rooms, open[1]!);
     if (room) {
-      navigate({ name: 'room', homeId: home.id, roomId: room.id });
+      navigate(docRoutes.room(home.id, room.id));
       return `Opening the ${room.name.toLowerCase()} in the room editor: change its layout, furniture and finishes there, then use “Home plan” to come back.`;
     }
   }

@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { passwordSignInEnabled, supabase, type AppSupabaseClient } from '@/infrastructure/supabase/client';
+import { clearUser } from '@/persistence/cloudCache';
 import { emailAuthError, type EmailAuthContext } from './emailAuthErrors';
 import {
   cleanAuthParams,
@@ -190,6 +191,7 @@ export function SessionProvider({ children, client = supabase }: { children: Rea
   );
 
   const signOut = useCallback(async () => {
+    const userId = session?.user.id;
     forgetLastStudio();
     clearPendingEmail();
     clearEmailReturnTo();
@@ -199,7 +201,10 @@ export function SessionProvider({ children, client = supabase }: { children: Rea
     }
     leave();
     if (window.location.hash && window.location.hash !== '#/') window.location.hash = '/';
-  }, [client, leave]);
+    // Then the studio projects cached on this device for this user (spec 043, FR-011a). The session
+    // ends first, so a page that closes or navigates right away still signs out.
+    if (userId) await clearUser(userId).catch(() => undefined);
+  }, [client, leave, session]);
 
   const refreshMemberships = useCallback(async () => {
     if (!client || !session) return;

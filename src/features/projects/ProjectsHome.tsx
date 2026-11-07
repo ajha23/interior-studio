@@ -14,6 +14,10 @@ import { Label } from '@/components/ui/label';
 import { MmField } from '@/components/ui/mm-field';
 import { cn } from '@/lib/utils';
 import { createAndOpen, exportProject, importProjectFile } from './projectActions';
+import { docRoutes } from '@/app/docRoutes';
+import { StudioProjects } from './cloud/StudioProjects';
+import { canEdit, type StudioContext } from './cloud/studioContext';
+import { OFFLINE_ACTION, useOnline } from './cloud/useOnline';
 
 const LAYOUTS: { value: Layout; label: string; hint: string }[] = [
   { value: 'straight', label: 'Straight', hint: 'One run on the back wall' },
@@ -21,7 +25,14 @@ const LAYOUTS: { value: Layout; label: string; hint: string }[] = [
   { value: 'empty', label: 'Empty room', hint: 'Start from scratch' },
 ];
 
-export function ProjectsHome({ notice }: { notice?: string | null }) {
+/**
+ * The Projects page. Inside a studio (spec 043) it lists the studio's projects first and creates new
+ * ones there; projects saved only in this browser are listed under "On this device" (until 044).
+ */
+export function ProjectsHome({ notice, studio }: { notice?: string | null; studio?: StudioContext }) {
+  const online = useOnline();
+  // New projects go to the studio: viewers cannot create them, and creating needs a connection.
+  const createBlocked = studio ? (!canEdit(studio.role) ? 'Viewers cannot create projects in this studio.' : !online ? OFFLINE_ACTION : null) : null;
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [name, setName] = useState('My kitchen');
@@ -61,7 +72,7 @@ export function ProjectsHome({ notice }: { notice?: string | null }) {
     const result = await importProjectFile(file).catch((err: unknown) => ({ ok: false as const, errors: [err instanceof Error ? err.message : String(err)] }));
     if (fileInput.current) fileInput.current.value = '';
     if (!result.ok) setErrors([`Could not import ${file.name}:`, ...result.errors]);
-    else navigate({ name: 'editor', projectId: result.project.id });
+    else navigate(docRoutes.kitchen(result.projectId));
   };
 
   const onExport = async (id: string) => {
@@ -84,14 +95,14 @@ export function ProjectsHome({ notice }: { notice?: string | null }) {
           <div className="grid size-8 place-items-center rounded-md bg-primary text-xs font-bold text-primary-foreground">IS</div>
           <div>
             <h1 className="text-base font-semibold">Interior Studio</h1>
-            <p className="text-xs text-muted-foreground">Modular kitchen designer · projects are stored in this browser</p>
+            <p className="text-xs text-muted-foreground">{studio ? `Modular kitchen designer · projects are saved to ${studio.name}` : 'Modular kitchen designer · projects are stored in this browser'}</p>
           </div>
         </div>
       </header>
 
       <div className="mx-auto grid max-w-6xl gap-6 px-6 py-8 lg:grid-cols-[minmax(0,420px)_1fr]">
         <div className="flex flex-col gap-6">
-        <NewHomeCard />
+        <NewHomeCard blocked={createBlocked} />
         <Card>
           <CardHeader>
             <CardTitle>New project</CardTitle>
@@ -141,18 +152,19 @@ export function ProjectsHome({ notice }: { notice?: string | null }) {
                   {errors.map((e) => <li key={e}>{e}</li>)}
                 </ul>
               )}
-              <Button type="submit" disabled={busy}>
+              {createBlocked && <p className="text-xs text-muted-foreground">{createBlocked}</p>}
+              <Button type="submit" disabled={busy || Boolean(createBlocked)}>
                 <Plus /> Create project
               </Button>
             </form>
             <div className="mt-4 flex flex-wrap gap-2 border-t pt-4">
-              <Button variant="outline" size="sm" onClick={() => void createAndOpen(createRealisticShowcaseProject())}>
+              <Button variant="outline" size="sm" disabled={Boolean(createBlocked)} onClick={() => void createAndOpen(createRealisticShowcaseProject())}>
                 <Sparkles className="text-highlight" /> Open realistic showcase
               </Button>
-              <Button variant="outline" size="sm" onClick={() => void createAndOpen(createExampleProject())}>
+              <Button variant="outline" size="sm" disabled={Boolean(createBlocked)} onClick={() => void createAndOpen(createExampleProject())}>
                 <Sparkles /> Open example kitchen
               </Button>
-              <Button variant="outline" size="sm" onClick={() => fileInput.current?.click()}>
+              <Button variant="outline" size="sm" disabled={Boolean(createBlocked)} onClick={() => fileInput.current?.click()}>
                 <Upload /> Import project file
               </Button>
               <input ref={fileInput} type="file" accept=".json,application/json" className="hidden" aria-label="Project file" onChange={(e) => void onImport(e.target.files?.[0])} />
@@ -161,10 +173,15 @@ export function ProjectsHome({ notice }: { notice?: string | null }) {
         </Card>
         </div>
 
+        <div className="flex flex-col gap-8">
+        {studio && <StudioProjects studio={studio} />}
         <section aria-labelledby="projects-h" className="flex flex-col gap-3">
+          {studio && (projects?.length || homes?.length) ? (
+            <p className="text-xs text-muted-foreground">Saved only in this browser. They move to the studio with the import update.</p>
+          ) : null}
           {homes && homes.length > 0 && (
             <>
-              <h2 className="text-sm font-semibold">Your homes</h2>
+              <h2 className="text-sm font-semibold">{studio ? 'Homes on this device' : 'Your homes'}</h2>
               <ul className="grid gap-3 sm:grid-cols-2" aria-label="Your homes">
                 {homes.map((h) => (
                   <li key={h.id}>
@@ -199,11 +216,11 @@ export function ProjectsHome({ notice }: { notice?: string | null }) {
               </ul>
             </>
           )}
-          <h2 id="projects-h" className="text-sm font-semibold">Your projects</h2>
+          <h2 id="projects-h" className="text-sm font-semibold">{studio ? 'On this device' : 'Your projects'}</h2>
           {notice && <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 p-2.5 text-sm text-destructive">{notice}</p>}
           {loadError && <p role="alert" className="text-sm text-destructive">Local storage is unavailable: {loadError}</p>}
           {projects?.length === 0 && (
-            <div className="rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground">No saved projects yet. Create one or open the example kitchen.</div>
+            <div className="rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground">{studio ? 'No projects saved only on this device.' : 'No saved projects yet. Create one or open the example kitchen.'}</div>
           )}
           <ul className="grid gap-3 sm:grid-cols-2">
             {projects?.map((p) => (
@@ -231,6 +248,7 @@ export function ProjectsHome({ notice }: { notice?: string | null }) {
             ))}
           </ul>
         </section>
+        </div>
       </div>
     </main>
   );
