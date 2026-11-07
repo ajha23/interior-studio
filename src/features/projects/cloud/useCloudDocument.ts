@@ -97,6 +97,12 @@ export function useCloudDocument(studio: StudioContext, projectId: string, type:
         }
         opened = { versionNo: copy.versionNo, doc: copy.doc };
       }
+      // Saves still waiting on this device are newer than the head: show the newest of them, so
+      // later edits build on it (the controller sends them, in order, once attached).
+      const waiting = await cache.queued(studio.userId, studio.orgId, projectId);
+      if (cancelled) return;
+      const newest = waiting.at(-1);
+      if (newest) opened = { versionNo: opened.versionNo, doc: newest.doc };
       if (opened.doc.type !== type) {
         setState({ status: 'error', message: NOT_HERE });
         return;

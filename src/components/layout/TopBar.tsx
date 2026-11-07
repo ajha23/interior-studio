@@ -76,9 +76,13 @@ export function TopBar() {
         }}
         className="h-8 w-56 border-transparent bg-transparent font-medium shadow-none hover:border-input"
       />
-      <span className={dirty ? 'text-xs text-amber-600' : 'text-xs text-muted-foreground'} data-testid="save-state">
-        {saving ? 'Saving…' : dirty ? 'Unsaved changes' : 'Saved'}
-      </span>
+      {studioProject ? (
+        <SaveStatus />
+      ) : (
+        <span className={dirty ? 'text-xs text-amber-600' : 'text-xs text-muted-foreground'} data-testid="save-state">
+          {saving ? 'Saving…' : dirty ? 'Unsaved changes' : 'Saved'}
+        </span>
+      )}
 
       <div className="mx-auto flex items-center gap-1">
         <Button variant="ghost" size="icon-sm" onClick={undo} disabled={!canUndo} aria-label="Undo" title={undoLabel ? `Undo: ${undoLabel} (⌘Z)` : 'Undo (⌘Z)'}>
@@ -144,7 +148,6 @@ export function TopBar() {
       <Button variant="ghost" size="sm" onClick={() => exportProject(project)} title="Download the project as a .kitchen.json file">
         <Download /> Export
       </Button>
-      <SaveStatus />
       {studioProject && !viewOnly && versionMessage !== null && (
         <form
           className="flex items-center gap-1"

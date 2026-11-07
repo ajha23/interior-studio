@@ -39,11 +39,10 @@ test('create a room, edit a cabinet, undo, save and reopen', async ({ page }) =>
   await page.getByRole('button', { name: 'BOM' }).click();
   await expect(page.getByTestId('bom-cabinet-base-900')).toContainText('900 × 720 × 560');
 
-  await expect(page.getByTestId('save-state')).toHaveText('Unsaved changes');
-  await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByTestId('save-state')).toHaveText('Saved');
+  // A studio project saves itself (spec 043): Saving…, then Saved.
+  await expect(page.locator('[data-save-status="saved"]')).toBeVisible({ timeout: 15_000 });
 
-  // Reload: the hash route reopens the project from IndexedDB.
+  // Reload: the studio address reopens the project from the database.
   await page.reload();
   await expect(page.getByTestId('viewport-3d').locator('canvas')).toBeVisible();
   await page.getByRole('button', { name: 'Plan', exact: true }).click();

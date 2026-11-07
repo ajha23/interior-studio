@@ -190,3 +190,36 @@ describe('leaving the project', () => {
   });
 });
 
+describe('the status never claims Saved too early', () => {
+  it('reads Saving while a save is still being written to the device queue', async () => {
+    database(1);
+    await attach();
+    // A drain still running when the next autosave fires must not report Saved in between.
+    let release!: () => void;
+    const slow = new Promise<void>((r) => (release = r));
+    const real = save.getMockImplementation()!;
+    save.mockImplementationOnce(async (c, input) => {
+      await slow;
+      return real(c, input);
+    });
+    edit(3000);
+    await vi.advanceTimersByTimeAsync(AUTOSAVE_DELAY_MS);
+    edit(3100);
+    await vi.advanceTimersByTimeAsync(AUTOSAVE_DELAY_MS);
+    const seen: string[] = [];
+    const stop = useSyncStore.subscribe((s) => seen.push(s.status));
+    release();
+    await vi.waitFor(async () => expect(await cache.queued('u1', 'org-a', ID)).toEqual([]));
+    stop();
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(sync().status).toBe('saved');
+    // Saved appears only once both saves reached the studio, and never flips back to Saving after.
+    const first = seen.indexOf('saved');
+    expect(first).toBeGreaterThan(-1);
+    expect(seen.slice(first).every((st) => st === 'saved')).toBe(true);
+    expect((save.mock.calls[1]![1].doc as { project: KitchenProject }).project.room.width).toBe(3100);
+    // Each save expects the head after the one before it: no false conflict.
+    expect(save.mock.calls.map((c) => c[1].expectedVersionNo)).toEqual([1, 2]);
+  });
+});
+

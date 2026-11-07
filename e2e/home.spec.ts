@@ -41,15 +41,14 @@ test('design a 3BHK apartment, refine a bedroom, save and reopen', async ({ page
   // Back to the plan: the edit came with it (unsaved), then save.
   await page.getByRole('button', { name: /^Back to / }).click();
   await expect(page.getByTestId('home-view')).toBeVisible();
-  await expect(page.getByText('Unsaved changes')).toBeVisible();
-  await page.getByRole('button', { name: 'Save' }).click();
-  await expect(page.getByText('Unsaved changes')).toHaveCount(0);
+  // A studio home saves itself (spec 043), the room's edits with it.
+  await expect(page.locator('[data-save-status="saved"]')).toBeVisible({ timeout: 15_000 });
 
   await page.reload();
   await expect(page.getByTestId('home-view')).toBeVisible();
   await expect(page.getByTestId('room-list-item').filter({ hasText: 'Guest room' })).toHaveCount(1);
   await page.getByRole('button', { name: 'Projects' }).click();
-  await expect(page.getByRole('list', { name: 'Your homes' })).toContainText('3BHK apartment');
+  await expect(page.getByRole('list', { name: 'Studio projects' })).toContainText('3BHK apartment');
 });
 
 test('the assistant designs a villa from one sentence', async ({ page }) => {

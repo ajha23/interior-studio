@@ -64,6 +64,8 @@ let timer: ReturnType<typeof setTimeout> | null = null;
 let stopWatching: (() => void) | null = null;
 let draining: Promise<void> | null = null;
 let again = false;
+/** Saves being written to the device queue right now: until they are, nothing reads as Saved. */
+let writing = 0;
 /** The documents queued in this tab, by queue entry, so a save marks the very object it sent. */
 const sentDocs = new Map<number, cloud.CloudDoc>();
 let lastQueued: cloud.CloudDoc | null = null;
@@ -84,26 +86,40 @@ async function refreshCount(o: AttachOptions) {
   return waiting;
 }
 
+/** Queue writes, one at a time, so each save counts the ones queued before it. */
+let writes: Promise<unknown> = Promise.resolve();
+
 /** Writes the document to the device queue, chained after the saves already waiting. */
-async function enqueue(o: AttachOptions, kind: cloud.VersionKind, message: string): Promise<boolean> {
+function enqueue(o: AttachOptions, kind: cloud.VersionKind, message: string): Promise<boolean> {
   const doc = o.read();
-  if (!doc) return false;
-  const head = useSyncStore.getState().head;
-  const waiting = await cache.queued(o.userId, o.orgId, o.projectId);
-  const seq = await cache.enqueue({
-    userId: o.userId,
-    orgId: o.orgId,
-    projectId: o.projectId,
-    expectedVersionNo: head + waiting.length,
-    idempotencyKey: crypto.randomUUID(),
-    doc,
-    kind,
-    message,
+  if (!doc) return Promise.resolve(false);
+  writing += 1;
+  // After detach (the edit made just before leaving) the store is reset: use the head known now.
+  const headNow = useSyncStore.getState().head;
+  const run = writes.then(async () => {
+    try {
+      const head = options === o ? useSyncStore.getState().head : headNow;
+      const waiting = await cache.queued(o.userId, o.orgId, o.projectId);
+      const seq = await cache.enqueue({
+        userId: o.userId,
+        orgId: o.orgId,
+        projectId: o.projectId,
+        expectedVersionNo: head + waiting.length,
+        idempotencyKey: crypto.randomUUID(),
+        doc,
+        kind,
+        message,
+      });
+      sentDocs.set(seq, doc);
+      lastQueued = doc;
+      await refreshCount(o);
+      return true;
+    } finally {
+      writing -= 1;
+    }
   });
-  sentDocs.set(seq, doc);
-  lastQueued = doc;
-  await refreshCount(o);
-  return true;
+  writes = run.catch(() => undefined);
+  return run;
 }
 
 /**
@@ -134,7 +150,7 @@ async function drainOnce(o: AttachOptions): Promise<boolean> {
     if (options !== o) return false;
     const [next] = await refreshCount(o);
     if (!next) {
-      useSyncStore.setState({ status: timer ? 'saving' : 'saved', error: null, canRetry: false });
+      useSyncStore.setState({ status: timer || writing > 0 ? 'saving' : 'saved', error: null, canRetry: false });
       return true;
     }
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {

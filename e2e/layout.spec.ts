@@ -32,7 +32,7 @@ test('Phase 4: L → U alternatives, previewed in plan and 3D, one applied, then
   await expect(page.getByTestId('candidate-banner')).toContainText('Previewing: Option 2');
   await expect(page.getByTestId('viewport-3d')).toBeVisible();
   await expect(plan).not.toHaveCount(before);
-  await expect(page.getByTestId('save-state')).toHaveText('Saved');
+  await expect(page.locator('[data-save-status="saved"]')).toBeVisible();
   await page.getByRole('button', { name: 'Back to my design' }).click();
   await expect(page.getByTestId('candidate-banner')).toHaveCount(0);
   await expect(plan).toHaveCount(before);
@@ -42,7 +42,8 @@ test('Phase 4: L → U alternatives, previewed in plan and 3D, one applied, then
   await expect(options.getByTestId('layouts-status')).toHaveText('Applied');
   const after = await plan.count();
   expect(after).toBeGreaterThan(before);
-  await expect(page.getByTestId('save-state')).toHaveText('Unsaved changes');
+  // Applying is a design change: one undo step (and an autosave).
+  await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
   await expect(plan).toHaveCount(before);
   await page.getByRole('button', { name: 'Redo', exact: true }).click();

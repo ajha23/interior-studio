@@ -85,3 +85,10 @@ export async function localStudioIds(token: string): Promise<string[]> {
   if (!res.ok) throw new Error(`org_members: ${res.status}`);
   return ((await res.json()) as { org_id: string }[]).map((r) => r.org_id);
 }
+
+/** Reads a table through the REST API as the user (LOCAL stack; row-level security applies). */
+export async function localSelect<T>(token: string, pathAndQuery: string): Promise<T[]> {
+  const res = await fetch(`${URL_LOCAL}/rest/v1/${pathAndQuery}`, { headers: { apikey: localAnonKey(), Authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new Error(`${pathAndQuery}: ${res.status} ${await res.text()}`);
+  return (await res.json()) as T[];
+}

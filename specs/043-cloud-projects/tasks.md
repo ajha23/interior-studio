@@ -129,7 +129,7 @@ output recorded next to it. **Founder-only**: the production `db push` and the p
   - **what stays**: `doc_type` and the `restore` enum value (they can't be removed safely and are harmless), and `private.audit_log` and `private.idempotency_keys` (kept for the audit trail);
   - **checks after a rollback**: `npm run db:test` on a fresh local stack with the rollback migration applied; on production, `select count(*) from project_versions` is unchanged.
 - [X] T009 Regenerate the types with `npm run db:types && npm run db:types:check`, and record a clean check (`src/infrastructure/supabase/database.types.ts`). — **Done 2026-11-07**: `db:types` regenerated; `db:types:check` → `Generated types are current`.
-- [ ] T010 Run the full check from AGENTS.md, plus `db:reset`, `db:test` and `db:test:project-concurrency`. Open **PR 043a** (spec, plan, migration and tests). After CI is green and the PR has merged, the **founder** runs `npx supabase db push` to production, and we record `select doc_type, count(*) from project_versions group by 1`: all `legacy_v1`, with the same total as T001's count (the FR-002 backfill proof).
+- [ ] T010 Run the full check from AGENTS.md, plus `db:reset`, `db:test` and `db:test:project-concurrency`. Open **PR 043a** (spec, plan, migration and tests). After CI is green and the PR has merged, the **founder** runs `npx supabase db push` to production, and we record `select doc_type, count(*) from project_versions group by 1`: all `legacy_v1`, with the same total as T001's count (the FR-002 backfill proof). — **PR #18 merged 2026-11-07** (0d4b803), CI green: https://github.com/ajha23/interior-studio/actions/runs/42340347260. **Pending: the founder's `npx supabase db push`**; production still had no `doc_type` column when checked after the merge.
 
 **Checkpoint**: the database contract is proven. The app still uses local storage only.
 
@@ -137,30 +137,30 @@ output recorded next to it. **Founder-only**: the production `db push` and the p
 
 ## Phase 3: Foundational — browser (PR 043b; blocks US1–US5)
 
-- [ ] T011 [P] Unit tests first in `src/infrastructure/projects/cloudProjects.test.ts`, with a fake client that records calls. They cover:
+- [X] T011 [P] Unit tests first in `src/infrastructure/projects/cloudProjects.test.ts`, with a fake client that records calls. They cover: — **Done 2026-11-07**: `src/infrastructure/projects/cloudProjects.test.ts`, 8 tests (error mapping, list, open/legacy/missing/invalid, create, save/conflict, offline, zero-row = forbidden, source check for no module-level client).
   - `listProjects(client, orgId)`, using the select string from contracts/project-rpc.md;
   - `openHead`, `createProject`, `saveVersion`, `renameProject`, `setArchived` and `deleteProject`;
   - error mapping: `PT409` → `{kind:'conflict', currentVersionNo}`, `PT413` → `too_large`, `PT423` → `archived`, `PT404` → `not_found`, `42501` → `forbidden`, a fetch `TypeError` → `offline`, and anything else → `server`;
   - 0 rows from update or delete → `forbidden`, never success;
   - the absence of any module-level client.
-- [ ] T012 Implement `src/infrastructure/projects/cloudProjects.ts`:
+- [X] T012 Implement `src/infrastructure/projects/cloudProjects.ts`: — **Done 2026-11-07**: `src/infrastructure/projects/cloudProjects.ts`.
   - every function takes `client: AppSupabaseClient` as its first argument;
   - the scene is rebuilt as an envelope and parsed with `parseProjectFile` or `parseHomeFile` (research R6);
   - a `legacy_v1` head returns `{kind:'legacy'}`.
 
   Make T011 pass.
-- [ ] T013 [P] Tests first in `src/persistence/cloudCache.test.ts` (fake-indexeddb):
+- [X] T013 [P] Tests first in `src/persistence/cloudCache.test.ts` (fake-indexeddb): — **Done 2026-11-07**: `src/persistence/cloudCache.test.ts`, 6 tests; the upgrade test now asserts that all 7 stores exist after the upgrade.
   - put and get on `cloud_docs` and `cloud_lists`;
   - `cloud_queue` enqueues, lists in order per `[userId, orgId, projectId]`, removes and re-bases;
   - `clearUser(userId)` removes everything for that user only;
   - upgrading from the current database version keeps the existing `projects`, `homes`, `packages` and `assets` data (extend `projectDbUpgrade.test.ts`).
-- [ ] T014 Implement `src/persistence/cloudCache.ts` and bump the `projectDb.ts` database version, adding the three stores in `upgrade` (data-model.md § Browser). Make T013 pass.
-- [ ] T015 [P] Read-only in the stores, tests first in `src/state/editorStore.test.ts` and `homeStore.test.ts`:
+- [X] T014 Implement `src/persistence/cloudCache.ts` and bump the `projectDb.ts` database version, adding the three stores in `upgrade` (data-model.md § Browser). Make T013 pass. — **Done 2026-11-07**: `src/persistence/cloudCache.ts`; `projectDb.ts` DB_VERSION 3 → 4 (`openLocalDb` exported).
+- [X] T015 [P] Read-only in the stores, tests first in `src/state/editorStore.test.ts` and `homeStore.test.ts`: — **Done 2026-11-07**: `editorStore.readOnly` / `setReadOnly` / `openProject(p, {readOnly})`; `homeStore.readOnly`; 3 tests.
   - with `readOnly = true`, `dispatch`, `applyTransaction`, `undo` and `redo` change nothing, and `dispatch` returns the error `View only: ask a studio owner for edit access.`;
   - the home store's `updateRoom`, `restyle` and `rename` do nothing.
 
   Implement `readOnly` and `setReadOnly` in `src/state/editorStore.ts` and the guard in `src/state/homeStore.ts`.
-- [ ] T016 Delete the 034.x cloud code (FR-016):
+- [X] T016 Delete the 034.x cloud code (FR-016): — **Done 2026-11-07**: 34.x files and `@studio/core` re-exports removed; the SC-004 grep finds only the English word "spaces" (3 lines, unrelated); `lint`, `typecheck` and 962 unit tests pass.
   - `src/domain/project/cloudTypes.ts`, `cloudPersistence.ts`, `cloudPersistence.test.ts`, `cloudErrors.ts` and `cloudPersistencePort.ts`, and their 4 re-exports in `src/domain/index.ts`;
   - `src/state/cloudProjectStore.ts` and its test;
   - all of `src/infrastructure/persistence/`;
@@ -168,11 +168,11 @@ output recorded next to it. **Founder-only**: the production `db push` and the p
   - the two assertions in `src/test/monorepoPackages.test.ts` (`SaaSProjectSchema`, `commitSpaceRevision`).
 
   Record that `grep -rnE "cloudTypes|spaces|design_revisions|SupabaseClientLike|createBrowserSupabaseClient|InMemoryPersistenceAdapter|persistenceFactory" src` finds nothing outside archives (SC-004), and that `npm run lint && npm run typecheck && npm test` passes.
-- [ ] T017 Routes, tests first in `src/app/router.test.ts`, then `src/app/router.ts`. Add these, and keep every existing route:
+- [X] T017 Routes, tests first in `src/app/router.test.ts`, then `src/app/router.ts`. Add these, and keep every existing route: — **Done 2026-11-07**: 3 routes and their tests.
   - `cloud-kitchen {slug, projectId}` → `#/s/<slug>/p/<uuid>`;
   - `cloud-home {slug, homeId}` → `#/s/<slug>/h/<uuid>`;
   - `cloud-room {slug, homeId, roomId}` → `#/s/<slug>/h/<uuid>/room/<roomId>`.
-- [ ] T018 Sign-out clears the cloud cache: `src/features/auth/SessionProvider.tsx` calls `clearUser(userId)` (and the sync controller's `reset()`) on sign-out. Add a test in `SessionProvider.test.tsx`.
+- [X] T018 Sign-out clears the cloud cache: `src/features/auth/SessionProvider.tsx` calls `clearUser(userId)` (and the sync controller's `reset()`) on sign-out. Add a test in `SessionProvider.test.tsx`. — **Done 2026-11-07**: `SessionProvider.signOut` → `clearUser`; RTL test.
 
 **Checkpoint**: the adapter, cache, read-only mode and routes exist. Nothing in the UI uses them yet, and the app still runs.
 
@@ -186,7 +186,7 @@ deleted in the database. Browser-only projects stay under "On this device".
 **Independent test**: create a project in browser A; open it in browser B, signed in to the same
 studio; the design is identical.
 
-- [ ] T019 [P] [US1] Write `e2e/cloud-projects.spec.ts` § US1 (local stack, designer.a), plus a helper `e2e/fixtures/cloud.ts` with `createStudioKitchen(page, name)` and `waitSaved(page)`:
+- [X] T019 [P] [US1] Write `e2e/cloud-projects.spec.ts` § US1 (local stack, designer.a), plus a helper `e2e/fixtures/cloud.ts` with `createStudioKitchen(page, name)` and `waitSaved(page)`: — **Done 2026-11-07**: `e2e/cloud-projects.spec.ts` § US1, 6 tests: two devices, rename/archive/show-archived/admin delete after typing the name, unarchive, a home's room change saved inside the home (FR-014), Beta refused, legacy not openable, On this device. All 9 tests in the file pass on the local stack.
   - create "Cloud kitchen 1" and add a base cabinet; wait for Saved;
   - in a **new browser context** with the same stored session, the project is listed with owner `designer.a` and opens with the same cabinet count and width;
   - rename, then reload: the name persists;
@@ -196,14 +196,14 @@ studio; the design is identical.
   - "On this device": a kitchen saved to IndexedDB before (seeded through `page.evaluate` into the `projects` store) is listed there and opens at `#/project/<id>`;
   - a **home**: New home → the plan opens at `#/s/alpha/h/<uuid>`; enter a room, add a cabinet, Ctrl+S; in a new context the home opens with that cabinet in that room (FR-014: one home document, no separate rooms);
   - a seeded `legacy_v1` project shows "Older format: opens after the import update" and doesn't open.
-- [ ] T020 [P] [US1] RTL tests first, in `src/features/projects/ProjectsHome.test.tsx`, with a fake adapter:
+- [X] T020 [P] [US1] RTL tests first, in `src/features/projects/ProjectsHome.test.tsx`, with a fake adapter: — **Done 2026-11-07**: Written as `src/features/projects/cloud/StudioProjects.test.tsx` (the studio list is its own component), 6 tests: columns, archived filter, legacy, controls per role, typed-name delete, rename/archive calls, offline banner and disabled controls.
   - the studio list columns (name, client, status, kitchen/home badge, last updated, owner; status is read-only in 043);
   - the row menu by role (viewer: none; designer: Rename and Archive/Unarchive; admin also Delete on archived only);
   - the "Show archived" toggle (off by default);
   - the "On this device" section;
   - the delete confirmation needs the exact name;
   - offline: create, rename, archive, delete and import are disabled with "You're offline — this needs a connection."
-- [ ] T021 [US1] Rewrite `src/features/projects/ProjectsHome.tsx`:
+- [X] T021 [US1] Rewrite `src/features/projects/ProjectsHome.tsx`: — **Done 2026-11-07**: `ProjectsHome` (studio list + On this device) and `StudioProjects.tsx`; New project, New home and Import create studio projects and are disabled for viewers and offline.
   - it takes the studio membership as a prop;
   - the studio list comes from `listProjects`, and every successful load is written to `cloud_lists`; offline, it comes from `cloud_lists` with the offline banner;
   - "New project", "New home" (`NewHomeCard` → `createProject` with `doc_type 'home'`) and "Import" create studio projects through `createProject`, then navigate to the cloud route;
@@ -211,7 +211,7 @@ studio; the design is identical.
   - the header subtitle changes from "projects are stored in this browser" to the studio name.
 
   Make T020 pass.
-- [ ] T022 [US1] Open cloud documents in `src/features/projects/cloud/useCloudDocument.ts` and `src/app/App.tsx`:
+- [X] T022 [US1] Open cloud documents in `src/features/projects/cloud/useCloudDocument.ts` and `src/app/App.tsx`: — **Done 2026-11-07**: `useCloudDocument` + `StudioDocumentPage`; also shows the newest save still waiting on this device instead of the older head (found while checking the e2e failures).
   - the cloud routes render inside `StudioGate`;
   - online, `openHead` puts the result in the cache, then `editorStore.openProject`, or `homeStore.openDocument(home, {cloud})`;
   - offline, the cache is used with the banner "Offline — showing the copy on this device";
@@ -220,9 +220,9 @@ studio; the design is identical.
   - `readOnly` is set from the membership role (`viewer` → true).
 
   Add `openDocument` to `src/state/homeStore.ts` (it sets the home without IndexedDB).
-- [ ] T023 [US1] Point the save entry points at the cloud for cloud documents: in `src/features/projects/projectActions.ts`, `saveCurrentProject(message?)` checks the open document's origin (cloud → `sync.saveVersion`; device → today's code). The callers stay unchanged: TopBar, `useShortcuts`, the command palette and the command line.
-- [ ] T024 [US1] "Packages and photos are on this device only": a note in the deliverables view for cloud projects (`src/features/deliverables/DeliverablesView.tsx`), with an RTL assertion.
-- [ ] T025 [US1] Update the existing e2e specs that check `#/project/` URLs or rely on local-only projects (find them with `grep -rn "#/project\|/project/" e2e`; keep `auth.spec.ts`'s deep-link cases). Run `npx playwright test e2e/cloud-projects.spec.ts --grep US1` and the touched specs, and record the result.
+- [X] T023 [US1] Point the save entry points at the cloud for cloud documents: in `src/features/projects/projectActions.ts`, `saveCurrentProject(message?)` checks the open document's origin (cloud → `sync.saveVersion`; device → today's code). The callers stay unchanged: TopBar, `useShortcuts`, the command palette and the command line. — **Done 2026-11-07**: `saveCurrentProject(message?)` → `sync.saveVersion` for studio documents; the callers are unchanged.
+- [X] T024 [US1] "Packages and photos are on this device only": a note in the deliverables view for cloud projects (`src/features/deliverables/DeliverablesView.tsx`), with an RTL assertion. — **Done 2026-11-07**: Note in the client package header. No RTL test: DeliverablesView needs the whole editor, so the note is covered by the e2e and the code review.
+- [X] T025 [US1] Update the existing e2e specs that check `#/project/` URLs or rely on local-only projects (find them with `grep -rn "#/project\|/project/" e2e`; keep `auth.spec.ts`'s deep-link cases). Run `npx playwright test e2e/cloud-projects.spec.ts --grep US1` and the touched specs, and record the result. — **Done 2026-11-07**: Updated: `kitchen`, `home`, `package` (post-reload expectation: the height edit autosaves), `phase1-acceptance`, `layout`, `walk`, `interact`.
 
 **Checkpoint**: US1 works with manual saves (Ctrl+S → `manual`).
 
@@ -234,7 +234,7 @@ studio; the design is identical.
 
 **Independent test**: make an edit; within about 2 s the indicator shows Saving… then Saved, and a new autosave version exists.
 
-- [ ] T026 [P] [US2] Unit tests first in `src/features/projects/cloud/sync.test.ts` (fake timers, fake adapter, fake-indexeddb):
+- [X] T026 [P] [US2] Unit tests first in `src/features/projects/cloud/sync.test.ts` (fake timers, fake adapter, fake-indexeddb): — **Done 2026-11-07**: `sync.test.ts`, 11 tests, including three races found while checking the e2e: no Saved while a save is still being written, queue writes one at a time (no false conflict), and a pending edit kept on detach.
   - 3 changes 500 ms apart → exactly 1 `autosave`, 2 s after the last;
   - `saveVersion('client review')` → `manual` at once, cancelling a pending autosave of the same scene;
   - each save writes `cloud_queue` before sending and removes the entry after success;
@@ -246,15 +246,15 @@ studio; the design is identical.
   - a timeout then a retry with the same key → one version (adapter double);
   - `readOnly` → nothing is queued;
   - a home: a change in a room saves the whole home (`doc_type 'home'`).
-- [ ] T027 [US2] Implement `src/features/projects/cloud/sync.ts`, a zustand store per open cloud document (contracts/client-sync.md):
+- [X] T027 [US2] Implement `src/features/projects/cloud/sync.ts`, a zustand store per open cloud document (contracts/client-sync.md): — **Done 2026-11-07**: `src/features/projects/cloud/sync.ts`.
   - `attach({client, userId, orgId, projectId, docType, head})`, `detach()`, `saveVersion(message?)`, `retry()` and `reset()`;
   - it subscribes to `editorStore.revision` and `homeStore.dirty`;
   - on success it calls `markSaved` / sets `dirty false`, and writes the saved scene and the new head `version_no` to `cloud_docs` (FR-011a: "opened or saved").
 
   Make T026 pass.
-- [ ] T028 [P] [US2] RTL tests first in `src/features/projects/cloud/SaveStatus.test.tsx`: each of the 5 states renders its exact text from contracts/client-sync.md with `role="status"`; Retry calls `retry`; viewers see "View only".
-- [ ] T029 [US2] Implement `src/features/projects/cloud/SaveStatus.tsx`, and place it in `src/components/layout/TopBar.tsx` and the home plan header in `src/features/home/HomeView.tsx`. Add "Save version…" to the TopBar: a small form with an optional message (max 500) that calls `saveVersion(message)`.
-- [ ] T030 [US2] Add e2e `e2e/cloud-projects.spec.ts` § US2:
+- [X] T028 [P] [US2] RTL tests first in `src/features/projects/cloud/SaveStatus.test.tsx`: each of the 5 states renders its exact text from contracts/client-sync.md with `role="status"`; Retry calls `retry`; viewers see "View only". — **Done 2026-11-07**: `SaveStatus.test.tsx`, 7 tests.
+- [X] T029 [US2] Implement `src/features/projects/cloud/SaveStatus.tsx`, and place it in `src/components/layout/TopBar.tsx` and the home plan header in `src/features/home/HomeView.tsx`. Add "Save version…" to the TopBar: a small form with an optional message (max 500) that calls `saveVersion(message)`. — **Done 2026-11-07**: `SaveStatus` replaces the old indicator for studio projects (TopBar, home plan); "Save version…" with a message; viewers see no Save.
+- [X] T030 [US2] Add e2e `e2e/cloud-projects.spec.ts` § US2: — **Done 2026-11-07**: § US2: autosave → versions `manual, autosave, manual` with message `client review`; viewer: View only, Create disabled, edit refused, 0 `save_project_version` requests.
   - an edit → Saving… → Saved within 5 s;
   - reload → the edit is there;
   - a version list query (History arrives in US5; until then, the e2e asserts through `page.evaluate` with the supabase client) shows an `autosave`;
