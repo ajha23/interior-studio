@@ -1,6 +1,9 @@
+import 'fake-indexeddb/auto';
 import { useEffect } from 'react';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { createProject, DEFAULT_ROOM } from '@/domain';
+import { getDoc, putDoc } from '@/persistence/cloudCache';
 import { SessionProvider } from './SessionProvider';
 import { useSession } from './useSession';
 import { createFakeClient, fakeSession, type FakeMembershipRow } from './testClient';
@@ -71,6 +74,23 @@ describe('SessionProvider', () => {
     expect(screen.getByTestId('studios')).toHaveTextContent('');
     expect(localStorage.getItem('interior-studio:last-studio')).toBeNull();
     expect(calls).toContain('signOut');
+  });
+
+  it('sign-out clears this user’s studio projects cached on the device (spec 043, FR-011a)', async () => {
+    const project = createProject({ name: 'Cached', room: DEFAULT_ROOM, layout: 'empty' });
+    await putDoc({ userId: 'u-1', orgId: 'org-a', projectId: project.id, versionNo: 1, doc: { type: 'kitchen', project }, name: 'Cached' });
+    await putDoc({ userId: 'u-2', orgId: 'org-a', projectId: project.id, versionNo: 1, doc: { type: 'kitchen', project }, name: 'Cached' });
+    const { client } = createFakeClient({ session: fakeSession(), memberships: [alpha] });
+    render(
+      <SessionProvider client={client}>
+        <Probe />
+      </SessionProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId('studios')).toHaveTextContent('alpha:designer'));
+    await act(async () => screen.getByRole('button', { name: 'sign out' }).click());
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('signed-out'));
+    expect(await getDoc('u-1', 'org-a', project.id)).toBeNull();
+    expect(await getDoc('u-2', 'org-a', project.id)).not.toBeNull();
   });
 
   it('a failing membership load sets an error but keeps the user signed in', async () => {
