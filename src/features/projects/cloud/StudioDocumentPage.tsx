@@ -14,6 +14,7 @@ import { StudioGate } from '@/features/studio/StudioGate';
 import { useEditorStore } from '@/state/editorStore';
 import { useHomeStore } from '@/state/homeStore';
 import { Button } from '@/components/ui/button';
+import { ConflictDialog } from './ConflictDialog';
 import { OFFLINE_COPY_BANNER, useCloudDocument } from './useCloudDocument';
 import { useStudioScope } from './useStudioScope';
 import type { StudioContext } from './studioContext';
@@ -90,6 +91,7 @@ function Document({ studio, route }: { studio: StudioContext; route: DocRoute })
         </p>
       )}
       <div className="min-h-0 flex-1">{body}</div>
+      <ConflictDialog />
     </div>
   );
 }
