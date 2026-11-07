@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useSession } from '@/features/auth/useSession';
-import { queuedCount } from '@/persistence/cloudCache';
+import { pendingFor } from '@/persistence/cloudCache';
 
 /** Signing out clears this device's copy, so saves that have not reached the studio would be lost (spec 043, SC-002). */
 export function unsentWarning(n: number): string {
@@ -57,9 +57,10 @@ export function AccountMenu() {
             type="button"
             role="menuitem"
             className="w-full rounded px-2.5 py-1.5 text-left text-sm hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
-            onClick={async () => {
+            onClick={() => {
               setOpen(false);
-              const waiting = user ? await queuedCount(user.id).catch(() => 0) : 0;
+              // Decided at once (no wait on storage), so nothing can cut the sign-out off.
+              const waiting = user ? pendingFor(user.id) : 0;
               if (waiting > 0 && !window.confirm(unsentWarning(waiting))) return;
               void signOut();
             }}

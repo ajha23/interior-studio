@@ -68,6 +68,10 @@ describe('the save queue (FR-011)', () => {
     await cache.enqueue(entry('p2', 1, 'u1', 'org-b'));
     await cache.enqueue(entry('p3', 1, 'u2'));
     expect(await cache.queuedCount('u1')).toBe(2);
+    // Known at once too (sign-out must not wait on storage), and cleared with the user.
+    expect(cache.pendingFor('u1')).toBe(2);
+    await cache.clearUser('u1');
+    expect(cache.pendingFor('u1')).toBe(0);
   });
 
   it('drops a project’s queue', async () => {

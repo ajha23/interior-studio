@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { passwordSignInEnabled, supabase, type AppSupabaseClient } from '@/infrastructure/supabase/client';
-import { clearUser } from '@/persistence/cloudCache';
+import { clearUser, refreshPending } from '@/persistence/cloudCache';
 import { emailAuthError, type EmailAuthContext } from './emailAuthErrors';
 import {
   cleanAuthParams,
@@ -80,6 +80,8 @@ export function SessionProvider({ children, client = supabase }: { children: Rea
       setSession(next);
       if (loadedFor.current === next.user.id) return;
       loadedFor.current = next.user.id;
+      // Saves left waiting on this device from an earlier visit, so sign-out can warn about them (spec 043).
+      void refreshPending(next.user.id).catch(() => undefined);
       try {
         setMemberships(await loadMemberships(client, next.user.id));
         setError(null);

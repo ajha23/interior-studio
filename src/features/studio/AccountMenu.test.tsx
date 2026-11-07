@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createProject, DEFAULT_ROOM } from '@/domain';
 import { SessionProvider } from '@/features/auth/SessionProvider';
 import { createFakeClient, fakeSession } from '@/features/auth/testClient';
-import { clearUser, enqueue } from '@/persistence/cloudCache';
+import { clearUser, enqueue, pendingFor } from '@/persistence/cloudCache';
 import { AccountMenu, unsentWarning } from './AccountMenu';
 
 const alpha = { role: 'designer' as const, organizations: { id: 'org-a', name: 'Alpha Studio', slug: 'alpha', plan: 'free' } };
@@ -38,6 +38,7 @@ describe('sign out with saves still on this device (spec 043, SC-002)', () => {
     await enqueue({ userId: 'u-1', orgId: 'org-a', projectId: project.id, expectedVersionNo: 1, idempotencyKey: 'k', doc: { type: 'kitchen', project }, kind: 'autosave', message: '' });
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
     const { calls } = await open();
+    await waitFor(() => expect(pendingFor('u-1')).toBe(1));
     await userEvent.click(screen.getByRole('menuitem', { name: 'Sign out' }));
     await waitFor(() => expect(confirm).toHaveBeenCalledWith(unsentWarning(1)));
     expect(calls).not.toContain('signOut');
