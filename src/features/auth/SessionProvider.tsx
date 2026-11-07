@@ -191,9 +191,7 @@ export function SessionProvider({ children, client = supabase }: { children: Rea
   );
 
   const signOut = useCallback(async () => {
-    // Studio projects cached on this device belong to this user and studio only (spec 043, FR-011a).
     const userId = session?.user.id;
-    if (userId) await clearUser(userId).catch(() => undefined);
     forgetLastStudio();
     clearPendingEmail();
     clearEmailReturnTo();
@@ -203,6 +201,9 @@ export function SessionProvider({ children, client = supabase }: { children: Rea
     }
     leave();
     if (window.location.hash && window.location.hash !== '#/') window.location.hash = '/';
+    // Then the studio projects cached on this device for this user (spec 043, FR-011a). The session
+    // ends first, so a page that closes or navigates right away still signs out.
+    if (userId) await clearUser(userId).catch(() => undefined);
   }, [client, leave, session]);
 
   const refreshMemberships = useCallback(async () => {
