@@ -63,6 +63,13 @@ describe('the save queue (FR-011)', () => {
     expect((await cache.queued('u1', 'org-a', 'p1')).map((e) => e.expectedVersionNo)).toEqual([9, 10]);
   });
 
+  it('counts a user’s waiting saves in every studio', async () => {
+    await cache.enqueue(entry('p1', 3));
+    await cache.enqueue(entry('p2', 1, 'u1', 'org-b'));
+    await cache.enqueue(entry('p3', 1, 'u2'));
+    expect(await cache.queuedCount('u1')).toBe(2);
+  });
+
   it('drops a project’s queue', async () => {
     await cache.enqueue(entry('p1', 3));
     await cache.enqueue(entry('p2', 1));

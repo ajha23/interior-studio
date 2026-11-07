@@ -95,6 +95,11 @@ export async function enqueue(input: QueueInput): Promise<number> {
   return (await run<IDBValidKey>([CLOUD_QUEUE], 'readwrite', (tx) => tx.objectStore(CLOUD_QUEUE).add({ ...input, queuedAt: new Date().toISOString() }))) as number;
 }
 
+/** How many saves are still waiting on this device for a user, in any studio. */
+export async function queuedCount(userId: string): Promise<number> {
+  return ((await run<number>([CLOUD_QUEUE], 'readonly', (tx) => tx.objectStore(CLOUD_QUEUE).index('userId').count(IDBKeyRange.only(userId)))) ?? 0) as number;
+}
+
 /** Waiting saves for a user and studio (and one project, if given), oldest first. */
 export async function queued(userId: string, orgId: string, projectId?: string): Promise<QueueEntry[]> {
   const all = ((await run<QueueEntry[]>([CLOUD_QUEUE], 'readonly', (tx) => tx.objectStore(CLOUD_QUEUE).index('userId').getAll(IDBKeyRange.only(userId)))) ?? []) as QueueEntry[];
