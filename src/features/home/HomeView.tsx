@@ -19,6 +19,7 @@ import { useEditorStore } from '@/state/editorStore';
 import { useHomeStore } from '@/state/homeStore';
 import { HomePlan } from './HomePlan';
 import { SaveStatus } from '@/features/projects/cloud/SaveStatus';
+import { HistoryButton } from '@/features/projects/cloud/HistoryPanel';
 import { useSyncStore } from '@/features/projects/cloud/sync';
 import { saveCurrentProject } from '@/features/projects/projectActions';
 import { HomeScene } from './HomeScene';
@@ -79,6 +80,7 @@ export function HomeView() {
             <option value="m">m</option>
             <option value="mm">mm</option>
           </Select>
+          <HistoryButton />
           {!viewOnly && (
             <Button size="sm" disabled={saving} onClick={async () => (setSaving(true), await (studioHome ? saveCurrentProject() : save()), setSaving(false))} title={studioHome ? 'Save a version now (changes also save automatically)' : 'Save to this browser'}>
               <Save /> {studioHome ? 'Save version' : 'Save'}

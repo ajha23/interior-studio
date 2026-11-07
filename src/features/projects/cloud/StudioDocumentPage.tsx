@@ -15,6 +15,7 @@ import { useEditorStore } from '@/state/editorStore';
 import { useHomeStore } from '@/state/homeStore';
 import { Button } from '@/components/ui/button';
 import { ConflictDialog } from './ConflictDialog';
+import { HistoryPanel, VersionBanner } from './HistoryPanel';
 import { OFFLINE_COPY_BANNER, useCloudDocument } from './useCloudDocument';
 import { useStudioScope } from './useStudioScope';
 import type { StudioContext } from './studioContext';
@@ -90,8 +91,10 @@ function Document({ studio, route }: { studio: StudioContext; route: DocRoute })
           {OFFLINE_COPY_BANNER}
         </p>
       )}
+      <VersionBanner />
       <div className="min-h-0 flex-1">{body}</div>
       <ConflictDialog />
+      <HistoryPanel />
     </div>
   );
 }
