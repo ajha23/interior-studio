@@ -44,6 +44,8 @@ jobs:
       - run: npm run db:test
       # Spec 045: ten simultaneous AI charges with credit for five never overspend.
       - run: npm run db:test:concurrency
+      # Spec 043: racing saves on separate connections never overwrite or duplicate a version.
+      - run: npm run db:test:project-concurrency
       - run: npm run db:types:check
 
   e2e:

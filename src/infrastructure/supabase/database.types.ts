@@ -243,14 +243,14 @@ isOneToOne: true
                   ]
                 },"project_versions": {
                   Row: {
-                    "created_at": string,"created_by": string | null,"id": string,"kind": Database["public"]['Enums']["version_kind"],"message": string,"org_id": string,"project_id": string,"scene": NonNullable<Json>,"scene_hash": string,"schema_version": number,"size_bytes": number | null,"version_no": number
+                    "created_at": string,"created_by": string | null,"doc_type": Database["public"]['Enums']["doc_type"],"id": string,"kind": Database["public"]['Enums']["version_kind"],"message": string,"org_id": string,"project_id": string,"scene": NonNullable<Json>,"scene_hash": string,"schema_version": number,"size_bytes": number | null,"version_no": number
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"created_by"?: string | null,"id"?: string,"kind"?: Database["public"]['Enums']["version_kind"],"message"?: string,"org_id": string,"project_id": string,"scene": NonNullable<Json>,"scene_hash": string,"schema_version": number,"size_bytes"?: never,"version_no": number
+                    "created_at"?: string,"created_by"?: string | null,"doc_type": Database["public"]['Enums']["doc_type"],"id"?: string,"kind"?: Database["public"]['Enums']["version_kind"],"message"?: string,"org_id": string,"project_id": string,"scene": NonNullable<Json>,"scene_hash": string,"schema_version": number,"size_bytes"?: never,"version_no": number
                   }
                   Update: {
-                    "created_at"?: string,"created_by"?: string | null,"id"?: string,"kind"?: Database["public"]['Enums']["version_kind"],"message"?: string,"org_id"?: string,"project_id"?: string,"scene"?: NonNullable<Json>,"scene_hash"?: string,"schema_version"?: number,"size_bytes"?: never,"version_no"?: number
+                    "created_at"?: string,"created_by"?: string | null,"doc_type"?: Database["public"]['Enums']["doc_type"],"id"?: string,"kind"?: Database["public"]['Enums']["version_kind"],"message"?: string,"org_id"?: string,"project_id"?: string,"scene"?: NonNullable<Json>,"scene_hash"?: string,"schema_version"?: number,"size_bytes"?: never,"version_no"?: number
                   }
                   Relationships: [
                     {
@@ -433,33 +433,22 @@ isOneToOne: false
 "ai_start_call":
 { Args: { "p_op": string,"p_org": string }; Returns: Json
                            },
+"create_project":
+{ Args: { "p_client_name"?: string,"p_doc_type": Database["public"]['Enums']["doc_type"],"p_idempotency_key": string,"p_name": string,"p_org": string,"p_scene": Json,"p_schema_version": number }; Returns: {
+              "client_name": string,"created_at": string,"created_by": string,"current_version_no": number,"id": string,"name": string,"org_id": string,"updated_at": string
+            }[]
+                           },
 "save_project_version":
-{ Args: { "p_kind"?: Database["public"]['Enums']["version_kind"],"p_message"?: string,"p_project": string,"p_scene": Json,"p_scene_hash": string,"p_schema_version": number }; Returns: {
-              "created_at": string,
-"created_by": string | null,
-"id": string,
-"kind": Database["public"]['Enums']["version_kind"],
-"message": string,
-"org_id": string,
-"project_id": string,
-"scene": NonNullable<Json>,
-"scene_hash": string,
-"schema_version": number,
-"size_bytes": number | null,
-"version_no": number
-            }
-                          SetofOptions: {
-        from: "*"
-        to: "project_versions"
-        isOneToOne: true
-        isSetofReturn: false
-      } },
+{ Args: { "p_doc_type": Database["public"]['Enums']["doc_type"],"p_expected_version_no": number,"p_idempotency_key": string,"p_kind"?: Database["public"]['Enums']["version_kind"],"p_message"?: string,"p_project": string,"p_scene": Json,"p_schema_version": number }; Returns: {
+              "created_at": string,"created_by": string,"id": string,"kind": Database["public"]['Enums']["version_kind"],"message": string,"project_id": string,"scene_hash": string,"size_bytes": number,"version_no": number
+            }[]
+                           },
 "start_session":
 { Args: Record<PropertyKey, never>; Returns: number
                            }
           }
           Enums: {
-            "org_role": "owner"|"admin"|"designer"|"viewer","project_status": "lead"|"design"|"approved"|"production"|"installed"|"archived","version_kind": "autosave"|"manual"|"revision"
+            "doc_type": "kitchen"|"home"|"legacy_v1","org_role": "owner"|"admin"|"designer"|"viewer","project_status": "lead"|"design"|"approved"|"production"|"installed"|"archived","version_kind": "autosave"|"manual"|"revision"|"restore"
           }
           CompositeTypes: {
             [_ in never]: never
@@ -575,7 +564,7 @@ export type CompositeTypes<
 export const Constants = {
   "public": {
           Enums: {
-            "org_role": ["owner", "admin", "designer", "viewer"],"project_status": ["lead", "design", "approved", "production", "installed", "archived"],"version_kind": ["autosave", "manual", "revision"]
+            "doc_type": ["kitchen", "home", "legacy_v1"],"org_role": ["owner", "admin", "designer", "viewer"],"project_status": ["lead", "design", "approved", "production", "installed", "archived"],"version_kind": ["autosave", "manual", "revision", "restore"]
           }
         }
 } as const

@@ -22,6 +22,7 @@
     "db:reset": "npx supabase db reset",
     "db:test": "npx supabase test db",
     "db:test:concurrency": "node scripts/test-ai-concurrency.mjs",
+    "db:test:project-concurrency": "node scripts/test-project-concurrency.mjs",
     "db:types": "mkdir -p src/infrastructure/supabase && npx supabase gen types typescript --local --schema public > src/infrastructure/supabase/database.types.ts",
     "db:types:check": "node scripts/db-types-check.mjs"
   },

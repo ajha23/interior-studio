@@ -28,8 +28,8 @@ output recorded next to it. **Founder-only**: the production `db push` and the p
 
 ## Phase 1: Setup (PR 043a)
 
-- [ ] T001 Baseline on `043-cloud-projects`: run `npm run db:reset && npm run db:test` and `npm test`, and record the counts here. Also run a read-only live check: `select doc_count, count(*) from (select count(*) doc_count from public.project_versions group by project_id) x group by 1` and `select count(*) from public.project_versions`, through the Supabase MCP `execute_sql` on production (expect about 129 versions; research "Open risks").
-- [ ] T002 Create the migration file with `npx supabase migration new cloud_projects`, giving `supabase/migrations/<ts>_cloud_projects.sql` (empty for now).
+- [X] T001 Baseline on `043-cloud-projects`: run `npm run db:reset && npm run db:test` and `npm test`, and record the counts here. Also run a read-only live check: `select doc_count, count(*) from (select count(*) doc_count from public.project_versions group by project_id) x group by 1` and `select count(*) from public.project_versions`, through the Supabase MCP `execute_sql` on production (expect about 129 versions; research "Open risks"). — **Done 2026-11-07**: `db:test` on main's schema → `Files=8, Tests=495`, PASS; `npm test` → 1007 passed, 1 failed (`persistenceFactory.test.ts`, which fails only with the local `.env` Supabase values: 6/6 pass with them empty, as on CI; the file is deleted in T016). Production (read-only, MCP `execute_sql`): **129 versions, 8 projects, 1 studio, largest scene 5 285 bytes**, 1 `save_project_version`.
+- [X] T002 Create the migration file with `npx supabase migration new cloud_projects`, giving `supabase/migrations/<ts>_cloud_projects.sql` (empty for now). — **Done 2026-11-07**: `supabase/migrations/20261107043057_cloud_projects.sql`.
 
 ---
 
@@ -37,7 +37,7 @@ output recorded next to it. **Founder-only**: the production `db push` and the p
 
 ### Tests first
 
-- [ ] T003 Write `supabase/tests/08_cloud_projects.test.sql` (helper schema `t043`, the impersonation pattern from `03_roles.test.sql`, seeded Alpha/Beta users). Cover every bullet of contracts/project-rpc.md § pgTAP:
+- [X] T003 Write `supabase/tests/08_cloud_projects.test.sql` (helper schema `t043`, the impersonation pattern from `03_roles.test.sql`, seeded Alpha/Beta users). Cover every bullet of contracts/project-rpc.md § pgTAP: — **Done 2026-11-07**: 71 assertions. Written alongside the migration: the updated seed needs the migration, so a pre-migration run is impossible. Sensitivity was shown instead by re-granting `insert, update on projects` locally: `Failed 4/71 subtests (10, 44, 46, 54)`, `Result: FAIL`; then `db:reset`.
   - **grants**: `public.create_project` and `public.save_project_version` (the new 8-argument signature) are executable by `authenticated`, not by `anon` or `public`. The old 6-argument `save_project_version(uuid, jsonb, int, text, version_kind, text)` does not exist. Both private bodies have `proconfig` containing `search_path=""`. `private.audit_log` and `private.idempotency_keys` are not selectable by `authenticated`;
   - **anonymous**: create → `42501`; save → `42501` or `PT404`; `select count(*) from public.projects` = 0;
   - **own studio**:
@@ -72,13 +72,13 @@ output recorded next to it. **Founder-only**: the production `db push` and the p
   - **restore kind**: a save with `p_kind 'restore'` works.
 
   Run `npm run db:test` and record that 08 fails before the migration.
-- [ ] T004 [P] Update `supabase/tests/01_anon.test.sql`, `02_cross_tenant.test.sql` and `03_roles.test.sql` for the revoked direct insert and update on `projects`:
+- [X] T004 [P] Update `supabase/tests/01_anon.test.sql`, `02_cross_tenant.test.sql` and `03_roles.test.sql` for the revoked direct insert and update on `projects`: — **Done 2026-11-07**: 03: the designer positive control uses `create_project`, plus a new 'cannot insert directly' assertion (`plan(59)`). 01 and 02 are unchanged (their direct inserts still get 42501).
   - the "designer can create a project" positive control becomes `create_project`;
   - the denied direct inserts still count as denied (42501);
   - adjust `plan(n)`.
 
   The other assertions are unchanged.
-- [ ] T005 [P] Write `scripts/test-project-concurrency.mjs`, modelled on `scripts/test-ai-concurrency.mjs` (local URL only, the service key only for setup and cleanup):
+- [X] T005 [P] Write `scripts/test-project-concurrency.mjs`, modelled on `scripts/test-ai-concurrency.mjs` (local URL only, the service key only for setup and cleanup): — **Done 2026-11-07**: `scripts/test-project-concurrency.mjs`, `db:test:project-concurrency`, a CI `db` step.
   - create a throwaway studio, a designer, and a project through `create_project` as that designer;
   - (a) two clients call `save_project_version` with expected 1 at the same time: exactly one returns version 2 and the other `PT409`;
   - (b) two clients call it with the **same** key and expected 2 at the same time: exactly one version 3 exists, and both responses have the same `id`;
@@ -89,7 +89,7 @@ output recorded next to it. **Founder-only**: the production `db push` and the p
 
 ### Implementation
 
-- [ ] T006 Write the migration `supabase/migrations/<ts>_cloud_projects.sql` (data-model.md, contracts/project-rpc.md):
+- [X] T006 Write the migration `supabase/migrations/<ts>_cloud_projects.sql` (data-model.md, contracts/project-rpc.md): — **Done 2026-11-07**: `db:reset` applies all 21 migrations and the seed; `db:test` → `Files=9, Tests=567`, `Result: PASS`.
   1. `create type public.doc_type as enum ('kitchen','home','legacy_v1')`, then `alter type public.version_kind add value 'restore'`;
   2. `alter table public.project_versions add column doc_type public.doc_type`, then `update … set doc_type = 'legacy_v1'`, then `alter column doc_type set not null` (**no default**);
   3. `private.idempotency_keys` (PK `(org_id, actor_id, op, key)`, `op` check in `('save_version','create_project')`, `project_id`, `version_id`, `created_at default now()`, FK `org_id` → organizations on delete cascade), with `revoke all … from public, anon, authenticated`;
@@ -117,18 +117,18 @@ output recorded next to it. **Founder-only**: the production `db push` and the p
   14. In the same task, update `supabase/seed.sql` so its existing version insert sets `doc_type` to `'legacy_v1'` explicitly. The column is `not null` with no default, so `db:reset` fails without this.
 
   Run `npm run db:reset && npm run db:test` and record 08 and 01–07 passing.
-- [ ] T007 Run `npm run db:test:project-concurrency` and record `OK`.
-- [ ] T008 Update `supabase/seed.sql` (the `legacy_v1` change is already in T006):
+- [X] T007 Run `npm run db:test:project-concurrency` and record `OK`. — **Done 2026-11-07**: `{"sameHead":{"calls":10,"saved":1,"conflicts":9},"sameKey":{"calls":10,"distinctVersions":1},"versions":[1,2,3],"head":3}` → `PASS: racing saves never overwrite or duplicate a version`. The 045 script still passes.
+- [X] T008 Update `supabase/seed.sql` (the `legacy_v1` change is already in T006): — **Done 2026-11-07**: Alpha/Beta Cloud Kitchen created through `private.create_project` as each studio's designer. The scene (createProject DEFAULT_ROOM straight, fixed ids `*_seed0001…`, validated with `parseProjectFile`) is inlined in `seed.sql`, not kept as a separate fixture file.
   - add one real kitchen per studio, `Alpha Cloud Kitchen` / `Beta Cloud Kitchen`, created with `private.create_project` as that studio's designer and `set_config('request.jwt.claims', …)`, using the scene from `createProject(DEFAULT_ROOM, 'straight')` stored as a JSON fixture `supabase/fixtures/kitchen-v2.json`, generated by a one-off script and committed.
 
   Run `npm run db:reset && npm run db:test` and record the result.
-- [ ] T008a [P] Write the rollback runbook `docs/operations/rollback-043.md` (constitution VIII). It covers:
+- [X] T008a [P] Write the rollback runbook `docs/operations/rollback-043.md` (constitution VIII). It covers: — **Done 2026-11-07**: `docs/operations/rollback-043.md`.
   - **forward fix first**: never edit or revert the migration; ship a new migration;
   - **restore the old save path**: recreate `public.save_project_version(uuid, jsonb, int, text, version_kind, text)` from the hardened 20261024082837 body, and grant execute to `authenticated` only;
   - **restore the privileges**: `grant insert, update on public.projects to authenticated`; recreate `projects_update` and `projects_delete` as in phase0; drop the triggers `projects_stamp` and `projects_audit`;
   - **what stays**: `doc_type` and the `restore` enum value (they can't be removed safely and are harmless), and `private.audit_log` and `private.idempotency_keys` (kept for the audit trail);
   - **checks after a rollback**: `npm run db:test` on a fresh local stack with the rollback migration applied; on production, `select count(*) from project_versions` is unchanged.
-- [ ] T009 Regenerate the types with `npm run db:types && npm run db:types:check`, and record a clean check (`src/infrastructure/supabase/database.types.ts`).
+- [X] T009 Regenerate the types with `npm run db:types && npm run db:types:check`, and record a clean check (`src/infrastructure/supabase/database.types.ts`). — **Done 2026-11-07**: `db:types` regenerated; `db:types:check` → `Generated types are current`.
 - [ ] T010 Run the full check from AGENTS.md, plus `db:reset`, `db:test` and `db:test:project-concurrency`. Open **PR 043a** (spec, plan, migration and tests). After CI is green and the PR has merged, the **founder** runs `npx supabase db push` to production, and we record `select doc_type, count(*) from project_versions group by 1`: all `legacy_v1`, with the same total as T001's count (the FR-002 backfill proof).
 
 **Checkpoint**: the database contract is proven. The app still uses local storage only.

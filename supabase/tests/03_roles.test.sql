@@ -2,7 +2,7 @@
 -- (specs/041-supabase-baseline/data-model.md), plus privileges that bypass row-level security.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(58);
+select plan(59);
 
 create schema t041;
 grant usage on schema t041 to authenticated, anon;
@@ -63,10 +63,15 @@ select throws_ok(
 -- Designer (a3): edits projects, cannot manage the studio
 -- ---------------------------------------------------------------------------
 select t041.act_as('a3000000-0000-4000-8000-000000000003');
+-- Spec 043: projects are created only through create_project (direct insert is revoked).
 select lives_ok(
+  $$select * from public.create_project('aaaaaaaa-0000-4000-8000-000000000000', 'designer project', 'kitchen',
+                                        '{"id": "x"}', 2, gen_random_uuid())$$,
+  'designer can create a project (positive control)');
+select throws_ok(
   $$insert into public.projects (org_id, name, created_by)
     values ('aaaaaaaa-0000-4000-8000-000000000000', 'designer project', 'a3000000-0000-4000-8000-000000000003')$$,
-  'designer can create a project (positive control)');
+  '42501', null, 'designer cannot insert a project directly (create_project only)');
 select is(t041.affected($$delete from public.projects where id = 'aaaa0002-0000-4000-8000-000000000002'$$), 0::bigint,
           'designer cannot delete a project (admin+ only)');
 select throws_ok(

@@ -9,15 +9,16 @@ and take the user from `auth.uid()`. No function takes an actor id. `EXECUTE` is
 
 ```
 create_project(
-  p_org uuid, p_name text, p_client_name text default '',
+  p_org uuid, p_name text,
   p_doc_type public.doc_type,            -- 'kitchen' | 'home' ('legacy_v1' rejected)
   p_scene jsonb, p_schema_version int,
-  p_idempotency_key uuid
+  p_idempotency_key uuid,
+  p_client_name text default ''          -- last, so it can have a default
 ) returns table (id uuid, org_id uuid, name text, client_name text, current_version_no int,
                  created_by uuid, created_at timestamptz, updated_at timestamptz)
 ```
 
-1. If `auth.uid()` is null → `42501`. If not `private.can_edit_org(p_org)` → `42501`.
+1. If `auth.uid()` is null → `PT401` (`anon` is already refused by the grant, `42501`). If not `private.can_edit_org(p_org)` → `42501`.
 2. Idempotency `(p_org, uid, 'create_project', key)`. If the key exists, return the same project.
 3. If the size is over 2 MB → `PT413`. `legacy_v1` → `22023`.
 4. Insert the project with a new id. The scene's `id` is set to that id (`jsonb_set`). Insert
@@ -35,7 +36,7 @@ save_project_version(
                  message text, scene_hash text, size_bytes int, created_by uuid, created_at timestamptz)
 ```
 
-1. If the project is missing or the caller is not a member → `PT404`. If the caller is not an
+1. If `auth.uid()` is null → `PT401`. If the project is missing or the caller is not a member → `PT404`. If the caller is not an
    editor → `42501`. The studio is taken from the project row, never from an argument.
 2. Idempotency `(org, uid, 'save_version', key)`. If the key exists, return the original version,
    even if the head has moved since.
