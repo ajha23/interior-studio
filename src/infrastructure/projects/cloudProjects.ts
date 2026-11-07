@@ -283,3 +283,79 @@ export function setArchived(client: AppSupabaseClient, projectId: string, archiv
 export function deleteProject(client: AppSupabaseClient, projectId: string): Promise<Result<null>> {
   return changeOne(() => client.from('projects').delete().eq('id', projectId).select('id'));
 }
+
+export interface VersionRow {
+  versionNo: number;
+  kind: string;
+  message: string;
+  docType: string;
+  sizeBytes: number | null;
+  createdAt: string;
+  authorName: string;
+}
+
+export const HISTORY_PAGE = 50;
+
+const VERSION_COLUMNS = 'version_no, kind, message, doc_type, size_bytes, created_at, author:profiles!project_versions_created_by_fkey(full_name, email)';
+
+interface VersionDbRow {
+  version_no: number;
+  kind: string;
+  message: string;
+  doc_type: string;
+  size_bytes: number | null;
+  created_at: string;
+  author: { full_name: string | null; email: string } | null;
+}
+
+const toVersionRow = (r: VersionDbRow): VersionRow => ({
+  versionNo: r.version_no,
+  kind: r.kind,
+  message: r.message,
+  docType: r.doc_type,
+  sizeBytes: r.size_bytes,
+  createdAt: r.created_at,
+  authorName: r.author?.full_name || r.author?.email || 'Former member',
+});
+
+/** Versions of a project, newest first, `HISTORY_PAGE` at a time (US5). Scenes are not read. */
+export async function listVersions(client: AppSupabaseClient, projectId: string, page = 0): Promise<Result<VersionRow[]>> {
+  try {
+    const { data, error } = await client
+      .from('project_versions')
+      .select(VERSION_COLUMNS)
+      .eq('project_id', projectId)
+      .order('version_no', { ascending: false })
+      .range(page * HISTORY_PAGE, page * HISTORY_PAGE + HISTORY_PAGE - 1);
+    if (error) return fail(error);
+    return { ok: true, value: ((data ?? []) as unknown as VersionDbRow[]).map(toVersionRow) };
+  } catch (e) {
+    return thrown(e);
+  }
+}
+
+/** Who saved one version, and when (the conflict dialog names them). */
+export async function versionInfo(client: AppSupabaseClient, projectId: string, versionNo: number): Promise<Result<VersionRow>> {
+  try {
+    const { data, error } = await client.from('project_versions').select(VERSION_COLUMNS).eq('project_id', projectId).eq('version_no', versionNo).maybeSingle();
+    if (error) return fail(error);
+    if (!data) return { ok: false, error: { kind: 'not_found', message: MESSAGES.not_found } };
+    return { ok: true, value: toVersionRow(data as unknown as VersionDbRow) };
+  } catch (e) {
+    return thrown(e);
+  }
+}
+
+/** One past version, parsed, to view read-only or to restore. */
+export async function openVersion(client: AppSupabaseClient, projectId: string, versionNo: number): Promise<Result<OpenedDoc>> {
+  try {
+    const { data, error } = await client.from('project_versions').select('version_no, doc_type, schema_version, scene').eq('project_id', projectId).eq('version_no', versionNo).maybeSingle();
+    if (error) return fail(error);
+    const row = data as unknown as { version_no: number; doc_type: string; schema_version: number; scene: unknown } | null;
+    if (!row) return { ok: false, error: { kind: 'not_found', message: MESSAGES.not_found } };
+    const doc = parseScene(row.doc_type, row.schema_version, row.scene);
+    return doc.ok ? { ok: true, value: { versionNo: row.version_no, doc: doc.value } } : doc;
+  } catch (e) {
+    return thrown(e);
+  }
+}

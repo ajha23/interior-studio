@@ -31,6 +31,12 @@ describe('the cloud cache (FR-011a)', () => {
     expect((await cache.getDoc('u1', 'org-a', 'p1'))?.versionNo).toBe(4);
   });
 
+  it('lists every project with a copy here, per user and studio', async () => {
+    await cache.putDoc({ userId: 'u1', orgId: 'org-a', projectId: 'p1', versionNo: 2, doc: kitchen('p1'), name: 'A' });
+    await cache.putDoc({ userId: 'u1', orgId: 'org-b', projectId: 'p2', versionNo: 1, doc: kitchen('p2'), name: 'B' });
+    expect((await cache.docsFor('u1', 'org-a')).map((d) => d.projectId)).toEqual(['p1']);
+  });
+
   it('keeps the last project list per user and studio', async () => {
     await cache.putList('u1', 'org-a', [{ id: 'p1', name: 'Rao kitchen' }]);
     expect(await cache.getList('u1', 'org-a')).toMatchObject({ rows: [{ id: 'p1' }] });
@@ -55,6 +61,17 @@ describe('the save queue (FR-011)', () => {
     await cache.remove(first);
     await cache.rebase('u1', 'org-a', 'p1', 9);
     expect((await cache.queued('u1', 'org-a', 'p1')).map((e) => e.expectedVersionNo)).toEqual([9, 10]);
+  });
+
+  it('counts a user’s waiting saves in every studio', async () => {
+    await cache.enqueue(entry('p1', 3));
+    await cache.enqueue(entry('p2', 1, 'u1', 'org-b'));
+    await cache.enqueue(entry('p3', 1, 'u2'));
+    expect(await cache.queuedCount('u1')).toBe(2);
+    // Known at once too (sign-out must not wait on storage), and cleared with the user.
+    expect(cache.pendingFor('u1')).toBe(2);
+    await cache.clearUser('u1');
+    expect(cache.pendingFor('u1')).toBe(0);
   });
 
   it('drops a project’s queue', async () => {

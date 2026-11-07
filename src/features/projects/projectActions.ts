@@ -13,6 +13,7 @@ import { navigate } from '@/app/router';
 import { docRoutes } from '@/app/docRoutes';
 import { currentStudio } from './cloud/studioContext';
 import { useSyncStore } from './cloud/sync';
+import { useHistoryStore } from './cloud/history';
 
 /** Whether the open document is the studio project the sync controller is saving. */
 function openStudioDocument(): boolean {
@@ -31,6 +32,10 @@ export async function saveCurrentProject(message?: string): Promise<boolean> {
     const sync = useSyncStore.getState();
     if (sync.readOnly) {
       report('error', 'View only: ask a studio owner for edit access.');
+      return false;
+    }
+    if (useHistoryStore.getState().viewing) {
+      report('error', 'You are viewing a past version: use Restore to keep it, or Back to latest.');
       return false;
     }
     const ok = await sync.saveVersion(message);

@@ -76,6 +76,12 @@ export async function getDoc(userId: string, orgId: string, projectId: string): 
   return ((await run<CachedDoc>([CLOUD_DOCS], 'readonly', (tx) => tx.objectStore(CLOUD_DOCS).get([userId, orgId, projectId]))) ?? null) as CachedDoc | null;
 }
 
+/** Every studio project with a copy on this device, for this user and studio. */
+export async function docsFor(userId: string, orgId: string): Promise<CachedDoc[]> {
+  const all = ((await run<CachedDoc[]>([CLOUD_DOCS], 'readonly', (tx) => tx.objectStore(CLOUD_DOCS).index('userId').getAll(IDBKeyRange.only(userId)))) ?? []) as CachedDoc[];
+  return all.filter((d) => d.orgId === orgId);
+}
+
 export async function putList<Row>(userId: string, orgId: string, rows: Row[]): Promise<void> {
   await run([CLOUD_LISTS], 'readwrite', (tx) => tx.objectStore(CLOUD_LISTS).put({ userId, orgId, rows, cachedAt: new Date().toISOString() }));
 }
@@ -86,7 +92,27 @@ export async function getList<Row>(userId: string, orgId: string): Promise<Cache
 
 /** Queues a save; returns its sequence number. */
 export async function enqueue(input: QueueInput): Promise<number> {
-  return (await run<IDBValidKey>([CLOUD_QUEUE], 'readwrite', (tx) => tx.objectStore(CLOUD_QUEUE).add({ ...input, queuedAt: new Date().toISOString() }))) as number;
+  const seq = (await run<IDBValidKey>([CLOUD_QUEUE], 'readwrite', (tx) => tx.objectStore(CLOUD_QUEUE).add({ ...input, queuedAt: new Date().toISOString() }))) as number;
+  await refreshPending(input.userId);
+  return seq;
+}
+
+/** How many saves are still waiting on this device for a user, in any studio. */
+export async function queuedCount(userId: string): Promise<number> {
+  return ((await run<number>([CLOUD_QUEUE], 'readonly', (tx) => tx.objectStore(CLOUD_QUEUE).index('userId').count(IDBKeyRange.only(userId)))) ?? 0) as number;
+}
+
+/**
+ * The same count, known without waiting, so sign-out can warn (or not) at once: a sign-out that
+ * waits on storage can be cut off by a navigation right after it. Kept current by every queue
+ * change here, and loaded at sign-in with `refreshPending`.
+ */
+const pending = new Map<string, number>();
+export const pendingFor = (userId: string) => pending.get(userId) ?? 0;
+export async function refreshPending(userId: string): Promise<number> {
+  const n = await queuedCount(userId);
+  pending.set(userId, n);
+  return n;
 }
 
 /** Waiting saves for a user and studio (and one project, if given), oldest first. */
@@ -97,6 +123,7 @@ export async function queued(userId: string, orgId: string, projectId?: string):
 
 export async function remove(seq: number): Promise<void> {
   await run([CLOUD_QUEUE], 'readwrite', (tx) => tx.objectStore(CLOUD_QUEUE).delete(seq));
+  await Promise.all([...pending.keys()].map(refreshPending));
 }
 
 /** After "Save mine on top": the waiting saves follow the new head, in order. */
@@ -113,6 +140,7 @@ export async function dropQueue(userId: string, orgId: string, projectId: string
   await run([CLOUD_QUEUE], 'readwrite', (tx) => {
     for (const e of waiting) tx.objectStore(CLOUD_QUEUE).delete(e.seq);
   });
+  await refreshPending(userId);
 }
 
 /** Sign-out: every copy, list and waiting save of this user goes. Device projects stay. */
@@ -120,4 +148,5 @@ export async function clearUser(userId: string): Promise<void> {
   await run([CLOUD_DOCS, CLOUD_LISTS, CLOUD_QUEUE], 'readwrite', (tx) => {
     for (const store of [CLOUD_DOCS, CLOUD_LISTS, CLOUD_QUEUE]) eachIn(tx, store, 'userId', userId, (c) => c.delete());
   });
+  pending.delete(userId);
 }

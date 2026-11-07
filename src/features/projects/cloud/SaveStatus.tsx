@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { useSyncStore } from './sync';
 
 export function SaveStatus() {
-  const { projectId, readOnly, status, queuedCount, error, canRetry, retry } = useSyncStore();
+  const { projectId, readOnly, status, queuedCount, error, canRetry, retry, setConflictOpen } = useSyncStore();
   if (!projectId) return null;
   if (readOnly) {
     return (
@@ -35,9 +35,9 @@ export function SaveStatus() {
         </>
       )}
       {status === 'conflict' && (
-        <span className="inline-flex items-center gap-1 text-amber-700">
+        <button type="button" className="inline-flex items-center gap-1 text-amber-700 underline-offset-2 hover:underline" onClick={() => setConflictOpen(true)} title="Someone else saved this project: choose what to keep">
           <AlertTriangle className="size-3.5" /> Conflict
-        </span>
+        </button>
       )}
       {status === 'error' && (
         <span className="inline-flex items-center gap-1 text-destructive" title={error?.message}>

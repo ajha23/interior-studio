@@ -276,17 +276,17 @@ studio; the design is identical.
 **Independent test**: two tabs edit one project; the second save shows the conflict dialog; after
 resolving, every saved version still exists.
 
-- [ ] T032 [P] [US3] Unit tests first in `sync.test.ts`:
+- [X] T032 [P] [US3] Unit tests first in `sync.test.ts`: — **Done 2026-11-07**: 4 tests in `sync.test.ts` (Save mine on top, queued saves kept in order after theirs, Load theirs, a conflict without a head number).
   - a `conflict` stops the drain, sets status `conflict`, keeps the entries and exposes `currentVersionNo`;
   - `saveMineOnTop()` sends the current scene with `expected = currentVersionNo` and a new key, then re-bases the waiting entries;
   - `loadTheirs()` (after confirmation) clears this project's queue, opens the head and resets undo.
-- [ ] T033 [P] [US3] RTL tests first in `src/features/projects/cloud/ConflictDialog.test.tsx`:
+- [X] T033 [P] [US3] RTL tests first in `src/features/projects/cloud/ConflictDialog.test.tsx`: — **Done 2026-11-07**: `ConflictDialog.test.tsx`, 5 tests.
   - the title "Someone else saved this project", naming who saved the newer version and when;
   - "Load theirs" asks "Discard your unsaved changes?" first;
   - "Save mine on top" calls the controller;
   - closing keeps the state at Conflict, and the indicator reopens the dialog.
-- [ ] T034 [US3] Implement `src/features/projects/cloud/ConflictDialog.tsx` and `saveMineOnTop`/`loadTheirs` in `sync.ts`; mount the dialog in `Workspace` and `HomeView`. Make T032 and T033 pass.
-- [ ] T035 [US3] Add e2e § US3: two pages (same context) open one project, both edit, page 1 saves, page 2 saves → Conflict dialog. "Save mine on top" → the head is N+2, and both N+1 and N+2 exist. Repeat with "Load theirs" → page 2 shows page 1's width. Run it and record the result.
+- [X] T034 [US3] Implement `src/features/projects/cloud/ConflictDialog.tsx` and `saveMineOnTop`/`loadTheirs` in `sync.ts`; mount the dialog in `Workspace` and `HomeView`. Make T032 and T033 pass. — **Done 2026-11-07**: `ConflictDialog.tsx`; `saveMineOnTop`/`loadTheirs` in `sync.ts`; mounted in `StudioDocumentPage` (covers the kitchen editor and the home plan); the Conflict status reopens it.
+- [X] T035 [US3] Add e2e § US3: two pages (same context) open one project, both edit, page 1 saves, page 2 saves → Conflict dialog. "Save mine on top" → the head is N+2, and both N+1 and N+2 exist. Repeat with "Load theirs" → page 2 shows page 1's width. Run it and record the result. — **Done 2026-11-07**: § US3, 2 tests pass: versions `[1,2,3]` after Save mine on top; Load theirs shows the other tab's 900.
 
 ---
 
@@ -296,15 +296,15 @@ resolving, every saved version still exists.
 
 **Independent test**: Playwright `setOffline(true)`, three edits, `setOffline(false)`: three versions saved in order.
 
-- [ ] T036 [P] [US4] Unit tests first in `sync.test.ts`:
+- [X] T036 [P] [US4] Unit tests first in `sync.test.ts`: — **Done 2026-11-07**: 4 offline tests in `sync.test.ts` (3 edits sent in order, dropped connection, queue survives reload, conflict mid-queue waits). The forbidden case was already covered in 043b.
   - an `offline` error or `navigator.onLine false` → status `offline` with N queued;
   - each debounced snapshot is queued with `expected = previous + 1`;
   - the `online` event drains in order;
   - the queue survives a new controller instance (a reload);
   - a `conflict` mid-drain stops it and the remaining entries wait;
   - `forbidden` or `not_found` on drain → `error` with "You no longer have edit access to this studio. Your changes are kept on this device.", and the entries are kept.
-- [ ] T037 [US4] Implement offline chaining, the `online`/`offline` listeners, drain on attach and the stop-on-revoked behaviour in `sync.ts`. Disable create, rename, archive, unarchive, delete, import, Restore and History offline, with "You're offline — this needs a connection." (`ProjectsHome.tsx`, `HistoryPanel.tsx`). Make T036 pass.
-- [ ] T038 [US4] Add e2e § US4:
+- [X] T037 [US4] Implement offline chaining, the `online`/`offline` listeners, drain on attach and the stop-on-revoked behaviour in `sync.ts`. Disable create, rename, archive, unarchive, delete, import, Restore and History offline, with "You're offline — this needs a connection." (`ProjectsHome.tsx`, `HistoryPanel.tsx`). Make T036 pass. — **Done 2026-11-07**: Saves wait while a conflict is open (no repeated conflicts on `online`). The offline offline-disabled controls are in `StudioProjects` (043b) and `HistoryPanel`.
+- [X] T038 [US4] Add e2e § US4: — **Done 2026-11-07**: § US4 passes. Deviation: "offline then reload" cannot work without an offline app shell (no service worker), so the test opens the project offline inside the open app. The offline list now also includes projects opened or saved on this device since the list was last loaded. Logged as a known issue.
   - `context.setOffline(true)`, then 3 width edits, 3 s apart → "Offline (queued 3)";
   - `setOffline(false)` → Saved; the versions are head+1, +2 and +3 in order, with the expected widths;
   - offline, then reload → the project opens from the cache with the banner (FR-011a);
@@ -321,24 +321,24 @@ resolving, every saved version still exists.
 **Independent test**: History lists versions newest first; opening one shows it read-only with a
 banner; Restore adds a new version on top.
 
-- [ ] T039 [P] [US5] RTL tests first in `src/features/projects/cloud/HistoryPanel.test.tsx`:
+- [X] T039 [P] [US5] RTL tests first in `src/features/projects/cloud/HistoryPanel.test.tsx`: — **Done 2026-11-07**: `HistoryPanel.test.tsx`, 5 tests.
   - rows show number, kind, author, time and message, newest first, 50 at a time with "Show more";
   - **Open** calls `openVersion`;
   - the banner reads "Viewing version N (kind, author, time) · Back to latest · Restore";
   - **Restore** calls `saveVersion` with kind `restore`, message `Restored version N` and `expected = head`.
-- [ ] T040 [US5] Implement `listVersions` and `openVersion` in `cloudProjects.ts` (with unit tests in T011's file), and `src/features/projects/cloud/HistoryPanel.tsx`, opened from the TopBar and the home header. Opening a past version sets `readOnly` and pauses `sync`; Back to latest restores both. Make T039 pass.
-- [ ] T041 [US5] Add e2e § US5: make 2 saves, open History, Open v1 → the banner and read-only; Restore → the head is a new `restore` version with v1's design; v1, v2 and v3 all still exist. Run it and record the result.
+- [X] T040 [US5] Implement `listVersions` and `openVersion` in `cloudProjects.ts` (with unit tests in T011's file), and `src/features/projects/cloud/HistoryPanel.tsx`, opened from the TopBar and the home header. Opening a past version sets `readOnly` and pauses `sync`; Back to latest restores both. Make T039 pass. — **Done 2026-11-07**: `listVersions`/`versionInfo`/`openVersion` in the adapter; `history.ts` and `HistoryPanel.tsx`; History button in the TopBar and the home plan; Save is blocked while a past version is on screen.
+- [X] T041 [US5] Add e2e § US5: make 2 saves, open History, Open v1 → the banner and read-only; Restore → the head is a new `restore` version with v1's design; v1, v2 and v3 all still exist. Run it and record the result. — **Done 2026-11-07**: § US5 passes: versions `[1 manual, 2 autosave, 3 restore 'Restored version 1']`.
 
 ---
 
 ## Phase 9: Polish & cross-cutting (PR 043c)
 
-- [ ] T042 [P] `docs/ACCEPTANCE_TESTS.md`: add the 043 scenarios (US1–US5, FR-001a, FR-011a) with their e2e and pgTAP names.
-- [ ] T043 [P] `docs/ARCHITECTURE.md` § Persistence: studio documents (functions, `doc_type`, cache and queue, the sync controller); "On this device" until 044. Update `docs/DOMAIN_MODEL.md` only if needed; no schema change is expected.
-- [ ] T044 [P] SC-001: run `scripts/measure-save.mjs`, a one-off timing script that is not committed, against **production** with a 125 KB home fixture: 30 saves into a throwaway project in the founder's studio, then the p95. Record the result in the PR, then delete the throwaway project (staging arrives in 048).
-- [ ] T045 Update `specs/FOUNDATION-PLAN.md`: 045 merged (PR #17); 043 in review, then done with the PR numbers.
-- [ ] T046 Run the full check from AGENTS.md, plus `db:reset`, `db:test` and both concurrency scripts. Record the exact output. Open **PR 043c** with the CI link.
-- [ ] T047 **Gate (founder)**: on the Vercel preview, signed in:
+- [X] T042 [P] `docs/ACCEPTANCE_TESTS.md`: add the 043 scenarios (US1–US5, FR-001a, FR-011a) with their e2e and pgTAP names. — **Done 2026-11-07**: `docs/ACCEPTANCE_TESTS.md`: 7 rows for 043; the 034.2.x rows are marked superseded (their tests were deleted).
+- [X] T043 [P] `docs/ARCHITECTURE.md` § Persistence: studio documents (functions, `doc_type`, cache and queue, the sync controller); "On this device" until 044. Update `docs/DOMAIN_MODEL.md` only if needed; no schema change is expected. — **Done 2026-11-07**: `docs/ARCHITECTURE.md` § Persistence rewritten. DOMAIN_MODEL unchanged (no schema change).
+- [ ] T044 [P] SC-001: run `scripts/measure-save.mjs`, a one-off timing script that is not committed, against **production** with a 125 KB home fixture: 30 saves into a throwaway project in the founder's studio, then the p95. Record the result in the PR, then delete the throwaway project (staging arrives in 048). — **Partly done 2026-11-07**: Local stack only: 30 saves each, a 3BHK home (73 868 B) p95 51 ms and padded to 125 KB p95 11 ms. **Production not measured**: it needs a production account. The founder can check save request durations in the preview's Network tab (filter `save_project_version`).
+- [X] T045 Update `specs/FOUNDATION-PLAN.md`: 045 merged (PR #17); 043 in review, then done with the PR numbers. — **Done 2026-11-07**: Updated the 043 and 045 rows and added the known issues (package.spec:15 flake, two load flakes, no offline app shell, client PII at rest). The sign-out-with-unsent-saves issue was fixed instead (b4eb162).
+- [X] T046 Run the full check from AGENTS.md, plus `db:reset`, `db:test` and both concurrency scripts. Record the exact output. Open **PR 043c** with the CI link. — **Done 2026-11-07**: PR #20; local: lint, typecheck, build exit 0, 1024 unit tests, `e2e/cloud-projects.spec.ts` 13 passed. CI green on 016fca5: https://github.com/ajha23/interior-studio/actions/runs/42360249332 (the first run failed `studio.spec.ts:60`, the sign-out warning; fixed).
+- [X] T047 **Gate (founder)**: on the Vercel preview, signed in: — **Done 2026-11-07**: Gate passed 2026-11-07 (founder, preview https://interior-studio-git-043c-con-39f9ca-akhileshs-projects-91333371.vercel.app): one project on laptop and phone, a conflict between two tabs (dialog, Save mine on top), offline edits then back online (Saved), history open and restore, test projects archived and deleted. Reported as working.
   - open one project on a laptop and a phone browser;
   - force a conflict between two tabs;
   - go offline and back.
@@ -364,3 +364,9 @@ banner; Restore adds a new version on top.
 
 MVP = PRs 043a and 043b (database, plus US1 and US2): studio projects with autosave, usable on two
 devices. 043c adds safety (conflicts, offline) and history. 043c's gate (T047) is the spec's gate.
+
+## Phase 10: Convergence
+
+- [ ] T049 Measure SC-001 on production: 30 saves of a 125 KB home in a throwaway project in the founder's studio (signed in as the founder; or note the `save_project_version` durations in the preview's Network tab), record the p95 here and in PR #20, then delete the throwaway project per SC-001 (partial)
+- [X] T050 [P] Add an e2e assertion in `e2e/cloud-projects.spec.ts` that a studio project's Deliverables → Client package header shows "Packages and photos are on this device only" per T024 (partial) — **Done 2026-11-07**: added to § US2 "an edit autosaves…"; `npx playwright test e2e/cloud-projects.spec.ts -g "an edit autosaves"` → passed.
+- [ ] T051 Decide which spec owns an offline app shell (service worker caching of the app, so a studio project opens after a reload while offline): add it to 049 or 050's scope in `specs/FOUNDATION-PLAN.md` per FR-011a (partial)

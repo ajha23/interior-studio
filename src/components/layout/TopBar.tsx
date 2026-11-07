@@ -17,6 +17,8 @@ import { useSiteCaptureStore } from '@/state/siteCaptureStore';
 import { SettingsLayout } from '@/features/settings/SettingsLayout';
 import { useCommandPaletteStore } from '@/features/command-palette/commandPaletteStore';
 import { SaveStatus } from '@/features/projects/cloud/SaveStatus';
+import { HistoryButton } from '@/features/projects/cloud/HistoryPanel';
+import { useHistoryStore } from '@/features/projects/cloud/history';
 import { useSyncStore } from '@/features/projects/cloud/sync';
 
 export function TopBar() {
@@ -35,7 +37,9 @@ export function TopBar() {
   const [saving, setSaving] = useState(false);
   // A studio project autosaves; Save makes a named version (spec 043, FR-009).
   const studioProject = useSyncStore((s) => s.projectId !== null);
-  const viewOnly = useSyncStore((s) => s.projectId !== null && s.readOnly);
+  // Viewers, and a past version on screen (spec 043, US5), have nothing to save.
+  const viewingPast = useHistoryStore((s) => s.viewing !== null);
+  const viewOnly = useSyncStore((s) => s.projectId !== null && s.readOnly) || viewingPast;
   const [versionMessage, setVersionMessage] = useState<string | null>(null);
   const [showTables, setShowTables] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -148,6 +152,7 @@ export function TopBar() {
       <Button variant="ghost" size="sm" onClick={() => exportProject(project)} title="Download the project as a .kitchen.json file">
         <Download /> Export
       </Button>
+      <HistoryButton />
       {studioProject && !viewOnly && versionMessage !== null && (
         <form
           className="flex items-center gap-1"

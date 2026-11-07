@@ -36,6 +36,8 @@ export interface AttachOptions {
   markSaved: (doc: cloud.CloudDoc) => void;
   /** Calls `onChange` after every edit of the document; returns a function that stops watching. */
   watch: (onChange: () => void) => () => void;
+  /** Opens `doc` (version `versionNo`) in place of the current document: "Load theirs". */
+  load: (doc: cloud.CloudDoc, versionNo: number) => void;
 }
 
 interface SyncState {
@@ -50,14 +52,21 @@ interface SyncState {
   head: number;
   projectId: string | null;
   readOnly: boolean;
+  /** Whether the conflict dialog is showing (closing it keeps the conflict; the status reopens it). */
+  conflictOpen: boolean;
+  setConflictOpen: (open: boolean) => void;
   attach: (options: AttachOptions) => Promise<void>;
   detach: () => void;
   /** Queues the document now (a manual save, or a restore); returns whether it reached the studio. */
   saveVersion: (message?: string, kind?: cloud.VersionKind) => Promise<boolean>;
   retry: () => Promise<void>;
+  /** Conflict: my waiting saves go on top of theirs, in order; nothing is lost (US3-3). */
+  saveMineOnTop: () => Promise<boolean>;
+  /** Conflict: their version opens and my waiting saves are dropped (US3-2; the caller confirms first). */
+  loadTheirs: () => Promise<boolean>;
 }
 
-const idle = { status: 'saved' as SyncStatus, queuedCount: 0, error: null, canRetry: false, conflict: null, head: 0, projectId: null, readOnly: false };
+const idle = { status: 'saved' as SyncStatus, queuedCount: 0, error: null, canRetry: false, conflict: null, head: 0, projectId: null, readOnly: false, conflictOpen: false };
 
 let options: AttachOptions | null = null;
 let timer: ReturnType<typeof setTimeout> | null = null;
@@ -148,6 +157,8 @@ function drain(o: AttachOptions): Promise<void> {
 async function drainOnce(o: AttachOptions): Promise<boolean> {
   for (;;) {
     if (options !== o) return false;
+    // While a conflict is open, saves wait for the user's choice (US4-3); the dialog resumes them.
+    if (useSyncStore.getState().status === 'conflict') return false;
     const [next] = await refreshCount(o);
     if (!next) {
       useSyncStore.setState({ status: timer || writing > 0 ? 'saving' : 'saved', error: null, canRetry: false });
@@ -182,7 +193,7 @@ async function drainOnce(o: AttachOptions): Promise<boolean> {
       return false;
     }
     if (error.kind === 'conflict') {
-      useSyncStore.setState({ status: 'conflict', error, conflict: { currentVersionNo: error.currentVersionNo ?? null } });
+      useSyncStore.setState({ status: 'conflict', error, conflict: { currentVersionNo: error.currentVersionNo ?? null }, conflictOpen: true });
       return false;
     }
     if (error.kind === 'too_large' || error.kind === 'archived' || error.kind === 'invalid') {
@@ -205,6 +216,7 @@ async function drainOnce(o: AttachOptions): Promise<boolean> {
 
 export const useSyncStore = create<SyncState>()((set, get) => ({
   ...idle,
+  setConflictOpen: (conflictOpen) => set({ conflictOpen }),
 
   attach: async (o) => {
     get().detach();
@@ -252,8 +264,48 @@ export const useSyncStore = create<SyncState>()((set, get) => ({
 
   retry: async () => {
     const o = options;
-    if (!o || o.readOnly) return;
+    if (!o || o.readOnly || get().status === 'conflict') return;
     set({ error: null, canRetry: false });
     await drain(o);
+  },
+
+  saveMineOnTop: async () => {
+    const o = options;
+    if (!o || o.readOnly || get().status !== 'conflict') return false;
+    let theirs = get().conflict?.currentVersionNo ?? null;
+    if (theirs === null) {
+      const read = await cloud.openHead(o.client, o.projectId);
+      if (options !== o) return false;
+      if (!read.ok) {
+        set({ error: read.error, status: read.error.kind === 'offline' ? 'offline' : 'error', canRetry: read.error.kind !== 'not_found' && read.error.kind !== 'forbidden' });
+        return false;
+      }
+      theirs = read.value.versionNo;
+    }
+    await writes;
+    await cache.rebase(o.userId, o.orgId, o.projectId, theirs);
+    set({ head: theirs, conflict: null, error: null, conflictOpen: false, status: 'saving' });
+    await drain(o);
+    return options === o && get().status === 'saved';
+  },
+
+  loadTheirs: async () => {
+    const o = options;
+    if (!o || get().status !== 'conflict') return false;
+    const read = await cloud.openHead(o.client, o.projectId);
+    if (options !== o) return false;
+    if (!read.ok) {
+      set({ error: read.error });
+      return false;
+    }
+    clearTimer();
+    await writes;
+    await cache.dropQueue(o.userId, o.orgId, o.projectId);
+    sentDocs.clear();
+    lastQueued = null;
+    await cache.putDoc({ userId: o.userId, orgId: o.orgId, projectId: o.projectId, versionNo: read.value.versionNo, doc: read.value.doc, name: o.name });
+    o.load(read.value.doc, read.value.versionNo);
+    set({ head: read.value.versionNo, conflict: null, error: null, status: 'saved', queuedCount: 0, conflictOpen: false });
+    return true;
   },
 }));

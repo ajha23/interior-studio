@@ -59,9 +59,37 @@ instant and keeps the camera.
 
 ## Persistence
 
-`persistence/projectDb.ts` stores each project in IndexedDB as the same versioned JSON envelope
-used for export (`domain/project/serialization.ts`), plus a summary for the projects list. Loading
-always goes through `parseProjectFile`: JSON parse → format check → migrations → Zod → invariants.
+**Studio projects (spec 043).** Inside a studio, kitchens and homes are rows in `public.projects`
+with full snapshots in `public.project_versions` (`doc_type` kitchen | home; `legacy_v1` rows open
+after 044). Postgres decides every write:
+
+- `create_project` writes the project and version 1 in one transaction.
+- `save_project_version` checks the idempotency key, then compare-and-swap on the head
+  (`PT409`), size (`PT413`) and archived state (`PT423`), and hashes the scene.
+- Rename, archive, unarchive and delete are RLS table writes, limited by column grants and audited
+  by triggers into the append-only `private.audit_log`. See
+  `specs/043-cloud-projects/contracts/project-rpc.md`.
+
+In the browser:
+
+- `infrastructure/projects/cloudProjects.ts` is the only module that reads or writes these tables
+  (the client is always passed in).
+- `persistence/cloudCache.ts` keeps, per user and studio, the last copy of each project, the last
+  list and a queue of waiting saves (cleared on sign-out).
+- `features/projects/cloud/sync.ts` autosaves 2 s after the last change. It writes each save to
+  the queue before sending it, sends saves in order with their keys, and shows exactly one status.
+- `ConflictDialog` resolves a `PT409` ("Save mine on top" or "Load theirs"), and `HistoryPanel`
+  opens and restores versions.
+- Addresses carry the studio: `#/s/<slug>/p/<id>`, `#/s/<slug>/h/<id>[/room/<roomId>]`
+  (`app/docRoutes.ts`).
+- There is no offline app shell yet, so offline use works in an open tab but not after a reload.
+- Client packages and site photos of a studio project stay on the device (until 047).
+
+**On this device.** `persistence/projectDb.ts` stores each browser-only project in IndexedDB as
+the same versioned JSON envelope used for export (`domain/project/serialization.ts`), plus a summary
+for the projects list. These are listed under "On this device" until 044 moves them. Loading always
+goes through `parseProjectFile` (or `parseHomeFile`): JSON parse → format check → migrations → Zod
+→ invariants; cloud scenes are loaded through the same parsers.
 
 ## Testing
 

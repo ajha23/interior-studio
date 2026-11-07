@@ -7,9 +7,11 @@ import * as cache from '@/persistence/cloudCache';
 
 type SaveInput = { projectId: string; expectedVersionNo: number; idempotencyKey: string; doc: CloudDoc; kind: string; message?: string };
 const save = vi.fn<(client: unknown, input: SaveInput) => Promise<Result<SavedVersion>>>();
+const head = vi.fn<(client: unknown, projectId: string) => Promise<Result<{ versionNo: number; doc: CloudDoc }>>>();
 vi.mock('@/infrastructure/projects/cloudProjects', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   saveVersion: (client: unknown, input: SaveInput) => save(client, input),
+  openHead: (client: unknown, projectId: string) => head(client, projectId),
 }));
 const { AUTOSAVE_DELAY_MS, useSyncStore } = await import('./sync');
 
@@ -17,6 +19,7 @@ const ID = '7d1c9a2e-0000-4000-8000-000000000001';
 let project: KitchenProject;
 let listeners: Array<() => void>;
 let saved: CloudDoc[];
+let loaded: Array<{ doc: CloudDoc; versionNo: number }>;
 /** A tiny stand-in for the editor: edits replace the project and notify the watcher. */
 const edit = (width: number) => {
   project = { ...project, room: { ...project.room, width } };
@@ -50,6 +53,7 @@ async function attach(readOnly = false, head = 1) {
     readOnly,
     read: () => ({ type: 'kitchen', project }),
     markSaved: (doc) => saved.push(doc),
+    load: (doc, versionNo) => loaded.push({ doc, versionNo }),
     watch: (onChange) => {
       listeners.push(onChange);
       return () => (listeners = listeners.filter((l) => l !== onChange));
@@ -63,11 +67,19 @@ beforeEach(async () => {
   project = { ...createProject({ name: 'Rao kitchen', room: DEFAULT_ROOM, layout: 'straight' }), id: ID };
   listeners = [];
   saved = [];
+  loaded = [];
+  head.mockReset();
   await cache.clearUser('u1');
 });
 
+function setOnline(online: boolean) {
+  Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => online });
+  window.dispatchEvent(new Event(online ? 'online' : 'offline'));
+}
+
 afterEach(() => {
   sync().detach();
+  setOnline(true);
   vi.useRealTimers();
 });
 
@@ -220,6 +232,127 @@ describe('the status never claims Saved too early', () => {
     expect((save.mock.calls[1]![1].doc as { project: KitchenProject }).project.room.width).toBe(3100);
     // Each save expects the head after the one before it: no false conflict.
     expect(save.mock.calls.map((c) => c[1].expectedVersionNo)).toEqual([1, 2]);
+  });
+});
+
+describe('resolving a conflict (US3, FR-012)', () => {
+  it('Save mine on top: my design becomes the version after theirs; nothing is lost', async () => {
+    const db = database(4); // someone else saved version 4 while this tab had 3
+    await attach(false, 3);
+    edit(3500);
+    await sync().saveVersion();
+    expect(sync()).toMatchObject({ status: 'conflict', conflict: { currentVersionNo: 4 } });
+    expect(await sync().saveMineOnTop()).toBe(true);
+    expect(sync()).toMatchObject({ status: 'saved', head: 5, conflict: null, queuedCount: 0 });
+    expect(db()).toBe(5);
+    const last = save.mock.calls.at(-1)![1];
+    expect(last).toMatchObject({ expectedVersionNo: 4 });
+    expect((last.doc as { project: KitchenProject }).project.room.width).toBe(3500);
+  });
+
+  it('Save mine on top keeps every queued save, in order, after theirs', async () => {
+    database(4);
+    await cache.enqueue({ userId: 'u1', orgId: 'org-a', projectId: ID, expectedVersionNo: 3, idempotencyKey: 'a', doc: { type: 'kitchen', project }, kind: 'autosave', message: '' });
+    await cache.enqueue({ userId: 'u1', orgId: 'org-a', projectId: ID, expectedVersionNo: 4, idempotencyKey: 'b', doc: { type: 'kitchen', project }, kind: 'manual', message: 'second' });
+    await attach(false, 3);
+    expect(sync()).toMatchObject({ status: 'conflict', queuedCount: 2 });
+    await sync().saveMineOnTop();
+    expect(save.mock.calls.slice(-2).map((c) => [c[1].idempotencyKey, c[1].expectedVersionNo])).toEqual([
+      ['a', 4],
+      ['b', 5],
+    ]);
+    expect(sync()).toMatchObject({ status: 'saved', head: 6 });
+  });
+
+  it('Load theirs: their version opens, this project’s waiting saves are dropped', async () => {
+    database(4);
+    const theirs = { type: 'kitchen' as const, project: { ...project, room: { ...project.room, width: 2900 } } };
+    head.mockResolvedValue({ ok: true, value: { versionNo: 4, doc: theirs } });
+    await attach(false, 3);
+    edit(3500);
+    await sync().saveVersion();
+    expect(sync().status).toBe('conflict');
+    expect(await sync().loadTheirs()).toBe(true);
+    expect(loaded).toEqual([{ doc: theirs, versionNo: 4 }]);
+    expect(sync()).toMatchObject({ status: 'saved', head: 4, conflict: null, queuedCount: 0 });
+    expect(await cache.queued('u1', 'org-a', ID)).toEqual([]);
+    expect((await cache.getDoc('u1', 'org-a', ID))?.versionNo).toBe(4);
+  });
+
+  it('a conflict without a head number reads the head before saving on top', async () => {
+    database(7);
+    save.mockResolvedValueOnce(fail({ kind: 'conflict', message: 'Someone else saved this project.' }));
+    head.mockResolvedValue({ ok: true, value: { versionNo: 7, doc: { type: 'kitchen', project } } });
+    await attach(false, 3);
+    await sync().saveVersion();
+    expect(sync().conflict).toEqual({ currentVersionNo: null });
+    await sync().saveMineOnTop();
+    expect(save.mock.calls.at(-1)![1].expectedVersionNo).toBe(7);
+    expect(sync().head).toBe(8);
+  });
+});
+
+describe('offline (US4, FR-011)', () => {
+  it('three edits offline are queued in order, then sent in order on reconnect', async () => {
+    const db = database(1);
+    await attach();
+    setOnline(false);
+    for (const width of [3000, 3100, 3200]) {
+      edit(width);
+      await vi.advanceTimersByTimeAsync(AUTOSAVE_DELAY_MS + 100);
+    }
+    await vi.waitFor(() => expect(sync()).toMatchObject({ status: 'offline', queuedCount: 3 }));
+    expect(save).not.toHaveBeenCalled();
+    expect((await cache.queued('u1', 'org-a', ID)).map((e) => e.expectedVersionNo)).toEqual([1, 2, 3]);
+
+    setOnline(true);
+    await vi.waitFor(() => expect(sync()).toMatchObject({ status: 'saved', queuedCount: 0, head: 4 }));
+    expect(save.mock.calls.map((c) => [(c[1].doc as { project: KitchenProject }).project.room.width, c[1].expectedVersionNo])).toEqual([
+      [3000, 1],
+      [3100, 2],
+      [3200, 3],
+    ]);
+    expect(db()).toBe(4);
+  });
+
+  it('a dropped connection mid-save reads Offline and keeps the save; it goes when the connection returns', async () => {
+    database(1);
+    save.mockResolvedValueOnce(fail({ kind: 'offline', message: "You're offline — this needs a connection." }));
+    await attach();
+    await sync().saveVersion();
+    expect(sync()).toMatchObject({ status: 'offline', queuedCount: 1 });
+    setOnline(true);
+    await vi.waitFor(() => expect(sync()).toMatchObject({ status: 'saved', queuedCount: 0, head: 2 }));
+    expect(save.mock.calls[0]![1].idempotencyKey).toBe(save.mock.calls[1]![1].idempotencyKey);
+  });
+
+  it('the queue survives a reload: a new visit sends what the last one left, in order', async () => {
+    database(1);
+    await attach();
+    setOnline(false);
+    edit(3000);
+    await vi.advanceTimersByTimeAsync(AUTOSAVE_DELAY_MS + 100);
+    edit(3100);
+    await vi.advanceTimersByTimeAsync(AUTOSAVE_DELAY_MS + 100);
+    await vi.waitFor(() => expect(sync().queuedCount).toBe(2));
+    sync().detach(); // the reload
+    setOnline(true);
+    await attach(); // the next visit, head still 1 in the database
+    await vi.waitFor(() => expect(sync()).toMatchObject({ status: 'saved', head: 3, queuedCount: 0 }));
+    expect(save.mock.calls.map((c) => c[1].expectedVersionNo)).toEqual([1, 2]);
+  });
+
+  it('a conflict while sending the queue stops it; the rest wait for the dialog', async () => {
+    database(2); // someone else saved version 2 while this device was offline
+    await attach();
+    setOnline(false);
+    edit(3000);
+    await vi.advanceTimersByTimeAsync(AUTOSAVE_DELAY_MS + 100);
+    edit(3100);
+    await vi.advanceTimersByTimeAsync(AUTOSAVE_DELAY_MS + 100);
+    setOnline(true);
+    await vi.waitFor(() => expect(sync()).toMatchObject({ status: 'conflict', queuedCount: 2, conflictOpen: true }));
+    expect(save).toHaveBeenCalledTimes(1);
   });
 });
 

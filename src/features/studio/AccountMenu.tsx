@@ -2,6 +2,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useSession } from '@/features/auth/useSession';
+import { pendingFor } from '@/persistence/cloudCache';
+
+/** Signing out clears this device's copy, so saves that have not reached the studio would be lost (spec 043, SC-002). */
+export function unsentWarning(n: number): string {
+  return `${n} ${n === 1 ? 'change has' : 'changes have'} not reached the studio yet (you may be offline). Signing out deletes ${n === 1 ? 'it' : 'them'} from this device. Sign out anyway?`;
+}
 
 export function AccountMenu() {
   const { user, signOut } = useSession();
@@ -53,6 +59,9 @@ export function AccountMenu() {
             className="w-full rounded px-2.5 py-1.5 text-left text-sm hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
             onClick={() => {
               setOpen(false);
+              // Decided at once (no wait on storage), so nothing can cut the sign-out off.
+              const waiting = user ? pendingFor(user.id) : 0;
+              if (waiting > 0 && !window.confirm(unsentWarning(waiting))) return;
               void signOut();
             }}
           >

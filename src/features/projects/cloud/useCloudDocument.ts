@@ -23,7 +23,7 @@ export const OFFLINE_COPY_BANNER = 'Offline — showing the copy on this device'
 
 const NOT_HERE = "This project isn't in this studio.";
 
-function bindings(projectId: string, type: cloud.DocType): Pick<AttachOptions, 'read' | 'markSaved' | 'watch'> {
+function bindings(projectId: string, type: cloud.DocType): Pick<AttachOptions, 'read' | 'markSaved' | 'watch' | 'load'> {
   if (type === 'kitchen') {
     return {
       read: () => {
@@ -32,6 +32,10 @@ function bindings(projectId: string, type: cloud.DocType): Pick<AttachOptions, '
       },
       markSaved: (doc) => {
         if (doc.type === 'kitchen' && useEditorStore.getState().project?.id === projectId) useEditorStore.getState().markSaved(doc.project);
+      },
+      // "Load theirs": their version replaces mine, with a fresh undo history.
+      load: (doc) => {
+        if (doc.type === 'kitchen') useEditorStore.getState().openProject(doc.project);
       },
       watch: (onChange) =>
         useEditorStore.subscribe((s, prev) => {
@@ -46,6 +50,13 @@ function bindings(projectId: string, type: cloud.DocType): Pick<AttachOptions, '
     },
     markSaved: (doc) => {
       if (doc.type === 'home') useHomeStore.getState().markSaved(doc.home);
+    },
+    load: (doc) => {
+      if (doc.type !== 'home') return;
+      const store = useHomeStore.getState();
+      const room = store.roomId;
+      store.openDocument(doc.home);
+      if (room && !useHomeStore.getState().enterRoom(room)) useEditorStore.getState().closeProject();
     },
     watch: (onChange) =>
       useHomeStore.subscribe((s, prev) => {

@@ -196,6 +196,11 @@ test.describe('US2: autosave with a clear status', () => {
     await page.reload();
     await page.getByRole('button', { name: 'Plan', exact: true }).click();
     await expect(page.getByTestId('plan-view').getByRole('button', { name: 'Base cabinet 800', exact: true })).toBeVisible({ timeout: 30_000 });
+
+    // The design is saved to the studio; its client packages and photos stay on this device (spec 043).
+    await page.getByRole('button', { name: 'Deliverables' }).click();
+    await page.getByRole('navigation', { name: 'Sheets' }).getByRole('button', { name: /Client package/ }).click();
+    await expect(page.getByText('Packages and photos are on this device only')).toBeVisible();
   });
 
   test('a viewer opens a studio project view-only and never saves', async ({ page }) => {
@@ -217,5 +222,112 @@ test.describe('US2: autosave with a clear status', () => {
     await expect(page.getByTestId('plan-view').getByRole('button', { name: 'Base cabinet 900', exact: true })).toHaveCount(0);
     await page.waitForTimeout(2_500);
     expect(saves).toEqual([]);
+  });
+});
+
+test.describe('US3: never lose a concurrent edit', () => {
+  test('two tabs: the second save conflicts; Save mine on top keeps both versions', async ({ page }) => {
+    await signInAs(page, 'designer.a@example.test');
+    const id = await createKitchen(page, `Conflict ${Date.now()}`);
+    const tab2 = await page.context().newPage();
+    await tab2.goto(`/#/s/alpha/p/${id}`);
+    await expect(tab2.getByTestId('viewport-3d').locator('canvas')).toBeVisible({ timeout: 30_000 });
+
+    await widenFirstBase(page, '900'); // tab 1 saves version 2
+    await saved(page);
+    await widenFirstBase(tab2, '800'); // tab 2 still expects version 1
+    await expect(tab2.getByRole('dialog', { name: 'Someone else saved this project' })).toBeVisible({ timeout: 15_000 });
+    await expect(tab2.getByTestId('conflict-who')).toContainText('Alpha Designer saved version 2');
+    await tab2.getByRole('button', { name: 'Save mine on top' }).click();
+    await saved(tab2);
+
+    const token = await localAccessToken('designer.a@example.test');
+    const versions = await localSelect<{ version_no: number }>(token, `project_versions?project_id=eq.${id}&select=version_no&order=version_no`);
+    expect(versions.map((v) => v.version_no)).toEqual([1, 2, 3]);
+    await tab2.close();
+  });
+
+  test('Load theirs opens the other version after confirming', async ({ page }) => {
+    await signInAs(page, 'designer.a@example.test');
+    const id = await createKitchen(page, `Theirs ${Date.now()}`);
+    const tab2 = await page.context().newPage();
+    await tab2.goto(`/#/s/alpha/p/${id}`);
+    await expect(tab2.getByTestId('viewport-3d').locator('canvas')).toBeVisible({ timeout: 30_000 });
+    await widenFirstBase(page, '900');
+    await saved(page);
+    await widenFirstBase(tab2, '800');
+    await expect(tab2.getByRole('dialog', { name: 'Someone else saved this project' })).toBeVisible({ timeout: 15_000 });
+    tab2.once('dialog', (d) => void d.accept());
+    await tab2.getByRole('button', { name: 'Load theirs' }).click();
+    await saved(tab2);
+    await expect(tab2.getByTestId('plan-view').getByRole('button', { name: 'Base cabinet 900', exact: true })).toBeVisible();
+    await tab2.close();
+  });
+});
+
+test.describe('US4: keep working offline', () => {
+  test('three edits offline are sent in order on reconnect; offline, the project opens from this device', async ({ page, context }) => {
+    await signInAs(page, 'designer.a@example.test');
+    const name = `Offline ${Date.now()}`;
+    const id = await createKitchen(page, name);
+    await page.getByRole('button', { name: 'Plan', exact: true }).click();
+    await context.setOffline(true);
+    for (const w of ['700', '800', '900']) {
+      const current = await page.getByTestId('plan-view').getByRole('button', { name: /^Base cabinet \d+$/ }).first().getAttribute('aria-label');
+      await page.getByTestId('plan-view').getByRole('button', { name: current!, exact: true }).first().click();
+      await page.getByTestId('inspector-width').fill(w);
+      await page.getByTestId('inspector-width').press('Enter');
+      await page.waitForTimeout(2_600);
+    }
+    await expect(page.getByRole('status').filter({ hasText: 'Offline (queued 3)' })).toBeVisible();
+
+    await context.setOffline(false);
+    await saved(page);
+    const token = await localAccessToken('designer.a@example.test');
+    const versions = await localSelect<{ version_no: number; kind: string }>(token, `project_versions?project_id=eq.${id}&select=version_no,kind&order=version_no`);
+    expect(versions.map((v) => v.version_no)).toEqual([1, 2, 3, 4]);
+
+    // Offline again, in the open app (there is no offline app shell yet, so not after a reload):
+    // the Projects page and the project open from this device, with the banner (FR-011a).
+    await context.setOffline(true);
+    await page.getByRole('button', { name: 'All projects' }).click();
+    await expect(page.getByText('Offline — showing the copy on this device').first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('button', { name: 'Create project' })).toBeDisabled();
+    await card(page, name).getByRole('button', { name: `Open ${name}` }).click();
+    await expect(page).toHaveURL(new RegExp(`#/s/alpha/p/${id}$`));
+    await expect(page.getByText('Offline — showing the copy on this device').first()).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('button', { name: 'Plan', exact: true }).click();
+    await expect(page.getByTestId('plan-view').getByRole('button', { name: 'Base cabinet 900', exact: true })).toBeVisible();
+    await context.setOffline(false);
+  });
+});
+
+test.describe('US5: version history', () => {
+  test('open an old version read-only, then restore it as a new version', async ({ page }) => {
+    await signInAs(page, 'designer.a@example.test');
+    const id = await createKitchen(page, `History ${Date.now()}`);
+    await widenFirstBase(page, '900');
+    await saved(page);
+
+    await page.getByRole('button', { name: 'History' }).click();
+    const history = page.getByRole('dialog', { name: 'Version history' });
+    await expect(history.getByTestId('version-row')).toHaveCount(2);
+    await history.getByRole('button', { name: 'Open version 1' }).click();
+    await expect(page.getByTestId('version-banner')).toContainText('Viewing version 1');
+    await page.getByRole('button', { name: 'Plan', exact: true }).click();
+    await expect(page.getByTestId('plan-view').getByRole('button', { name: 'Base cabinet 600', exact: true }).first()).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Save version/ })).toHaveCount(0);
+
+    await page.getByTestId('version-banner').getByRole('button', { name: 'Restore' }).click();
+    await expect(page.getByTestId('version-banner')).toHaveCount(0);
+    await saved(page);
+    const token = await localAccessToken('designer.a@example.test');
+    const versions = await localSelect<{ version_no: number; kind: string; message: string }>(token, `project_versions?project_id=eq.${id}&select=version_no,kind,message&order=version_no`);
+    expect(versions.map((v) => [v.version_no, v.kind])).toEqual([
+      [1, 'manual'],
+      [2, 'autosave'],
+      [3, 'restore'],
+    ]);
+    expect(versions[2]!.message).toBe('Restored version 1');
   });
 });
